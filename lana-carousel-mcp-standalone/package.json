@@ -1,0 +1,21 @@
+{
+  "name": "lana-carousel-mcp-standalone",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node src/http-server.js",
+    "mcp": "node src/mcp-server.js",
+    "check": "node --check src/config.js && node --check src/db.js && node --check src/ssrf.js && node --check src/image-importer.js && node --check src/service.js && node --check src/http-server.js && node --check src/mcp-server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.0",
+    "better-sqlite3": "^12.2.0",
+    "express": "^5.1.0",
+    "file-type": "^21.0.0",
+    "ipaddr.js": "^2.2.0",
+    "sharp": "^0.34.3",
+    "zod": "^3.25.0"
+  }
+}
