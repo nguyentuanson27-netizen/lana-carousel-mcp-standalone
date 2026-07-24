@@ -1,14 +1,91 @@
 import express from "express";
+import { randomUUID } from "node:crypto";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import archiver from "archiver";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { config } from "./config.js";
 import { publicError } from "./errors.js";
-import { addSlide, createProject, getProject, importAssetFromUrl } from "./service.js";
+import { createMcpServer } from "./mcp-tools.js";
+import { getRenderJob, getRenderJobBuffer, startRenderJob } from "./render-jobs.js";
+import {
+  addSlide,
+  approveProjectContent,
+  approveSlideAsset,
+  approveSlideAssets,
+  cloneProject,
+  createProject,
+  deleteProject,
+  extendProject,
+  getApprovedAssetFiles,
+  getProject,
+  getProjectVersions,
+  importAssetFromUrl,
+  listProjects,
+  purgeExpiredProjects,
+  restoreProjectVersion,
+  updateBrandKit,
+  updateSlideCrop,
+  updateSlideContent
+} from "./service.js";
 
 const app = express();
+const publicDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../public");
 app.use(express.json({ limit: "1mb" }));
 app.use("/assets", express.static(config.assetDirectory, { fallthrough: false, immutable: true, maxAge: "1y" }));
+app.use(express.static(publicDirectory, { index: false, maxAge: "5m" }));
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
+app.get("/widget", (_req, res) => res.sendFile(path.join(publicDirectory, "widget.html")));
+app.get("/projects", (_req, res) => res.sendFile(path.join(publicDirectory, "projects.html")));
+
+const mcpTransports = new Map();
+
+app.all("/mcp", async (req, res) => {
+  try {
+    const sessionId = req.headers["mcp-session-id"];
+    let transport = sessionId ? mcpTransports.get(sessionId) : undefined;
+
+    if (!transport && req.method === "POST" && isInitializeRequest(req.body)) {
+      let server;
+      transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: randomUUID,
+        enableJsonResponse: true,
+        onsessioninitialized: (id) => {
+          mcpTransports.set(id, transport);
+        }
+      });
+      transport.onclose = () => {
+        if (transport.sessionId) mcpTransports.delete(transport.sessionId);
+        server?.close().catch(() => {});
+      };
+      server = createMcpServer();
+      await server.connect(transport);
+    }
+
+    if (!transport) {
+      res.status(400).json({
+        jsonrpc: "2.0",
+        error: { code: -32000, message: "Missing or invalid MCP session." },
+        id: null
+      });
+      return;
+    }
+
+    await transport.handleRequest(req, res, req.body);
+  } catch (error) {
+    console.error("MCP request failed", error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        jsonrpc: "2.0",
+        error: { code: -32603, message: "Internal server error" },
+        id: null
+      });
+    }
+  }
+});
 
 app.post("/api/projects", async (req, res) => {
   try {
@@ -31,6 +108,139 @@ app.post("/api/projects/:projectId/slides", async (req, res) => {
 app.get("/api/projects/:projectId", async (req, res) => {
   try {
     res.json(getProject(req.params.projectId));
+  } catch (error) {
+    const safe = publicError(error); res.status(safe.status).json(safe);
+  }
+});
+
+app.get("/api/projects", (req, res) => {
+  try { res.json({ projects: listProjects({ search: String(req.query.search || "") }) }); }
+  catch (error) { const safe = publicError(error); res.status(safe.status).json(safe); }
+});
+
+app.delete("/api/projects/:projectId", async (req, res) => {
+  try { res.json(await deleteProject(req.params.projectId)); }
+  catch (error) { const safe = publicError(error); res.status(safe.status).json(safe); }
+});
+
+app.post("/api/projects/:projectId/clone", async (req, res) => {
+  try { res.status(201).json(await cloneProject(req.params.projectId)); }
+  catch (error) { const safe = publicError(error); res.status(safe.status).json(safe); }
+});
+
+app.post("/api/projects/:projectId/extend", (req, res) => {
+  try { const body = z.object({ days: z.number().int().min(1).max(90).default(14) }).parse(req.body || {}); res.json(extendProject(req.params.projectId, body.days)); }
+  catch (error) { const safe = publicError(error); res.status(safe.status).json(safe); }
+});
+
+app.patch("/api/projects/:projectId/brand-kit", (req, res) => {
+  try {
+    const body = z.object({ font: z.string().min(1).max(100), color: z.string().regex(/^#[0-9A-F]{6}$/i), applyToAll: z.boolean().default(false) }).parse(req.body);
+    res.json(updateBrandKit({ projectId: req.params.projectId, ...body }));
+  } catch (error) { const safe = publicError(error); res.status(safe.status).json(safe); }
+});
+
+app.get("/api/projects/:projectId/versions", (req, res) => {
+  try { res.json({ versions: getProjectVersions(req.params.projectId) }); }
+  catch (error) { const safe = publicError(error); res.status(safe.status).json(safe); }
+});
+
+app.post("/api/projects/:projectId/versions/:versionId/restore", (req, res) => {
+  try { res.json(restoreProjectVersion(req.params.projectId, req.params.versionId)); }
+  catch (error) { const safe = publicError(error); res.status(safe.status).json(safe); }
+});
+
+app.post("/api/projects/:projectId/approve-content", (req, res) => {
+  try {
+    res.json(approveProjectContent(req.params.projectId));
+  } catch (error) {
+    const safe = publicError(error); res.status(safe.status).json(safe);
+  }
+});
+
+app.post("/api/projects/:projectId/slides/:slideId/approve-asset", (req, res) => {
+  try {
+    const body = z.object({ assetId: z.string().uuid() }).parse(req.body);
+    res.json(approveSlideAsset({
+      projectId: req.params.projectId,
+      slideId: req.params.slideId,
+      assetId: body.assetId
+    }));
+  } catch (error) {
+    const safe = publicError(error); res.status(safe.status).json(safe);
+  }
+});
+
+app.post("/api/projects/:projectId/slides/:slideId/approve-assets", (req, res) => {
+  try {
+    const body = z.object({ assetIds: z.array(z.string().uuid()).min(1).max(10), mode: z.enum(["crop", "grid"]) }).parse(req.body);
+    res.json(approveSlideAssets({ projectId: req.params.projectId, slideId: req.params.slideId, ...body }));
+  } catch (error) {
+    const safe = publicError(error); res.status(safe.status).json(safe);
+  }
+});
+
+app.patch("/api/projects/:projectId/slides/:slideId/content", (req, res) => {
+  try {
+    const body = z.object({
+      headline: z.string().min(1).max(300), body: z.string().min(1).max(2000),
+      textEnabled: z.boolean(), overlayText: z.string().max(500),
+      textFont: z.enum(["TikTok Sans", "Montserrat", "Poppins", "Bebas Neue", "Roboto", "Playfair Display", "Courier New"]),
+      textSize: z.number().int().min(32).max(160), textPosition: z.enum(["top", "center", "bottom"]),
+      textColor: z.string().regex(/^#[0-9A-F]{6}$/i), textAlign: z.enum(["left", "center", "right"]),
+      textX: z.number().min(5).max(95), textY: z.number().min(5).max(95),
+      textLayers: z.array(z.object({
+        id: z.string().max(100).optional(), role: z.enum(["headline", "body", "custom"]).optional(),
+        content: z.string().max(500), enabled: z.boolean().default(true),
+        font: z.string().min(1).max(100), size: z.number().min(24).max(220),
+        x: z.number().min(3).max(97), y: z.number().min(3).max(97), color: z.string().regex(/^#[0-9A-F]{6}$/i),
+        align: z.enum(["left", "center", "right"]), opacity: z.number().min(0.1).max(1).default(1),
+        rotation: z.number().min(-180).max(180).default(0)
+      })).max(10).default([])
+    }).parse(req.body);
+    res.json(updateSlideContent({ projectId: req.params.projectId, slideId: req.params.slideId, ...body }));
+  } catch (error) {
+    const safe = publicError(error); res.status(safe.status).json(safe);
+  }
+});
+
+app.patch("/api/projects/:projectId/slides/:slideId/crop", (req, res) => {
+  try {
+    const body = z.object({ cropX: z.number().min(0).max(100), cropY: z.number().min(0).max(100), cropZoom: z.number().min(1).max(3) }).parse(req.body);
+    res.json(updateSlideCrop({ projectId: req.params.projectId, slideId: req.params.slideId, ...body }));
+  } catch (error) { const safe = publicError(error); res.status(safe.status).json(safe); }
+});
+
+app.post("/api/projects/:projectId/render-jobs", (req, res) => {
+  try { getProject(req.params.projectId); res.status(202).json(startRenderJob(req.params.projectId)); }
+  catch (error) { const safe = publicError(error); res.status(safe.status).json(safe); }
+});
+
+app.get("/api/render-jobs/:jobId", (req, res) => {
+  try { res.json(getRenderJob(req.params.jobId)); }
+  catch (error) { const safe = publicError(error); res.status(safe.status).json(safe); }
+});
+
+app.get("/api/render-jobs/:jobId/download", (req, res) => {
+  try { const result = getRenderJobBuffer(req.params.jobId); res.attachment(`lana-carousel-${result.projectId}.zip`).send(result.buffer); }
+  catch (error) { const safe = publicError(error); res.status(safe.status).json(safe); }
+});
+
+app.get("/api/projects/:projectId/download-images.zip", async (req, res) => {
+  try {
+    const files = await getApprovedAssetFiles(req.params.projectId);
+    res.attachment(`lana-carousel-${req.params.projectId}.zip`);
+    const archive = archiver("zip", { zlib: { level: 9 } });
+    archive.on("error", error => {
+      if (!res.headersSent) {
+        const safe = publicError(error); res.status(safe.status).json(safe);
+      } else {
+        res.destroy(error);
+      }
+    });
+    archive.pipe(res);
+    for (const file of files) archive.append(file.buffer, { name: file.name });
+    archive.finalize();
   } catch (error) {
     const safe = publicError(error); res.status(safe.status).json(safe);
   }
@@ -67,3 +277,9 @@ app.post("/api/projects/:projectId/slides/:slideId/assets/import-url", async (re
 app.listen(config.port, () => {
   console.log(`Lana Carousel HTTP server: ${config.publicBaseUrl}`);
 });
+
+purgeExpiredProjects().catch(error => console.error("Initial project expiry cleanup failed", error));
+const expiryTimer = setInterval(() => {
+  purgeExpiredProjects().catch(error => console.error("Scheduled project expiry cleanup failed", error));
+}, 6 * 60 * 60 * 1000);
+expiryTimer.unref();

@@ -1,28 +1,40 @@
 # Lana Carousel MCP Standalone
 
-Dịch vụ độc lập, không phụ thuộc repo Lana Carousel App hiện tại. Dịch vụ tự tạo:
+Dịch vụ MCP độc lập giúp ChatGPT tạo và quản lý carousel ảnh theo quy trình:
 
-- SQLite database;
-- bảng `projects`, `slides`, `assets`;
-- thư mục lưu ảnh;
-- REST API;
-- MCP server qua stdio;
-- tool `import_asset_from_url`.
+**Duyệt nội dung → Duyệt ảnh → Sửa ảnh → Render và tải ZIP**
+
+Production:
+
+- MCP endpoint: `https://content.lanadesign.tech/mcp`
+- Project dashboard: `https://content.lanadesign.tech/projects`
+- Health check: `https://content.lanadesign.tech/health`
 
 ## Tính năng
 
-- Tạo project và slide.
-- Tải ảnh thật từ URL HTTPS.
-- Chống SSRF, localhost, private IP, link-local và redirect không an toàn.
-- Timeout, giới hạn 10 MB, tối đa 3 redirect.
-- Kiểm tra Content-Type và magic bytes.
-- Chuẩn hóa ảnh thành WebP bằng Sharp.
-- Chống trùng bằng SHA-256.
-- Lưu metadata nguồn ảnh.
-- Gắn ảnh vào `selected_asset_id` của slide.
-- Phục vụ file ảnh tại `/assets/...`.
+- Tạo dự án và slide nội dung bằng MCP.
+- Tự động xóa dự án sau 14 ngày; hỗ trợ gia hạn, nhân bản và xóa thủ công.
+- Nhập ảnh từ URL HTTPS, theo redirect và gửi User-Agent.
+- Kiểm tra SSRF, MIME, magic bytes, dung lượng và timeout.
+- Chuẩn hóa JPG, PNG và WebP thành WebP bằng Sharp.
+- Lưu tối đa 10 ảnh ứng viên cho mỗi slide.
+- Duyệt một ảnh hoặc ghép nhiều ảnh dạng lưới.
+- Crop ảnh 9:16, zoom và chọn trọng tâm.
+- Nhiều lớp chữ có thể kéo thả trực quan.
+- Chọn font, cỡ chữ, màu, vị trí, căn lề, độ trong suốt và góc xoay.
+- Brand Kit và áp dụng thiết kế cho toàn bộ slide.
+- Hoàn tác/làm lại trong trình sửa.
+- Render nền, theo dõi tiến độ và tải bộ ảnh ZIP.
+- Lịch sử phiên bản dự án.
+- Dashboard tìm kiếm và quản lý dự án.
 
-## Cài trực tiếp
+## Yêu cầu
+
+- Node.js 20 trở lên.
+- Một domain HTTPS công khai nếu kết nối từ ChatGPT.
+- SQLite được tạo tự động.
+
+## Cài đặt
 
 ```bash
 cp .env.example .env
@@ -31,97 +43,29 @@ npm run check
 npm start
 ```
 
-HTTP server mặc định chạy tại:
+HTTP server mặc định:
 
 ```text
 http://localhost:8787
 ```
 
-Chạy MCP stdio:
+Chạy MCP qua stdio:
 
 ```bash
 npm run mcp
 ```
 
-## Chạy bằng Docker
+Chạy bằng Docker:
 
 ```bash
 docker compose up -d --build
 ```
 
-## Cấu hình MCP client
-
-Ví dụ cấu hình local:
-
-```json
-{
-  "mcpServers": {
-    "lana-carousel": {
-      "command": "node",
-      "args": ["/absolute/path/lana-carousel-mcp-standalone/src/mcp-server.js"],
-      "env": {
-        "PUBLIC_BASE_URL": "https://content.example.com",
-        "DATABASE_PATH": "/absolute/path/data/lana-carousel.sqlite",
-        "ASSET_DIRECTORY": "/absolute/path/data/assets"
-      }
-    }
-  }
-}
-```
-
-Lưu ý: MCP chạy bằng stdio chỉ tạo và lưu dữ liệu. Để URL ảnh public hoạt động, cần đồng thời chạy HTTP server hoặc cấu hình Nginx phục vụ thư mục asset.
-
-## REST API
-
-### Tạo project
+Chạy production bằng PM2:
 
 ```bash
-curl -X POST http://localhost:8787/api/projects \
-  -H 'Content-Type: application/json' \
-  -d '{"title":"Top 5 áo dài Tết 2025","topic":"Áo dài độc đáo"}'
-```
-
-### Thêm slide
-
-```bash
-curl -X POST http://localhost:8787/api/projects/PROJECT_ID/slides \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "position":1,
-    "subject":"Võ Việt Chung – Bức tranh mùa xuân",
-    "headline":"TOP 1 — Tranh Đông Hồ bước lên tà áo dài",
-    "body":"Mô tả ngắn cho slide."
-  }'
-```
-
-### Nhập ảnh từ URL
-
-```bash
-curl -X POST http://localhost:8787/api/projects/PROJECT_ID/slides/SLIDE_ID/assets/import-url \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "image_url":"https://example.com/exact-image.jpg",
-    "source_page_url":"https://example.com/article",
-    "source_title":"Tên bài viết",
-    "source_publisher":"Tên báo",
-    "source_type":"magazine",
-    "alt_text":"Ảnh thật thuộc đúng bộ sưu tập",
-    "force_replace":false
-  }'
-```
-
-### Kiểm tra project
-
-```bash
-curl http://localhost:8787/api/projects/PROJECT_ID
-```
-
-Kết quả đúng khi slide có:
-
-```json
-{
-  "selectedAssetId": "uuid-cua-asset"
-}
+pm2 start ecosystem.config.cjs
+pm2 save
 ```
 
 ## Biến môi trường
@@ -129,25 +73,100 @@ Kết quả đúng khi slide có:
 | Biến | Mặc định | Ý nghĩa |
 |---|---:|---|
 | `PORT` | `8787` | Cổng HTTP |
-| `PUBLIC_BASE_URL` | `http://localhost:8787` | Domain public của ảnh |
-| `DATABASE_PATH` | `./data/lana-carousel.sqlite` | SQLite database |
-| `ASSET_DIRECTORY` | `./data/assets` | Thư mục ảnh |
+| `PUBLIC_BASE_URL` | `http://localhost:8787` | Domain public |
+| `DATABASE_PATH` | `./data/lana-carousel.sqlite` | Đường dẫn SQLite |
+| `ASSET_DIRECTORY` | `./data/assets` | Thư mục lưu ảnh |
 | `MAX_IMAGE_BYTES` | `10485760` | Dung lượng ảnh tối đa |
 | `IMAGE_TIMEOUT_MS` | `15000` | Timeout tải ảnh |
 | `MAX_REDIRECTS` | `3` | Số redirect tối đa |
 
-## Triển khai VPS
+## Kết nối ChatGPT
 
-1. Trỏ domain, ví dụ `content.example.com`, vào VPS.
-2. Đặt `PUBLIC_BASE_URL=https://content.example.com`.
-3. Chạy Docker Compose.
-4. Reverse proxy Nginx vào `127.0.0.1:8787`.
-5. Bật HTTPS.
-6. Khai báo MCP client chạy `src/mcp-server.js`.
+Trong ChatGPT web:
 
-## Giới hạn
+1. Mở **Settings → Apps → Advanced Settings**.
+2. Bật **Developer mode**.
+3. Chọn **Create App**.
+4. Đặt tên, ví dụ `Lana Carousel App 2`.
+5. Nhập MCP endpoint:
 
-- Chỉ tải ảnh public HTTPS.
-- Không bypass CAPTCHA, đăng nhập, paywall hoặc anti-bot.
-- Một số báo chặn hotlink; khi đó cần dùng ảnh từ website chính thức hoặc upload thủ công.
-- Dự án này chưa render thiết kế carousel; nó quản lý nội dung và asset ảnh. Có thể thêm renderer HTML/Canvas ở bước tiếp theo.
+   ```text
+   https://content.lanadesign.tech/mcp
+   ```
+
+6. Chọn `No authentication` nếu triển khai nội bộ không dùng xác thực.
+7. Bấm **Scan Tools** rồi **Create**.
+8. Chọn App trong cuộc trò chuyện trước khi gửi prompt.
+
+Tài liệu OpenAI: [Developer mode and MCP apps in ChatGPT](https://help.openai.com/en/articles/12584461-developer-mode-apps-and-full-mcp-connectors-in-chatgpt-beta).
+
+## Prompt khuyến nghị
+
+```text
+Hãy sử dụng Lana Carousel App 2 để tạo carousel:
+
+- Chủ đề: Top 5 thương hiệu áo dài nổi bật năm 2026.
+- Tổng cộng 6 slide: 1 slide mở đầu và 5 slide thương hiệu.
+- Mỗi chủ đề chỉ tạo một slide.
+- Không tạo slide riêng cho từng ảnh.
+- Mỗi slide nhập 3–5 ảnh ứng viên bằng add_image_candidates.
+- Không tự duyệt nội dung, không tự duyệt ảnh và không render.
+- Sau khi hoàn thành, gọi get_project_link và gửi link dự án.
+```
+
+## Công cụ MCP
+
+Nhóm tạo và đọc dự án:
+
+- `create_project`
+- `add_slide`
+- `get_project`
+- `get_project_link`
+- `list_projects`
+
+Nhóm ảnh:
+
+- `import_asset_from_url`
+- `add_image_candidate`
+- `add_image_candidates`
+- `approve_slide_images`
+
+Nhóm nội dung và thiết kế:
+
+- `update_slide_content`
+- `update_slide_design`
+- `approve_content`
+- `update_brand_kit`
+
+Nhóm render:
+
+- `render_project`
+- `get_render_status`
+
+Nhóm quản lý:
+
+- `clone_project`
+- `extend_project`
+- `delete_project`
+- `list_project_versions`
+- `restore_project_version`
+
+## Quy tắc sử dụng quan trọng
+
+- Slide đại diện cho **chủ đề nội dung**, không đại diện cho từng ảnh.
+- Ảnh thay thế phải được gắn vào slide hiện có bằng `add_image_candidate` hoặc `add_image_candidates`.
+- Nên dùng 3–5 ảnh ứng viên cho mỗi slide.
+- Chỉ render sau khi toàn bộ nội dung và ảnh đã được duyệt.
+- Sau khi cập nhật schema công cụ MCP, cần chạy lại **Scan Tools/Refresh Actions** trong ChatGPT.
+
+## Dữ liệu không được commit
+
+`.gitignore` loại trừ:
+
+- `.env`
+- `node_modules/`
+- `data/`
+- database SQLite
+- log và output build
+
+Không commit SSH key, token, database production hoặc thư mục asset.

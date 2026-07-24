@@ -17,7 +17,7 @@ function contentType(headers) {
 }
 
 async function requestOnce(url, sourcePageUrl) {
-  const target = await resolvePublicHost(url.hostname);
+  const targets = await resolvePublicHost(url.hostname);
   const client = url.protocol === "https:" ? https : http;
 
   return new Promise((resolve, reject) => {
@@ -29,12 +29,18 @@ async function requestOnce(url, sourcePageUrl) {
       method: "GET",
       servername: url.hostname,
       headers: {
-        "User-Agent": "LanaCarouselMCP/1.0",
-        "Accept": "image/avif,image/webp,image/png,image/jpeg,*/*;q=0.8",
+        "User-Agent": "Mozilla/5.0 (compatible; LanaCarouselMCP/1.1; +https://content.lanadesign.tech)",
+        "Accept": "image/webp,image/png,image/jpeg,*/*;q=0.5",
         "Accept-Encoding": "identity",
         ...(sourcePageUrl ? { Referer: sourcePageUrl } : {})
       },
-      lookup: (_hostname, _options, callback) => callback(null, target.address, target.family)
+      lookup: (_hostname, options, callback) => {
+        if (options?.all) {
+          callback(null, targets);
+          return;
+        }
+        callback(null, targets[0].address, targets[0].family);
+      }
     }, (res) => {
       const declared = Number(res.headers["content-length"] || 0);
       if (declared > config.maxImageBytes) {
@@ -61,6 +67,11 @@ async function requestOnce(url, sourcePageUrl) {
       req.destroy(new AppError("REMOTE_TIMEOUT", "Nguồn ảnh phản hồi quá chậm.", 504));
     });
     req.on("error", (error) => {
+      console.error("Remote image request failed", {
+        host: url.hostname,
+        code: error?.code,
+        message: error?.message
+      });
       reject(error instanceof AppError ? error : new AppError("REMOTE_SOURCE_BLOCKED", "Không tải được ảnh từ nguồn này.", 422));
     });
     req.end();

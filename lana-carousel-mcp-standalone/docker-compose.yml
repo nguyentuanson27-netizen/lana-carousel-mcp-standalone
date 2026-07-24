@@ -4,7 +4,7 @@ services:
     restart: unless-stopped
     environment:
       PORT: 8787
-      PUBLIC_BASE_URL: http://localhost:8787
+      PUBLIC_BASE_URL: https://content.lanadesign.tech
       DATABASE_PATH: /app/data/lana-carousel.sqlite
       ASSET_DIRECTORY: /app/data/assets
       MAX_IMAGE_BYTES: 10485760

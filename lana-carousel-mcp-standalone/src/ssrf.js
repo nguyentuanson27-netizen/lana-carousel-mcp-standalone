@@ -46,7 +46,7 @@ export function assertPublicIp(address) {
 export async function resolvePublicHost(hostname) {
   if (isIP(hostname)) {
     assertPublicIp(hostname);
-    return { address: hostname, family: isIP(hostname) };
+    return [{ address: hostname, family: isIP(hostname) }];
   }
 
   let answers;
@@ -59,5 +59,5 @@ export async function resolvePublicHost(hostname) {
     throw new AppError("REMOTE_DNS_FAILED", "Tên miền không có địa chỉ IP.", 404);
   }
   for (const answer of answers) assertPublicIp(answer.address);
-  return answers[0];
+  return answers;
 }
