@@ -206,7 +206,19 @@ app.patch("/api/projects/:projectId/slides/:slideId/content", (req, res) => {
 
 app.patch("/api/projects/:projectId/slides/:slideId/crop", (req, res) => {
   try {
-    const body = z.object({ cropX: z.number().min(0).max(100), cropY: z.number().min(0).max(100), cropZoom: z.number().min(1).max(3) }).parse(req.body);
+    const body = z.object({
+      cropX: z.number().min(0).max(100), cropY: z.number().min(0).max(100), cropZoom: z.number().min(1).max(3),
+      imageBrightness: z.number().min(0.3).max(2).optional(),
+      imageContrast: z.number().min(0.3).max(2).default(1),
+      imageSaturation: z.number().min(0).max(2).optional(),
+      imageBlur: z.number().min(0).max(20).optional(),
+      imageGrayscale: z.number().min(0).max(1).optional(),
+      frameInset: z.number().int().min(0).max(360).optional(),
+      frameWidth: z.number().int().min(0).max(80).optional(),
+      frameColor: z.string().regex(/^#[0-9A-F]{6}$/i).optional(),
+      frameOpacity: z.number().min(0).max(1).optional(),
+      frameRadius: z.number().int().min(0).max(240).optional()
+    }).parse(req.body);
     res.json(updateSlideCrop({ projectId: req.params.projectId, slideId: req.params.slideId, ...body }));
   } catch (error) { const safe = publicError(error); res.status(safe.status).json(safe); }
 });

@@ -121,6 +121,16 @@ for (const [name, definition] of Object.entries({
   ,crop_x: "REAL NOT NULL DEFAULT 50"
   ,crop_y: "REAL NOT NULL DEFAULT 50"
   ,crop_zoom: "REAL NOT NULL DEFAULT 1"
+  ,image_brightness: "REAL NOT NULL DEFAULT 1"
+  ,image_contrast: "REAL NOT NULL DEFAULT 1"
+  ,image_saturation: "REAL NOT NULL DEFAULT 1"
+  ,image_blur: "REAL NOT NULL DEFAULT 0"
+  ,image_grayscale: "REAL NOT NULL DEFAULT 0"
+  ,frame_inset: "INTEGER NOT NULL DEFAULT 40"
+  ,frame_width: "INTEGER NOT NULL DEFAULT 0"
+  ,frame_color: "TEXT NOT NULL DEFAULT '#FFFFFF'"
+  ,frame_opacity: "REAL NOT NULL DEFAULT 1"
+  ,frame_radius: "INTEGER NOT NULL DEFAULT 0"
   ,text_layers: "TEXT"
 })) {
   if (!slideColumns.has(name)) db.exec(`ALTER TABLE slides ADD COLUMN ${name} ${definition}`);
@@ -157,7 +167,17 @@ export const sql = {
   getSlides: db.prepare(`SELECT * FROM slides WHERE project_id = ? ORDER BY position ASC`),
   countSlides: db.prepare(`SELECT COUNT(*) AS count FROM slides WHERE project_id = ?`),
   getSlideBySubject: db.prepare(`SELECT * FROM slides WHERE project_id = ? AND lower(trim(subject)) = lower(trim(?)) LIMIT 1`),
-  updateSlideCrop: db.prepare(`UPDATE slides SET crop_x = ?, crop_y = ?, crop_zoom = ?, render_status = 'DIRTY', updated_at = ? WHERE id = ? AND project_id = ?`),
+  updateSlideCrop: db.prepare(`
+    UPDATE slides SET
+      crop_x = @crop_x, crop_y = @crop_y, crop_zoom = @crop_zoom,
+      image_brightness = @image_brightness, image_contrast = @image_contrast,
+      image_saturation = @image_saturation, image_blur = @image_blur,
+      image_grayscale = @image_grayscale, frame_inset = @frame_inset,
+      frame_width = @frame_width, frame_color = @frame_color,
+      frame_opacity = @frame_opacity, frame_radius = @frame_radius,
+      render_status = 'DIRTY', updated_at = @updated_at
+    WHERE id = @id AND project_id = @project_id
+  `),
   getAssets: db.prepare(`SELECT * FROM assets WHERE project_id = ? ORDER BY created_at ASC`),
   getAsset: db.prepare(`SELECT * FROM assets WHERE id = ?`),
   getCandidates: db.prepare(`SELECT asset_id FROM slide_asset_candidates WHERE slide_id = ? ORDER BY created_at ASC`),

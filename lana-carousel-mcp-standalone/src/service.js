@@ -25,6 +25,11 @@ function mapSlide(row) {
     textPosition: row.text_position || "bottom", textColor: row.text_color || "#FFFFFF",
     textAlign: row.text_align || "center", textX: row.text_x ?? 50, textY: row.text_y ?? 80,
     cropX: row.crop_x ?? 50, cropY: row.crop_y ?? 50, cropZoom: row.crop_zoom ?? 1,
+    imageBrightness: row.image_brightness ?? 1, imageContrast: row.image_contrast ?? 1,
+    imageSaturation: row.image_saturation ?? 1, imageBlur: row.image_blur ?? 0,
+    imageGrayscale: row.image_grayscale ?? 0, frameInset: row.frame_inset ?? 40,
+    frameWidth: row.frame_width ?? 0, frameColor: row.frame_color || "#FFFFFF",
+    frameOpacity: row.frame_opacity ?? 1, frameRadius: row.frame_radius ?? 0,
     textLayers: (() => { try { return JSON.parse(row.text_layers || "[]"); } catch { return []; } })()
   };
 }
@@ -133,7 +138,14 @@ export async function cloneProject(projectId) {
         sql.approveSlideAsset.run(ids[0], slide.compositionMode, now(), newSlideId);
       })();
     }
-    updateSlideCrop({ projectId: clone.id, slideId: newSlideId, cropX: slide.cropX, cropY: slide.cropY, cropZoom: slide.cropZoom });
+    updateSlideCrop({
+      projectId: clone.id, slideId: newSlideId, cropX: slide.cropX, cropY: slide.cropY, cropZoom: slide.cropZoom,
+      imageBrightness: slide.imageBrightness, imageContrast: slide.imageContrast,
+      imageSaturation: slide.imageSaturation, imageBlur: slide.imageBlur,
+      imageGrayscale: slide.imageGrayscale, frameInset: slide.frameInset,
+      frameWidth: slide.frameWidth, frameColor: slide.frameColor,
+      frameOpacity: slide.frameOpacity, frameRadius: slide.frameRadius
+    });
     updateSlideContent({ projectId: clone.id, slideId: newSlideId, headline: slide.headline, body: slide.body,
       textEnabled: slide.textEnabled, overlayText: slide.overlayText, textFont: slide.textFont, textSize: slide.textSize,
       textPosition: slide.textPosition, textColor: slide.textColor, textAlign: slide.textAlign,
@@ -171,11 +183,31 @@ export function updateBrandKit({ projectId, font, color, applyToAll = false }) {
   return getProject(projectId);
 }
 
-export function updateSlideCrop({ projectId, slideId, cropX, cropY, cropZoom }) {
-  if (!sql.getSlide.get(slideId)) throw new AppError("SLIDE_NOT_FOUND", "Không tìm thấy slide.", 404);
-  sql.updateSlideCrop.run(cropX, cropY, cropZoom, now(), slideId, projectId);
-  saveVersion(projectId, "update_crop");
-  return getProject(projectId);
+export function updateSlideCrop(input) {
+  const row = sql.getSlide.get(input.slideId);
+  if (!row || row.project_id !== input.projectId) throw new AppError("SLIDE_NOT_FOUND", "Không tìm thấy slide.", 404);
+  const slide = mapSlide(row);
+  sql.updateSlideCrop.run({
+    id: input.slideId,
+    project_id: input.projectId,
+    crop_x: input.cropX ?? slide.cropX,
+    crop_y: input.cropY ?? slide.cropY,
+    crop_zoom: input.cropZoom ?? slide.cropZoom,
+    image_brightness: input.imageBrightness ?? slide.imageBrightness,
+    image_contrast: input.imageContrast ?? slide.imageContrast,
+    image_saturation: input.imageSaturation ?? slide.imageSaturation,
+    image_blur: input.imageBlur ?? slide.imageBlur,
+    image_grayscale: input.imageGrayscale ?? slide.imageGrayscale,
+    frame_inset: input.frameInset ?? slide.frameInset,
+    frame_width: input.frameWidth ?? slide.frameWidth,
+    frame_color: input.frameColor ?? slide.frameColor,
+    frame_opacity: input.frameOpacity ?? slide.frameOpacity,
+    frame_radius: input.frameRadius ?? slide.frameRadius,
+    updated_at: now()
+  });
+  saveVersion(input.projectId, "update_image_design");
+  return getProject(input.projectId);
+
 }
 
 export function getProjectVersions(projectId) {
@@ -189,7 +221,16 @@ export function restoreProjectVersion(projectId, versionId) {
   const snapshot = JSON.parse(row.snapshot);
   for (const oldSlide of snapshot.slides || []) {
     if (!sql.getSlide.get(oldSlide.id)) continue;
-    sql.updateSlideCrop.run(oldSlide.cropX ?? 50, oldSlide.cropY ?? 50, oldSlide.cropZoom ?? 1, now(), oldSlide.id, projectId);
+    sql.updateSlideCrop.run({
+      id: oldSlide.id, project_id: projectId,
+      crop_x: oldSlide.cropX ?? 50, crop_y: oldSlide.cropY ?? 50, crop_zoom: oldSlide.cropZoom ?? 1,
+      image_brightness: oldSlide.imageBrightness ?? 1, image_contrast: oldSlide.imageContrast ?? 1,
+      image_saturation: oldSlide.imageSaturation ?? 1, image_blur: oldSlide.imageBlur ?? 0,
+      image_grayscale: oldSlide.imageGrayscale ?? 0, frame_inset: oldSlide.frameInset ?? 40,
+      frame_width: oldSlide.frameWidth ?? 0, frame_color: oldSlide.frameColor || "#FFFFFF",
+      frame_opacity: oldSlide.frameOpacity ?? 1, frame_radius: oldSlide.frameRadius ?? 0,
+      updated_at: now()
+    });
     sql.updateSlideContent.run({ id: oldSlide.id, project_id: projectId, headline: oldSlide.headline, body: oldSlide.body,
       text_enabled: oldSlide.textEnabled ? 1 : 0, overlay_text: oldSlide.overlayText, text_font: oldSlide.textFont,
       text_size: oldSlide.textSize, text_position: oldSlide.textPosition, text_color: oldSlide.textColor,
@@ -347,7 +388,39 @@ async function cropAsset(asset, slide, width, height) {
   const maxLeft = scaledWidth - width, maxTop = scaledHeight - height;
   const left = Math.round(maxLeft * Math.max(0, Math.min(100, Number(slide.cropX) || 50)) / 100);
   const top = Math.round(maxTop * Math.max(0, Math.min(100, Number(slide.cropY) || 50)) / 100);
-  return sharp(resized).extract({ left, top, width, height }).toBuffer();
+  const cropped = await sharp(resized).extract({ left, top, width, height }).toBuffer();
+  const number = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+  const brightness = Math.max(0.3, Math.min(2, number(slide.imageBrightness, 1)));
+  const contrast = Math.max(0.3, Math.min(2, number(slide.imageContrast, 1)));
+  const saturation = Math.max(0, Math.min(2, number(slide.imageSaturation, 1)));
+  const grayscale = Math.max(0, Math.min(1, number(slide.imageGrayscale, 0)));
+  const blur = Math.max(0, Math.min(20, number(slide.imageBlur, 0)));
+  let pipeline = sharp(cropped).modulate({ brightness, saturation }).linear(contrast, 128 * (1 - contrast));
+  if (grayscale > 0) {
+    const red = 0.2126 * grayscale, green = 0.7152 * grayscale, blue = 0.0722 * grayscale;
+    pipeline = pipeline.recomb([
+      [1 - grayscale + red, green, blue],
+      [red, 1 - grayscale + green, blue],
+      [red, green, 1 - grayscale + blue]
+    ]);
+  }
+  if (blur >= 0.3) pipeline = pipeline.blur(blur);
+  return pipeline.toBuffer();
+}
+
+function frameOverlaySvg(slide, width, height) {
+  const frameWidth = Math.max(0, Math.min(80, Number(slide.frameWidth) || 0));
+  if (!frameWidth) return null;
+  const maxInset = Math.floor(Math.min(width, height) / 3);
+  const inset = Math.max(0, Math.min(maxInset, Number(slide.frameInset) || 0));
+  const x = inset + frameWidth / 2, y = inset + frameWidth / 2;
+  const rectWidth = Math.max(1, width - x * 2), rectHeight = Math.max(1, height - y * 2);
+  const radius = Math.max(0, Math.min(240, Number(slide.frameRadius) || 0));
+  const color = /^#[0-9a-f]{6}$/iu.test(slide.frameColor) ? slide.frameColor : "#FFFFFF";
+  const opacityValue = Number(slide.frameOpacity);
+  const opacity = Math.max(0, Math.min(1, Number.isFinite(opacityValue) ? opacityValue : 1));
+  return Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><rect x="${x}" y="${y}" width="${rectWidth}" height="${rectHeight}" rx="${radius}" ry="${radius}" fill="none" stroke="${color}" stroke-opacity="${opacity}" stroke-width="${frameWidth}"/></svg>`);
+
 }
 
 async function renderApprovedSlide(slide) {
@@ -367,8 +440,10 @@ async function renderApprovedSlide(slide) {
     })));
     base = await sharp({ create: { width, height, channels: 3, background: "#f3eee7" } }).composite(composites).png().toBuffer();
   }
+  const frame = frameOverlaySvg(slide, width, height);
   const overlay = textOverlaySvg(slide, width, height);
-  return sharp(base).composite(overlay ? [{ input: overlay, left: 0, top: 0 }] : []).webp({ quality: 92 }).toBuffer();
+  const composites = [frame, overlay].filter(Boolean).map(input => ({ input, left: 0, top: 0 }));
+  return sharp(base).composite(composites).webp({ quality: 92 }).toBuffer();
 }
 
 export async function getApprovedAssetFiles(projectId) {

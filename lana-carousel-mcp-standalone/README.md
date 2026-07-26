@@ -20,6 +20,8 @@ Production:
 - Lưu tối đa 10 ảnh ứng viên cho mỗi slide.
 - Duyệt một ảnh hoặc ghép nhiều ảnh dạng lưới.
 - Crop ảnh 9:16, zoom và chọn trọng tâm.
+- Chỉnh độ sáng, tương phản, bão hòa, đen trắng và làm mờ ảnh.
+- Tùy chỉnh khung: màu viền, độ dày, khoảng cách mép, độ mờ và bo góc.
 - Nhiều lớp chữ có thể kéo thả trực quan.
 - Chọn font, cỡ chữ, màu, vị trí, căn lề, độ trong suốt và góc xoay.
 - Brand Kit và áp dụng thiết kế cho toàn bộ slide.
