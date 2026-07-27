@@ -350,8 +350,14 @@ const xmlEscape = value => String(value).replace(/[<>&"']/g, character => ({ "<"
 
 function layerTextSvg(layer, width, height) {
   if (layer.enabled === false || !layer.content?.trim()) return "";
-  const size = Math.max(24, Math.min(220, Number(layer.size) || 72));
-  const maxChars = Math.max(10, Math.floor(820 / (size * 0.55)));
+  const number = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+  const size = Math.max(24, Math.min(220, number(layer.size, 72)));
+  const boxEnabled = layer.boxEnabled === true;
+  const boxWidth = width * Math.max(20, Math.min(96, number(layer.boxWidth, 80))) / 100;
+  const paddingX = Math.max(0, Math.min(120, number(layer.boxPaddingX, 32)));
+  const paddingY = Math.max(0, Math.min(80, number(layer.boxPaddingY, 20)));
+  const availableWidth = boxEnabled ? Math.max(size * 4, boxWidth - paddingX * 2) : 820;
+  const maxChars = Math.max(8, Math.floor(availableWidth / (size * 0.55)));
   const words = layer.content.trim().split(/\s+/u), lines = [];
   let line = "";
   for (const word of words) {
@@ -359,17 +365,34 @@ function layerTextSvg(layer, width, height) {
     else line = `${line} ${word}`.trim();
   }
   if (line) lines.push(line);
-  const lineHeight = Math.round(size * 1.18), blockHeight = lines.length * lineHeight;
-  const centerY = Math.round(height * Math.max(3, Math.min(97, Number(layer.y) || 80)) / 100);
-  const startY = Math.max(20, Math.min(height - blockHeight - 20, centerY - blockHeight / 2));
+  const lineHeight = Math.round(size * 1.18);
+  const textHeight = size + Math.max(0, lines.length - 1) * lineHeight;
+  const centerX = Math.round(width * Math.max(3, Math.min(97, number(layer.x, 50))) / 100);
+  const centerY = Math.round(height * Math.max(3, Math.min(97, number(layer.y, 80))) / 100);
+  const boxHeight = textHeight + paddingY * 2;
+  const boxLeft = centerX - boxWidth / 2, boxTop = centerY - boxHeight / 2;
+  const textTop = boxEnabled ? boxTop + paddingY : centerY - textHeight / 2;
   const anchor = layer.align === "left" ? "start" : layer.align === "right" ? "end" : "middle";
-  const x = Math.round(width * Math.max(3, Math.min(97, Number(layer.x) || 50)) / 100);
+  const x = boxEnabled
+    ? (layer.align === "left" ? boxLeft + paddingX : layer.align === "right" ? boxLeft + boxWidth - paddingX : centerX)
+    : centerX;
   const font = xmlEscape(layer.font || "TikTok Sans");
   const color = /^#[0-9a-f]{6}$/iu.test(layer.color) ? layer.color : "#FFFFFF";
-  const opacity = Math.max(0.1, Math.min(1, Number(layer.opacity) || 1));
-  const rotation = Math.max(-180, Math.min(180, Number(layer.rotation) || 0));
-  const text = lines.map((item, index) => `<text x="${x}" y="${startY + (index + 1) * lineHeight}" text-anchor="${anchor}" font-family="${font}" font-size="${size}" font-weight="700" fill="${color}" fill-opacity="${opacity}" stroke="#000000" stroke-opacity="0.45" stroke-width="5" paint-order="stroke">${xmlEscape(item)}</text>`).join("");
-  return `<g transform="rotate(${rotation} ${x} ${centerY})">${text}</g>`;
+  const opacity = Math.max(0.1, Math.min(1, number(layer.opacity, 1)));
+  const rotation = Math.max(-180, Math.min(180, number(layer.rotation, 0)));
+  let box = "";
+  if (boxEnabled) {
+    const boxColor = /^#[0-9a-f]{6}$/iu.test(layer.boxColor) ? layer.boxColor : "#FFFFFF";
+    const borderColor = /^#[0-9a-f]{6}$/iu.test(layer.boxBorderColor) ? layer.boxBorderColor : "#333333";
+    const boxOpacity = Math.max(0, Math.min(1, number(layer.boxOpacity, 0.9)));
+    const borderOpacity = Math.max(0, Math.min(1, number(layer.boxBorderOpacity, 1)));
+    const borderWidth = Math.max(0, Math.min(40, number(layer.boxBorderWidth, 0)));
+    const radius = Math.max(0, Math.min(120, number(layer.boxRadius, 24)));
+    box = `<rect x="${boxLeft}" y="${boxTop}" width="${boxWidth}" height="${boxHeight}" rx="${radius}" ry="${radius}" fill="${boxColor}" fill-opacity="${boxOpacity}" stroke="${borderColor}" stroke-opacity="${borderOpacity}" stroke-width="${borderWidth}"/>`;
+  }
+  const text = lines.map((item, index) => `<text x="${x}" y="${textTop + size + index * lineHeight}" text-anchor="${anchor}" font-family="${font}" font-size="${size}" font-weight="700" fill="${color}" fill-opacity="${opacity}" stroke="#000000" stroke-opacity="${boxEnabled ? 0 : 0.45}" stroke-width="${boxEnabled ? 0 : 5}" paint-order="stroke">${xmlEscape(item)}</text>`).join("");
+  return `<g transform="rotate(${rotation} ${centerX} ${centerY})">${box}${text}</g>`;
+
 }
 
 function textOverlaySvg(slide, width, height) {

@@ -8,8 +8,16 @@ const esc = (value = "") => String(value).replace(/[&<>"']/g, char => ({ "&":"&a
 
 function selectedIds(slide) { return slide.selectedAssetIds?.length ? slide.selectedAssetIds : [slide.selectedAssetId].filter(Boolean); }
 function candidateAssets(slide) { return [...new Set([...(slide.candidateAssetIds || []), slide.selectedAssetId].filter(Boolean))].map(id => assets.get(id)).filter(Boolean); }
-function defaultLayer(slide) { return { id: crypto.randomUUID(), role: "headline", content: slide.headline || slide.overlayText, enabled: slide.textEnabled, font: slide.textFont || "TikTok Sans", size: slide.textSize || 72, x: slide.textX || 50, y: slide.textY || 42, color: slide.textColor || "#FFFFFF", align: slide.textAlign || "center", opacity: 1, rotation: 0 }; }
-function defaultBodyLayer(slide) { return { id: crypto.randomUUID(), role: "body", content: slide.body || "", enabled: Boolean(slide.body), font: slide.textFont || "TikTok Sans", size: 42, x: 50, y: 66, color: slide.textColor || "#FFFFFF", align: "center", opacity: 0.95, rotation: 0 }; }
+function withTextBox(layer = {}) {
+  return {
+    boxEnabled: false, boxColor: "#FFFFFF", boxOpacity: 0.9,
+    boxBorderColor: "#333333", boxBorderWidth: 0, boxBorderOpacity: 1,
+    boxRadius: 24, boxPaddingX: 32, boxPaddingY: 20, boxWidth: 80,
+    ...layer
+  };
+}
+function defaultLayer(slide) { return withTextBox({ id: crypto.randomUUID(), role: "headline", content: slide.headline || slide.overlayText, enabled: slide.textEnabled, font: slide.textFont || "TikTok Sans", size: slide.textSize || 72, x: slide.textX || 50, y: slide.textY || 42, color: slide.textColor || "#FFFFFF", align: slide.textAlign || "center", opacity: 1, rotation: 0 }); }
+function defaultBodyLayer(slide) { return withTextBox({ id: crypto.randomUUID(), role: "body", content: slide.body || "", enabled: Boolean(slide.body), font: slide.textFont || "TikTok Sans", size: 42, x: 50, y: 66, color: slide.textColor || "#FFFFFF", align: "center", opacity: 0.95, rotation: 0 }); }
 function initialLayers(slide) { return [defaultLayer(slide), defaultBodyLayer(slide)]; }
 function imageDefaults(slide = {}) {
   return {
@@ -22,11 +30,11 @@ function imageDefaults(slide = {}) {
   };
 }
 function draft(slide) {
-  if (!drafts.has(slide.id)) drafts.set(slide.id, { ...imageDefaults(slide), layers: slide.textLayers?.length ? structuredClone(slide.textLayers) : initialLayers(slide) });
+  if (!drafts.has(slide.id)) drafts.set(slide.id, { ...imageDefaults(slide), layers: slide.textLayers?.length ? structuredClone(slide.textLayers).map(withTextBox) : initialLayers(slide) });
   return drafts.get(slide.id);
 }
 function syncContentLayers(slide, headline, body) {
-  const data = draft(slide), layers = structuredClone(data.layers || []);
+  const data = draft(slide), layers = structuredClone(data.layers || []).map(withTextBox);
   let headlineLayer = layers.find(layer => layer.role === "headline");
   if (!headlineLayer) {
     headlineLayer = layers[0] || defaultLayer(slide);
@@ -76,7 +84,15 @@ function background(slide, data) {
   return `<div class="canvas-bg" style="grid-template-columns:repeat(${columns},1fr);filter:${filter}">${ids.map(id => `<div><img src="${esc(assets.get(id)?.publicUrl || "")}" style="transform:scale(${data.cropZoom});transform-origin:${data.cropX}% ${data.cropY}%"></div>`).join("")}</div>${frameHtml(data)}`;
 
 }
-function layerHtml(layer, index, active) { return `<div class="layer${active ? " active" : ""}" data-layer="${index}" style="left:${layer.x}%;top:${layer.y}%;font-family:'${esc(layer.font)}',sans-serif;font-size:${layer.size / 3.6}px;color:${layer.color};text-align:${layer.align};opacity:${layer.opacity};rotate:${layer.rotation}deg">${esc(layer.content)}</div>`; }
+function layerHtml(rawLayer, index, active) {
+  const layer = withTextBox(rawLayer), scale = 320 / 1080;
+  const boxStyle = layer.boxEnabled ? `width:${layer.boxWidth}%;padding:${layer.boxPaddingY*scale}px ${layer.boxPaddingX*scale}px;background:${rgba(layer.boxColor,layer.boxOpacity)};border:${layer.boxBorderWidth*scale}px solid ${rgba(layer.boxBorderColor,layer.boxBorderOpacity)};border-radius:${layer.boxRadius*scale}px;text-shadow:none;` : "";
+  return `<div class="layer${active ? " active" : ""}" data-layer="${index}" style="left:${layer.x}%;top:${layer.y}%;font-family:'${esc(layer.font)}',sans-serif;font-size:${layer.size / 3.6}px;color:${layer.color};text-align:${layer.align};opacity:${layer.opacity};rotate:${layer.rotation}deg;${boxStyle}">${esc(layer.content)}</div>`;
+}
+function textBoxControlsHtml(rawLayer) {
+  const layer = withTextBox(rawLayer), percent = value => Math.round(value * 100);
+  return `<section class="text-box-controls"><div class="control-title"><strong>Hộp chữ</strong><label class="toggle"><input type="checkbox" data-control="boxEnabled" ${layer.boxEnabled?"checked":""}> Bật hộp chữ</label></div><div class="box-presets"><button type="button" class="tool" data-box-preset="white">Hộp trắng</button><button type="button" class="tool" data-box-preset="dark">Hộp tối</button><button type="button" class="tool" data-box-preset="transparent">Trong suốt</button><button type="button" class="tool reset-text-box">Đặt lại hộp</button></div><div class="fields"><label class="field">Màu nền<input type="color" data-control="boxColor" value="${layer.boxColor}"></label><label class="field">Độ mờ nền <span class="range-value" data-layer-value-for="boxOpacity">${percent(layer.boxOpacity)}%</span><input type="range" min="0" max="100" data-control="boxOpacity" value="${percent(layer.boxOpacity)}"></label><label class="field">Màu viền<input type="color" data-control="boxBorderColor" value="${layer.boxBorderColor}"></label><label class="field">Độ dày viền <span class="range-value" data-layer-value-for="boxBorderWidth">${layer.boxBorderWidth}px</span><input type="range" min="0" max="40" step="1" data-control="boxBorderWidth" value="${layer.boxBorderWidth}"></label><label class="field">Độ mờ viền <span class="range-value" data-layer-value-for="boxBorderOpacity">${percent(layer.boxBorderOpacity)}%</span><input type="range" min="0" max="100" data-control="boxBorderOpacity" value="${percent(layer.boxBorderOpacity)}"></label><label class="field">Bo góc <span class="range-value" data-layer-value-for="boxRadius">${layer.boxRadius}px</span><input type="range" min="0" max="120" step="2" data-control="boxRadius" value="${layer.boxRadius}"></label><label class="field">Chiều rộng hộp <span class="range-value" data-layer-value-for="boxWidth">${layer.boxWidth}%</span><input type="range" min="20" max="96" step="1" data-control="boxWidth" value="${layer.boxWidth}"></label><label class="field">Đệm ngang <span class="range-value" data-layer-value-for="boxPaddingX">${layer.boxPaddingX}px</span><input type="range" min="0" max="120" step="2" data-control="boxPaddingX" value="${layer.boxPaddingX}"></label><label class="field">Đệm dọc <span class="range-value" data-layer-value-for="boxPaddingY">${layer.boxPaddingY}px</span><input type="range" min="0" max="80" step="2" data-control="boxPaddingY" value="${layer.boxPaddingY}"></label></div></section>`;
+}
 function imageControlsHtml(data) {
   const percent = value => Math.round(value * 100);
   return `<section class="image-controls"><div class="control-title"><strong>Chỉnh ảnh và khung</strong><button type="button" class="tool reset-image">Đặt lại ảnh/khung</button></div><div class="fields"><label class="field">Độ sáng <span class="range-value" data-value-for="imageBrightness">${percent(data.imageBrightness)}%</span><input type="range" min="0.3" max="2" step="0.05" data-control="imageBrightness" value="${data.imageBrightness}"></label><label class="field">Tương phản <span class="range-value" data-value-for="imageContrast">${percent(data.imageContrast)}%</span><input type="range" min="0.3" max="2" step="0.05" data-control="imageContrast" value="${data.imageContrast}"></label><label class="field">Bão hòa <span class="range-value" data-value-for="imageSaturation">${percent(data.imageSaturation)}%</span><input type="range" min="0" max="2" step="0.05" data-control="imageSaturation" value="${data.imageSaturation}"></label><label class="field">Đen trắng <span class="range-value" data-value-for="imageGrayscale">${percent(data.imageGrayscale)}%</span><input type="range" min="0" max="100" step="1" data-control="imageGrayscale" value="${percent(data.imageGrayscale)}"></label><label class="field">Làm mờ <span class="range-value" data-value-for="imageBlur">${data.imageBlur}px</span><input type="range" min="0" max="20" step="0.5" data-control="imageBlur" value="${data.imageBlur}"></label><label class="field">Màu viền<input type="color" data-control="frameColor" value="${data.frameColor}"></label><label class="field">Độ dày viền <span class="range-value" data-value-for="frameWidth">${data.frameWidth}px</span><input type="range" min="0" max="80" step="1" data-control="frameWidth" value="${data.frameWidth}"></label><label class="field">Khoảng cách khung <span class="range-value" data-value-for="frameInset">${data.frameInset}px</span><input type="range" min="0" max="360" step="2" data-control="frameInset" value="${data.frameInset}"></label><label class="field">Độ mờ khung <span class="range-value" data-value-for="frameOpacity">${percent(data.frameOpacity)}%</span><input type="range" min="0" max="100" step="1" data-control="frameOpacity" value="${percent(data.frameOpacity)}"></label><label class="field">Bo góc khung <span class="range-value" data-value-for="frameRadius">${data.frameRadius}px</span><input type="range" min="0" max="240" step="2" data-control="frameRadius" value="${data.frameRadius}"></label></div></section>`;
@@ -84,7 +100,8 @@ function imageControlsHtml(data) {
 function decorateImageEditors() {
   document.querySelectorAll("[data-editor]").forEach(editor => {
     const data = drafts.get(editor.dataset.editor), fields = editor.querySelector(".fields");
-    if (data && fields) fields.insertAdjacentHTML("afterend", imageControlsHtml(data));
+    const index = selectedLayers.get(editor.dataset.editor) || 0, layer = data?.layers[index];
+    if (data && fields && layer) fields.insertAdjacentHTML("afterend", textBoxControlsHtml(layer) + imageControlsHtml(data));
   });
 }
 function editCard(slide) {
@@ -133,12 +150,22 @@ $("edit").onchange = event => { const editor = event.target.closest("[data-edito
 $("edit").onfocusin = event => { const editor = event.target.closest("[data-editor]"); if (editor && event.target.dataset.control && event.target.dataset.control !== "layer") remember(editor.dataset.editor); };
 $("edit").oninput = event => {
   const editor = event.target.closest("[data-editor]"); if (!editor) return; const slideId = editor.dataset.editor, data = drafts.get(slideId), index = selectedLayers.get(slideId) || 0, layer = data.layers[index], control = event.target.dataset.control; if (!control) return;
-  if (["cropX","cropY","cropZoom","imageBrightness","imageContrast","imageSaturation","imageBlur","frameInset","frameWidth","frameRadius"].includes(control)) data[control] = Number(event.target.value);
+  if (control === "boxEnabled") layer.boxEnabled = event.target.checked;
+  else if (["boxBorderWidth","boxRadius","boxPaddingX","boxPaddingY","boxWidth"].includes(control)) layer[control] = Number(event.target.value);
+  else if (["boxOpacity","boxBorderOpacity"].includes(control)) layer[control] = Number(event.target.value)/100;
+  else if (["boxColor","boxBorderColor"].includes(control)) layer[control] = event.target.value.toUpperCase();
+  else if (["cropX","cropY","cropZoom","imageBrightness","imageContrast","imageSaturation","imageBlur","frameInset","frameWidth","frameRadius"].includes(control)) data[control] = Number(event.target.value);
   else if (["imageGrayscale","frameOpacity"].includes(control)) data[control] = Number(event.target.value)/100;
   else if (control === "frameColor") data.frameColor = event.target.value.toUpperCase();
   else if (control === "size" || control === "rotation") layer[control] = Number(event.target.value);
   else if (control === "opacity") layer.opacity = Number(event.target.value)/100;
   else layer[control] = event.target.value;
+  const layerOutput = editor.querySelector(`[data-layer-value-for="${control}"]`);
+  if (layerOutput) {
+    if (["boxOpacity","boxBorderOpacity"].includes(control)) layerOutput.textContent = `${Math.round(layer[control]*100)}%`;
+    else if (control === "boxWidth") layerOutput.textContent = `${layer[control]}%`;
+    else layerOutput.textContent = `${layer[control]}px`;
+  }
   const output = editor.querySelector(`[data-value-for="${control}"]`);
   if (output) {
     if (["imageBrightness","imageContrast","imageSaturation","imageGrayscale","frameOpacity"].includes(control)) output.textContent = `${Math.round(data[control]*100)}%`;
@@ -151,10 +178,21 @@ $("edit").onclick = async event => {
     const editor = event.target.closest("[data-editor]");
     if (event.target.id === "saveBrand") { project = await json(`/api/projects/${projectId}/brand-kit`, { method:"PATCH", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ font:$("brandFont").value, color:$("brandColor").value.toUpperCase(), applyToAll:true }) }); drafts.clear(); render(); return; }
     if (!editor) return; const slideId = editor.dataset.editor, slide = project.slides.find(item=>item.id===slideId), data = drafts.get(slideId), index = selectedLayers.get(slideId)||0;
-    if (event.target.closest(".add-layer")) { remember(slideId); data.layers.push({ id:crypto.randomUUID(), role:"custom", content:"Chữ mới", enabled:true, font:project.brandKit?.font||"TikTok Sans", size:72, x:50, y:50, color:project.brandKit?.color||"#FFFFFF", align:"center", opacity:1, rotation:0 }); selectedLayers.set(slideId,data.layers.length-1); render(); return; }
+    if (event.target.closest(".add-layer")) { remember(slideId); data.layers.push(withTextBox({ id:crypto.randomUUID(), role:"custom", content:"Chữ mới", enabled:true, font:project.brandKit?.font||"TikTok Sans", size:72, x:50, y:50, color:project.brandKit?.color||"#FFFFFF", align:"center", opacity:1, rotation:0 })); selectedLayers.set(slideId,data.layers.length-1); render(); return; }
     if (event.target.closest(".remove-layer")) { if (data.layers.length > 1) { remember(slideId); data.layers.splice(index,1); selectedLayers.set(slideId,Math.max(0,index-1)); render(); } return; }
     if (event.target.closest(".undo")) { const history=histories.get(slideId)||[], redo=redos.get(slideId)||[]; if(history.length){redo.push(JSON.stringify(data));redos.set(slideId,redo);drafts.set(slideId,JSON.parse(history.pop()));render();} return; }
     if (event.target.closest(".redo")) { const redo=redos.get(slideId)||[], history=histories.get(slideId)||[]; if(redo.length){history.push(JSON.stringify(data));histories.set(slideId,history);drafts.set(slideId,JSON.parse(redo.pop()));render();} return; }
+    const boxPreset = event.target.closest("[data-box-preset]")?.dataset.boxPreset;
+    if (boxPreset) {
+      remember(slideId);
+      const presets = {
+        white: { boxEnabled:true, boxColor:"#FFFFFF", boxOpacity:0.92, boxBorderColor:"#4A4A4A", boxBorderWidth:2, boxBorderOpacity:0.8, boxRadius:28, boxPaddingX:36, boxPaddingY:22, boxWidth:78 },
+        dark: { boxEnabled:true, boxColor:"#111111", boxOpacity:0.72, boxBorderColor:"#FFFFFF", boxBorderWidth:1, boxBorderOpacity:0.35, boxRadius:28, boxPaddingX:36, boxPaddingY:22, boxWidth:78 },
+        transparent: { boxEnabled:true, boxColor:"#FFFFFF", boxOpacity:0, boxBorderColor:"#FFFFFF", boxBorderWidth:2, boxBorderOpacity:0.8, boxRadius:20, boxPaddingX:28, boxPaddingY:18, boxWidth:78 }
+      };
+      Object.assign(data.layers[index], presets[boxPreset]); render(); return;
+    }
+    if (event.target.closest(".reset-text-box")) { remember(slideId); Object.assign(data.layers[index], withTextBox()); render(); return; }
     if (event.target.closest(".reset-image")) { remember(slideId); Object.assign(data, imageDefaults()); render(); return; }
     if (event.target.closest(".apply-all")) { for(const other of project.slides){const copy=structuredClone(data);copy.layers=copy.layers.map(layer=>({...layer,id:crypto.randomUUID()}));drafts.set(other.id,copy);}render();return; }
     if (event.target.closest(".save-design")) {

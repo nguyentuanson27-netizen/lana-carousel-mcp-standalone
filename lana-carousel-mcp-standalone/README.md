@@ -24,6 +24,7 @@ Production:
 - Tùy chỉnh khung: màu viền, độ dày, khoảng cách mép, độ mờ và bo góc.
 - Nhiều lớp chữ có thể kéo thả trực quan.
 - Chọn font, cỡ chữ, màu, vị trí, căn lề, độ trong suốt và góc xoay.
+- Hộp chữ riêng cho từng lớp: nền, độ mờ, viền, bo góc, chiều rộng và khoảng đệm.
 - Brand Kit và áp dụng thiết kế cho toàn bộ slide.
 - Hoàn tác/làm lại trong trình sửa.
 - Render nền, theo dõi tiến độ và tải bộ ảnh ZIP.

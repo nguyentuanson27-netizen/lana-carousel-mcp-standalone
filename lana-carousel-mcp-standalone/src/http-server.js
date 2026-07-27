@@ -195,7 +195,16 @@ app.patch("/api/projects/:projectId/slides/:slideId/content", (req, res) => {
         font: z.string().min(1).max(100), size: z.number().min(24).max(220),
         x: z.number().min(3).max(97), y: z.number().min(3).max(97), color: z.string().regex(/^#[0-9A-F]{6}$/i),
         align: z.enum(["left", "center", "right"]), opacity: z.number().min(0.1).max(1).default(1),
-        rotation: z.number().min(-180).max(180).default(0)
+        rotation: z.number().min(-180).max(180).default(0),
+        boxEnabled: z.boolean().optional(), boxColor: z.string().regex(/^#[0-9A-F]{6}$/i).optional(),
+        boxOpacity: z.number().min(0).max(1).optional(),
+        boxBorderColor: z.string().regex(/^#[0-9A-F]{6}$/i).optional(),
+        boxBorderWidth: z.number().min(0).max(40).optional(),
+        boxBorderOpacity: z.number().min(0).max(1).optional(),
+        boxRadius: z.number().min(0).max(120).optional(),
+        boxPaddingX: z.number().min(0).max(120).optional(),
+        boxPaddingY: z.number().min(0).max(80).optional(),
+        boxWidth: z.number().min(20).max(96).optional()
       })).max(10).default([])
     }).parse(req.body);
     res.json(updateSlideContent({ projectId: req.params.projectId, slideId: req.params.slideId, ...body }));
