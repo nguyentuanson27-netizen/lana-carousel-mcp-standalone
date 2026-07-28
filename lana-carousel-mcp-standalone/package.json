@@ -1,6 +1,6 @@
 {
   "name": "lana-carousel-mcp-standalone",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "private": true,
   "type": "module",
   "engines": { "node": ">=20" },

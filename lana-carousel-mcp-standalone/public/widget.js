@@ -75,19 +75,18 @@ function rgba(hex, opacity) {
 }
 function frameHtml(data) {
   if (!data.frameWidth) return "";
-  const scale = 320 / 1080;
-  return `<div class="image-frame" style="inset:${data.frameInset*scale}px;border-width:${Math.max(1,data.frameWidth*scale)}px;border-color:${rgba(data.frameColor,data.frameOpacity)};border-radius:${data.frameRadius*scale}px"></div>`;
+  return `<div class="image-frame" style="inset:${data.frameInset/10.8}cqw;border-width:${Math.max(0.15,data.frameWidth/10.8)}cqw;border-color:${rgba(data.frameColor,data.frameOpacity)};border-radius:${data.frameRadius/10.8}cqw"></div>`;
 }
 function background(slide, data) {
   const ids = selectedIds(slide), columns = ids.length <= 2 ? 1 : ids.length <= 6 ? 2 : 3;
-  const filter = `brightness(${data.imageBrightness}) contrast(${data.imageContrast}) saturate(${data.imageSaturation}) grayscale(${data.imageGrayscale*100}%) blur(${data.imageBlur/3.375}px)`;
+  const filter = `brightness(${data.imageBrightness}) contrast(${data.imageContrast}) saturate(${data.imageSaturation}) grayscale(${data.imageGrayscale*100}%) blur(${data.imageBlur/10.8}cqw)`;
   return `<div class="canvas-bg" style="grid-template-columns:repeat(${columns},1fr);filter:${filter}">${ids.map(id => `<div><img src="${esc(assets.get(id)?.publicUrl || "")}" style="transform:scale(${data.cropZoom});transform-origin:${data.cropX}% ${data.cropY}%"></div>`).join("")}</div>${frameHtml(data)}`;
 
 }
 function layerHtml(rawLayer, index, active) {
-  const layer = withTextBox(rawLayer), scale = 320 / 1080;
-  const boxStyle = layer.boxEnabled ? `width:${layer.boxWidth}%;padding:${layer.boxPaddingY*scale}px ${layer.boxPaddingX*scale}px;background:${rgba(layer.boxColor,layer.boxOpacity)};border:${layer.boxBorderWidth*scale}px solid ${rgba(layer.boxBorderColor,layer.boxBorderOpacity)};border-radius:${layer.boxRadius*scale}px;text-shadow:none;` : "";
-  return `<div class="layer${active ? " active" : ""}" data-layer="${index}" style="left:${layer.x}%;top:${layer.y}%;font-family:'${esc(layer.font)}',sans-serif;font-size:${layer.size / 3.6}px;color:${layer.color};text-align:${layer.align};opacity:${layer.opacity};rotate:${layer.rotation}deg;${boxStyle}">${esc(layer.content)}</div>`;
+  const layer = withTextBox(rawLayer);
+  const boxStyle = layer.boxEnabled ? `width:${layer.boxWidth}%;padding:${layer.boxPaddingY/10.8}cqw ${layer.boxPaddingX/10.8}cqw;background:${rgba(layer.boxColor,layer.boxOpacity)};border:${layer.boxBorderWidth/10.8}cqw solid ${rgba(layer.boxBorderColor,layer.boxBorderOpacity)};border-radius:${layer.boxRadius/10.8}cqw;text-shadow:none;` : "";
+  return `<div class="layer${active ? " active" : ""}" data-layer="${index}" style="left:${layer.x}%;top:${layer.y}%;font-family:'${esc(layer.font)}',sans-serif;font-size:${layer.size/10.8}cqw;color:${layer.color};text-align:${layer.align};opacity:${layer.opacity};rotate:${layer.rotation}deg;${boxStyle}">${esc(layer.content)}</div>`;
 }
 function sectionIsOpen(slideId, section) { return sectionStates.get(`${slideId}:${section}`) === true; }
 function textStyleControlsHtml(layer, slideId) {

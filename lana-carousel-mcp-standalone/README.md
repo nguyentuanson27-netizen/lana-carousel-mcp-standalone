@@ -22,6 +22,7 @@ Production:
 - Crop ảnh 9:16, zoom và chọn trọng tâm.
 - Chỉnh độ sáng, tương phản, bão hòa, đen trắng và làm mờ ảnh.
 - Tùy chỉnh khung: màu viền, độ dày, khoảng cách mép, độ mờ và bo góc.
+- Preview dọc 9:16 cỡ lớn, responsive theo màn hình và khớp tỷ lệ render 1080×1920.
 - Nhiều lớp chữ có thể kéo thả trực quan.
 - Chọn font, cỡ chữ, màu, vị trí, căn lề, độ trong suốt và góc xoay.
 - Hộp chữ riêng cho từng lớp: nền, độ mờ, viền, bo góc, chiều rộng và khoảng đệm.
