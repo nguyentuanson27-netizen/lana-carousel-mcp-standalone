@@ -25,7 +25,7 @@ Production:
 - Nhiều lớp chữ có thể kéo thả trực quan.
 - Chọn font, cỡ chữ, màu, vị trí, căn lề, độ trong suốt và góc xoay.
 - Hộp chữ riêng cho từng lớp: nền, độ mờ, viền, bo góc, chiều rộng và khoảng đệm.
-- Các nhóm Hộp chữ và Chỉnh ảnh/khung có thể thu gọn, giữ nguyên trạng thái khi giao diện cập nhật.
+- Các nhóm Kiểu chữ, Hộp chữ và Chỉnh ảnh/khung có thể thu gọn, giữ nguyên trạng thái khi giao diện cập nhật.
 - Brand Kit và áp dụng thiết kế cho toàn bộ slide.
 - Hoàn tác/làm lại trong trình sửa.
 - Render nền, theo dõi tiến độ và tải bộ ảnh ZIP.
