@@ -112,16 +112,18 @@ function styleAt(layer, index) {
   });
   return style;
 }
-function richTextHtml(layer) {
-  const content = String(layer.content || ""), ranges = normalizedStyleRanges(layer);
-  if (!content || !ranges.length) return esc(content);
-  let html = "", start = 0, style = styleAt(layer, 0);
+function richTextHtml(layer, selection = null) {
+  const content = String(layer.content || "");
+  if (!content) return "";
+  const selected = index => Boolean(selection && selection.end > selection.start && index >= selection.start && index < selection.end);
+  let html = "", start = 0, style = { ...styleAt(layer, 0), selected:selected(0) };
   const key = item => JSON.stringify(item);
   for (let index = 1; index <= content.length; index += 1) {
-    const next = index < content.length ? styleAt(layer, index) : null;
+    const next = index < content.length ? { ...styleAt(layer, index), selected:selected(index) } : null;
     if (!next || key(next) !== key(style)) {
       const decoration = style.underline ? "text-decoration:underline;" : "";
-      html += `<span style="font-size:${style.size/10.8}cqw;font-family:'${esc(style.font)}',sans-serif;font-weight:${style.weight};${decoration}">${esc(content.slice(start,index))}</span>`;
+      const highlight = style.selected ? "background:#1677ffcc;color:#fff;border-radius:.12em;" : "";
+      html += `<span ${style.selected?'class="text-selection-preview"':""} style="font-size:${style.size/10.8}cqw;font-family:'${esc(style.font)}',sans-serif;font-weight:${style.weight};${decoration}${highlight}">${esc(content.slice(start,index))}</span>`;
       start = index; style = next;
     }
   }
@@ -140,10 +142,10 @@ function remapSizeRanges(oldContent, newContent, ranges = []) {
     return [];
   });
 }
-function layerHtml(rawLayer, index, active) {
+function layerHtml(rawLayer, index, active, selection = null) {
   const layer = withTextBox(rawLayer);
   const boxStyle = layer.boxEnabled ? `width:${layer.boxWidth}%;padding:${layer.boxPaddingY/10.8}cqw ${layer.boxPaddingX/10.8}cqw;background:${rgba(layer.boxColor,layer.boxOpacity)};border:${layer.boxBorderWidth/10.8}cqw solid ${rgba(layer.boxBorderColor,layer.boxBorderOpacity)};border-radius:${layer.boxRadius/10.8}cqw;text-shadow:none;` : "";
-  return `<div class="layer${active ? " active" : ""}" data-layer="${index}" style="left:${layer.x}%;top:${layer.y}%;font-family:'${esc(layer.font)}',sans-serif;font-size:${layer.size/10.8}cqw;font-weight:${layer.weight||700};text-decoration:${layer.underline?"underline":"none"};color:${layer.color};text-align:${layer.align};opacity:${layer.opacity};rotate:${layer.rotation}deg;${boxStyle}">${richTextHtml(layer)}</div>`;
+  return `<div class="layer${active ? " active" : ""}" data-layer="${index}" style="left:${layer.x}%;top:${layer.y}%;font-family:'${esc(layer.font)}',sans-serif;font-size:${layer.size/10.8}cqw;font-weight:${layer.weight||700};text-decoration:${layer.underline?"underline":"none"};color:${layer.color};text-align:${layer.align};opacity:${layer.opacity};rotate:${layer.rotation}deg;${boxStyle}">${richTextHtml(layer, active ? selection : null)}</div>`;
 }
 function sectionIsOpen(slideId, section) { return sectionStates.get(`${slideId}:${section}`) === true; }
 function textStyleControlsHtml(layer, slideId) {
@@ -172,7 +174,7 @@ function editCard(slide) {
   const data = draft(slide); let active = selectedLayers.get(slide.id) ?? 0; if (!data.layers[active]) active = 0; selectedLayers.set(slide.id, active);
   const layer = data.layers[active] || defaultLayer(slide);
   const canUndo = (histories.get(slide.id) || []).length > 0, canRedo = (redos.get(slide.id) || []).length > 0;
-  return `<article class="card" data-editor="${slide.id}"><div class="card-head"><div><div class="number">Slide ${slide.position}</div><h2>${esc(slide.headline)}</h2></div><span class="status">${data.layers.length} lớp chữ</span></div><div class="visual"><div class="canvas" data-canvas="${slide.id}">${background(slide, data)}<div class="safe-zone"></div>${data.layers.map((item, index) => layerHtml(item, index, index === active)).join("")}</div><div><div class="tools"><button class="tool add-layer">+ Thêm chữ</button><button class="tool remove-layer">Xóa lớp</button><button class="tool undo" ${canUndo ? "" : "disabled"}>Hoàn tác</button><button class="tool redo" ${canRedo ? "" : "disabled"}>Làm lại</button><details class="apply-targets"><summary class="tool">Chọn slide để áp dụng kiểu</summary><div class="apply-target-menu"><div class="apply-target-actions"><button type="button" class="tool select-all-targets">Chọn tất cả</button><button type="button" class="tool clear-all-targets">Bỏ chọn</button></div>${project.slides.map(target=>`<label class="toggle"><input type="checkbox" class="style-target-slide" value="${target.id}" ${target.id===slide.id?"checked":""}> Slide ${target.position}: ${esc(target.headline.slice(0,34))}</label>`).join("")}<button type="button" class="action apply-selected-slides">Áp dụng kiểu</button></div></details></div><label class="field">Lớp chữ<select data-control="layer">${data.layers.map((item,index)=>`<option value="${index}" ${index===active?"selected":""}>${index+1}. ${esc(item.content.slice(0,30)||"Chữ mới")}</option>`).join("")}</select></label><div class="fields"><label class="field wide">Nội dung<textarea data-control="content">${esc(layer.content)}</textarea></label></div><button class="action save-design" data-slide="${slide.id}">Lưu thiết kế</button></div></div></article>`;
+  return `<article class="card" data-editor="${slide.id}"><div class="card-head"><div><div class="number">Slide ${slide.position}</div><h2>${esc(slide.headline)}</h2></div><span class="status">${data.layers.length} lớp chữ</span></div><div class="visual"><div class="canvas" data-canvas="${slide.id}">${background(slide, data)}<div class="safe-zone"></div>${data.layers.map((item, index) => layerHtml(item, index, index === active, textSelections.get(`${slide.id}:${index}`))).join("")}</div><div><div class="tools"><button class="tool add-layer">+ Thêm chữ</button><button class="tool remove-layer">Xóa lớp</button><button class="tool undo" ${canUndo ? "" : "disabled"}>Hoàn tác</button><button class="tool redo" ${canRedo ? "" : "disabled"}>Làm lại</button><details class="apply-targets"><summary class="tool">Chọn slide để áp dụng kiểu</summary><div class="apply-target-menu"><div class="apply-target-actions"><button type="button" class="tool select-all-targets">Chọn tất cả</button><button type="button" class="tool clear-all-targets">Bỏ chọn</button></div>${project.slides.map(target=>`<label class="toggle"><input type="checkbox" class="style-target-slide" value="${target.id}" ${target.id===slide.id?"checked":""}> Slide ${target.position}: ${esc(target.headline.slice(0,34))}</label>`).join("")}<button type="button" class="action apply-selected-slides">Áp dụng kiểu</button></div></details></div><label class="field">Lớp chữ<select data-control="layer">${data.layers.map((item,index)=>`<option value="${index}" ${index===active?"selected":""}>${index+1}. ${esc(item.content.slice(0,30)||"Chữ mới")}</option>`).join("")}</select></label><div class="fields"><label class="field wide">Nội dung<textarea data-control="content">${esc(layer.content)}</textarea></label></div><button class="action save-design" data-slide="${slide.id}">Lưu thiết kế</button></div></div></article>`;
 }
 
 function render() {
@@ -219,8 +221,11 @@ $("edit").onfocusin = event => { const editor = event.target.closest("[data-edit
 function captureTextSelection(event) {
   const input = event.target.closest('[data-control="content"]'), editor = event.target.closest("[data-editor]");
   if (!input || !editor) return;
-  const index = selectedLayers.get(editor.dataset.editor) || 0;
-  textSelections.set(`${editor.dataset.editor}:${index}`, { start:input.selectionStart, end:input.selectionEnd });
+  const slideId = editor.dataset.editor, index = selectedLayers.get(slideId) || 0;
+  const selection = { start:input.selectionStart, end:input.selectionEnd };
+  textSelections.set(`${slideId}:${index}`, selection);
+  const data = drafts.get(slideId), preview = editor.querySelector(`[data-layer="${index}"]`);
+  if (data?.layers[index] && preview) preview.innerHTML = richTextHtml(withTextBox(data.layers[index]), selection);
 }
 $("edit").onselect = captureTextSelection;
 $("edit").onkeyup = captureTextSelection;
@@ -252,7 +257,7 @@ $("edit").oninput = event => {
     else if (control === "cropZoom") output.textContent = `${data.cropZoom.toFixed(1)}×`;
     else output.textContent = `${data[control]}px`;
   }
-  const slide = project.slides.find(item=>item.id===slideId); const canvas = editor.querySelector(".canvas"); canvas.outerHTML = `<div class="canvas" data-canvas="${slide.id}">${background(slide,data)}<div class="safe-zone"></div>${data.layers.map((item,i)=>layerHtml(item,i,i===index)).join("")}</div>`; bindDrag();
+  const slide = project.slides.find(item=>item.id===slideId); const canvas = editor.querySelector(".canvas"); canvas.outerHTML = `<div class="canvas" data-canvas="${slide.id}">${background(slide,data)}<div class="safe-zone"></div>${data.layers.map((item,i)=>layerHtml(item,i,i===index,textSelections.get(`${slide.id}:${i}`))).join("")}</div>`; bindDrag();
 };
 $("edit").onclick = async event => {
   try {
