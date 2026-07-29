@@ -351,31 +351,69 @@ const xmlEscape = value => String(value).replace(/[<>&"']/g, character => ({ "<"
 function layerTextSvg(layer, width, height) {
   if (layer.enabled === false || !layer.content?.trim()) return "";
   const number = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
-  const size = Math.max(24, Math.min(220, number(layer.size, 72)));
+  const baseSize = Math.max(24, Math.min(220, number(layer.size, 72)));
+  const content = String(layer.content || "");
+  const ranges = (layer.sizeRanges || []).map(range => ({
+    start: Math.max(0, Math.min(content.length, Math.round(number(range.start, 0)))),
+    end: Math.max(0, Math.min(content.length, Math.round(number(range.end, 0)))),
+    size: Math.max(24, Math.min(220, number(range.size, baseSize)))
+  })).filter(range => range.end > range.start);
+  const sizeAt = index => {
+    let size = baseSize;
+    for (const range of ranges) if (index >= range.start && index < range.end) size = range.size;
+    return size;
+  };
   const boxEnabled = layer.boxEnabled === true;
   const boxWidth = width * Math.max(20, Math.min(96, number(layer.boxWidth, 80))) / 100;
   const paddingX = Math.max(0, Math.min(120, number(layer.boxPaddingX, 32)));
   const paddingY = Math.max(0, Math.min(80, number(layer.boxPaddingY, 20)));
-  const availableWidth = boxEnabled ? Math.max(size * 4, boxWidth - paddingX * 2) : 820;
-  const maxChars = Math.max(8, Math.floor(availableWidth / (size * 0.55)));
-  const words = layer.content.trim().split(/\s+/u), lines = [];
-  let line = "";
-  for (const word of words) {
-    if (`${line} ${word}`.trim().length > maxChars && line) { lines.push(line); line = word; }
-    else line = `${line} ${word}`.trim();
+  const availableWidth = boxEnabled ? Math.max(baseSize * 4, boxWidth - paddingX * 2) : 820;
+  const lines = [], tokens = [...content.matchAll(/\n|[^\S\n]+|[^\s\n]+/gu)];
+  let line = [], lineWidth = 0;
+  const charWidth = (character, size) => size * (/\s/u.test(character) ? 0.32 : 0.55);
+  const pushLine = () => {
+    while (line.length && /\s/u.test(line[line.length-1].character)) line.pop();
+    lines.push(line); line = []; lineWidth = 0;
+  };
+  const addCharacters = entries => {
+    for (const entry of entries) {
+      if (line.length && lineWidth + entry.width > availableWidth) pushLine();
+      if (!line.length && /\s/u.test(entry.character)) continue;
+      line.push(entry); lineWidth += entry.width;
+    }
+  };
+  for (const match of tokens) {
+    if (match[0] === "\n") { pushLine(); continue; }
+    const entries = [];
+    let characterIndex = match.index;
+    for (const character of match[0]) {
+      const size = sizeAt(characterIndex);
+      entries.push({ character, size, width:charWidth(character,size) });
+      characterIndex += character.length;
+    }
+    const tokenWidth = entries.reduce((sum, entry) => sum + entry.width, 0);
+    if (line.length && lineWidth + tokenWidth > availableWidth && tokenWidth <= availableWidth) pushLine();
+    addCharacters(entries);
   }
-  if (line) lines.push(line);
-  const lineHeight = Math.round(size * 1.18);
-  const textHeight = size + Math.max(0, lines.length - 1) * lineHeight;
+  if (line.length || !lines.length) pushLine();
+  const preparedLines = lines.map(entries => {
+    const maxSize = entries.reduce((maximum, entry) => Math.max(maximum, entry.size), baseSize);
+    const segments = [];
+    for (const entry of entries) {
+      const previous = segments[segments.length-1];
+      if (previous?.size === entry.size) previous.text += entry.character;
+      else segments.push({ text:entry.character, size:entry.size });
+    }
+    return { maxSize, height:Math.round(maxSize*1.18), segments };
+  });
+  const textHeight = preparedLines.reduce((sum, item) => sum + item.height, 0);
   const centerX = Math.round(width * Math.max(3, Math.min(97, number(layer.x, 50))) / 100);
   const centerY = Math.round(height * Math.max(3, Math.min(97, number(layer.y, 80))) / 100);
   const boxHeight = textHeight + paddingY * 2;
   const boxLeft = centerX - boxWidth / 2, boxTop = centerY - boxHeight / 2;
   const textTop = boxEnabled ? boxTop + paddingY : centerY - textHeight / 2;
   const anchor = layer.align === "left" ? "start" : layer.align === "right" ? "end" : "middle";
-  const x = boxEnabled
-    ? (layer.align === "left" ? boxLeft + paddingX : layer.align === "right" ? boxLeft + boxWidth - paddingX : centerX)
-    : centerX;
+  const x = boxEnabled ? (layer.align === "left" ? boxLeft + paddingX : layer.align === "right" ? boxLeft + boxWidth - paddingX : centerX) : centerX;
   const font = xmlEscape(layer.font || "TikTok Sans");
   const color = /^#[0-9a-f]{6}$/iu.test(layer.color) ? layer.color : "#FFFFFF";
   const opacity = Math.max(0.1, Math.min(1, number(layer.opacity, 1)));
@@ -390,7 +428,13 @@ function layerTextSvg(layer, width, height) {
     const radius = Math.max(0, Math.min(120, number(layer.boxRadius, 24)));
     box = `<rect x="${boxLeft}" y="${boxTop}" width="${boxWidth}" height="${boxHeight}" rx="${radius}" ry="${radius}" fill="${boxColor}" fill-opacity="${boxOpacity}" stroke="${borderColor}" stroke-opacity="${borderOpacity}" stroke-width="${borderWidth}"/>`;
   }
-  const text = lines.map((item, index) => `<text x="${x}" y="${textTop + size + index * lineHeight}" text-anchor="${anchor}" font-family="${font}" font-size="${size}" font-weight="700" fill="${color}" fill-opacity="${opacity}" stroke="#000000" stroke-opacity="${boxEnabled ? 0 : 0.45}" stroke-width="${boxEnabled ? 0 : 5}" paint-order="stroke">${xmlEscape(item)}</text>`).join("");
+  let cursorY = textTop;
+  const text = preparedLines.map(item => {
+    const baseline = cursorY + item.maxSize;
+    cursorY += item.height;
+    const spans = item.segments.map(segment => `<tspan font-size="${segment.size}">${xmlEscape(segment.text)}</tspan>`).join("");
+    return `<text x="${x}" y="${baseline}" text-anchor="${anchor}" font-family="${font}" font-weight="700" fill="${color}" fill-opacity="${opacity}" stroke="#000000" stroke-opacity="${boxEnabled ? 0 : 0.45}" stroke-width="${boxEnabled ? 0 : 5}" paint-order="stroke">${spans}</text>`;
+  }).join("");
   return `<g transform="rotate(${rotation} ${centerX} ${centerY})">${box}${text}</g>`;
 
 }

@@ -25,6 +25,7 @@ Production:
 - Preview dọc 9:16 cỡ lớn, responsive theo màn hình và khớp tỷ lệ render 1080×1920.
 - Nhiều lớp chữ có thể kéo thả trực quan.
 - Chọn font, cỡ chữ, màu, vị trí, căn lề, độ trong suốt và góc xoay.
+- Bôi đen từng đoạn trong cùng một ô chữ để đặt cỡ chữ riêng.
 - Hộp chữ riêng cho từng lớp: nền, độ mờ, viền, bo góc, chiều rộng và khoảng đệm.
 - Các nhóm Kiểu chữ, Hộp chữ và Chỉnh ảnh/khung có thể thu gọn, giữ nguyên trạng thái khi giao diện cập nhật.
 - Brand Kit và áp dụng thiết kế cho toàn bộ slide.

@@ -3,7 +3,7 @@ const projectId = params.get("projectId");
 const $ = id => document.getElementById(id);
 const fonts = ["TikTok Sans", "Montserrat", "Poppins", "Bebas Neue", "Roboto", "Playfair Display", "Courier New"];
 let project, assets, view = "content", renderTimer;
-const picks = new Map(), drafts = new Map(), selectedLayers = new Map(), histories = new Map(), redos = new Map(), sectionStates = new Map();
+const picks = new Map(), drafts = new Map(), selectedLayers = new Map(), histories = new Map(), redos = new Map(), sectionStates = new Map(), textSelections = new Map();
 const esc = (value = "") => String(value).replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" })[char]);
 
 function selectedIds(slide) { return slide.selectedAssetIds?.length ? slide.selectedAssetIds : [slide.selectedAssetId].filter(Boolean); }
@@ -12,7 +12,7 @@ function withTextBox(layer = {}) {
   return {
     boxEnabled: false, boxColor: "#FFFFFF", boxOpacity: 0.9,
     boxBorderColor: "#333333", boxBorderWidth: 0, boxBorderOpacity: 1,
-    boxRadius: 24, boxPaddingX: 32, boxPaddingY: 20, boxWidth: 80,
+    boxRadius: 24, boxPaddingX: 32, boxPaddingY: 20, boxWidth: 80, sizeRanges: [],
     ...layer
   };
 }
@@ -41,6 +41,7 @@ function syncContentLayers(slide, headline, body) {
     headlineLayer.role = "headline";
     if (!layers.length) layers.push(headlineLayer);
   }
+  headlineLayer.sizeRanges = remapSizeRanges(String(headlineLayer.content || ""), headline, headlineLayer.sizeRanges || []);
   headlineLayer.content = headline;
   headlineLayer.enabled = true;
 
@@ -50,6 +51,7 @@ function syncContentLayers(slide, headline, body) {
     const headlineIndex = layers.indexOf(headlineLayer);
     layers.splice(headlineIndex + 1, 0, bodyLayer);
   }
+  bodyLayer.sizeRanges = remapSizeRanges(String(bodyLayer.content || ""), body, bodyLayer.sizeRanges || []);
   bodyLayer.content = body;
   bodyLayer.enabled = Boolean(body.trim());
   data.layers = layers;
@@ -83,15 +85,55 @@ function background(slide, data) {
   return `<div class="canvas-bg" style="grid-template-columns:repeat(${columns},1fr);filter:${filter}">${ids.map(id => `<div><img src="${esc(assets.get(id)?.publicUrl || "")}" style="transform:scale(${data.cropZoom});transform-origin:${data.cropX}% ${data.cropY}%"></div>`).join("")}</div>${frameHtml(data)}`;
 
 }
+function normalizedSizeRanges(layer) {
+  const length = String(layer.content || "").length;
+  return (layer.sizeRanges || []).map(range => ({
+    start: Math.max(0, Math.min(length, Math.round(Number(range.start) || 0))),
+    end: Math.max(0, Math.min(length, Math.round(Number(range.end) || 0))),
+    size: Math.max(24, Math.min(220, Math.round(Number(range.size) || layer.size || 72)))
+  })).filter(range => range.end > range.start);
+}
+function richTextHtml(layer) {
+  const content = String(layer.content || ""), ranges = normalizedSizeRanges(layer);
+  if (!content || !ranges.length) return esc(content);
+  const sizeAt = index => {
+    let size = layer.size || 72;
+    for (const range of ranges) if (index >= range.start && index < range.end) size = range.size;
+    return size;
+  };
+  let html = "", start = 0, size = sizeAt(0);
+  for (let index = 1; index <= content.length; index += 1) {
+    const nextSize = index < content.length ? sizeAt(index) : null;
+    if (nextSize !== size) {
+      html += `<span style="font-size:${size/10.8}cqw">${esc(content.slice(start,index))}</span>`;
+      start = index; size = nextSize;
+    }
+  }
+  return html;
+}
+function remapSizeRanges(oldContent, newContent, ranges = []) {
+  if (oldContent === newContent) return ranges;
+  let prefix = 0;
+  while (prefix < oldContent.length && prefix < newContent.length && oldContent[prefix] === newContent[prefix]) prefix += 1;
+  let suffix = 0;
+  while (suffix < oldContent.length-prefix && suffix < newContent.length-prefix && oldContent[oldContent.length-1-suffix] === newContent[newContent.length-1-suffix]) suffix += 1;
+  const oldTail = oldContent.length - suffix, delta = newContent.length - oldContent.length;
+  return ranges.flatMap(range => {
+    if (range.end <= prefix) return [range];
+    if (range.start >= oldTail) return [{ ...range, start:range.start+delta, end:range.end+delta }];
+    return [];
+  });
+}
 function layerHtml(rawLayer, index, active) {
   const layer = withTextBox(rawLayer);
   const boxStyle = layer.boxEnabled ? `width:${layer.boxWidth}%;padding:${layer.boxPaddingY/10.8}cqw ${layer.boxPaddingX/10.8}cqw;background:${rgba(layer.boxColor,layer.boxOpacity)};border:${layer.boxBorderWidth/10.8}cqw solid ${rgba(layer.boxBorderColor,layer.boxBorderOpacity)};border-radius:${layer.boxRadius/10.8}cqw;text-shadow:none;` : "";
-  return `<div class="layer${active ? " active" : ""}" data-layer="${index}" style="left:${layer.x}%;top:${layer.y}%;font-family:'${esc(layer.font)}',sans-serif;font-size:${layer.size/10.8}cqw;color:${layer.color};text-align:${layer.align};opacity:${layer.opacity};rotate:${layer.rotation}deg;${boxStyle}">${esc(layer.content)}</div>`;
+  return `<div class="layer${active ? " active" : ""}" data-layer="${index}" style="left:${layer.x}%;top:${layer.y}%;font-family:'${esc(layer.font)}',sans-serif;font-size:${layer.size/10.8}cqw;color:${layer.color};text-align:${layer.align};opacity:${layer.opacity};rotate:${layer.rotation}deg;${boxStyle}">${richTextHtml(layer)}</div>`;
 }
 function sectionIsOpen(slideId, section) { return sectionStates.get(`${slideId}:${section}`) === true; }
 function textStyleControlsHtml(layer, slideId) {
-  const open = sectionIsOpen(slideId, "textStyle");
-  return `<details class="editor-section text-style-controls" data-editor-section="textStyle" data-slide="${slideId}" ${open?"open":""}><summary><strong>Kiểu chữ</strong><span class="section-meta">${esc(layer.font)} · ${layer.size}px</span></summary><div class="section-body"><div class="fields"><label class="field">Font<select data-control="font">${fonts.map(font=>`<option ${font===layer.font?"selected":""}>${font}</option>`).join("")}</select></label><label class="field">Màu<input type="color" data-control="color" value="${layer.color}"></label><label class="field">Cỡ chữ <span class="range-value">${layer.size}</span><input type="range" min="24" max="220" data-control="size" value="${layer.size}"></label><label class="field">Xoay <span class="range-value">${layer.rotation}°</span><input type="range" min="-180" max="180" data-control="rotation" value="${layer.rotation}"></label><label class="field">Độ trong <span class="range-value">${Math.round(layer.opacity*100)}%</span><input type="range" min="10" max="100" data-control="opacity" value="${layer.opacity*100}"></label><label class="field">Căn<select data-control="align"><option value="left" ${layer.align==="left"?"selected":""}>Trái</option><option value="center" ${layer.align==="center"?"selected":""}>Giữa</option><option value="right" ${layer.align==="right"?"selected":""}>Phải</option></select></label></div></div></details>`;
+  const open = sectionIsOpen(slideId, "textStyle"), styledCount = normalizedSizeRanges(layer).length;
+  return `<details class="editor-section text-style-controls" data-editor-section="textStyle" data-slide="${slideId}" ${open?"open":""}><summary><strong>Kiểu chữ</strong><span class="section-meta">${esc(layer.font)} · ${layer.size}px${styledCount?` · ${styledCount} đoạn riêng`:""}</span></summary><div class="section-body"><div class="fields"><label class="field">Font<select data-control="font">${fonts.map(font=>`<option ${font===layer.font?"selected":""}>${font}</option>`).join("")}</select></label><label class="field">Màu<input type="color" data-control="color" value="${layer.color}"></label><label class="field">Cỡ mặc định <span class="range-value">${layer.size}</span><input type="range" min="24" max="220" data-control="size" value="${layer.size}"></label><label class="field">Xoay <span class="range-value">${layer.rotation}°</span><input type="range" min="-180" max="180" data-control="rotation" value="${layer.rotation}"></label><label class="field">Độ trong <span class="range-value">${Math.round(layer.opacity*100)}%</span><input type="range" min="10" max="100" data-control="opacity" value="${layer.opacity*100}"></label><label class="field">Căn<select data-control="align"><option value="left" ${layer.align==="left"?"selected":""}>Trái</option><option value="center" ${layer.align==="center"?"selected":""}>Giữa</option><option value="right" ${layer.align==="right"?"selected":""}>Phải</option></select></label><div class="field wide selection-size-tools"><span>Bôi đen một đoạn trong ô Nội dung, chọn cỡ rồi áp dụng.</span><div class="selection-size-row"><input type="number" min="24" max="220" value="${Math.min(220,Math.max(24,(layer.size||72)+24))}" data-selection-size><button type="button" class="tool apply-selected-size">Áp dụng cho đoạn chọn</button><button type="button" class="tool clear-selected-sizes" ${styledCount?"":"disabled"}>Xóa cỡ riêng</button></div></div></div></div></details>`;
+
 }
 function textBoxControlsHtml(rawLayer, slideId) {
   const layer = withTextBox(rawLayer), percent = value => Math.round(value * 100), open = sectionIsOpen(slideId, "textBox");
@@ -114,7 +156,7 @@ function editCard(slide) {
   const data = draft(slide); let active = selectedLayers.get(slide.id) ?? 0; if (!data.layers[active]) active = 0; selectedLayers.set(slide.id, active);
   const layer = data.layers[active] || defaultLayer(slide);
   const canUndo = (histories.get(slide.id) || []).length > 0, canRedo = (redos.get(slide.id) || []).length > 0;
-  return `<article class="card" data-editor="${slide.id}"><div class="card-head"><div><div class="number">Slide ${slide.position}</div><h2>${esc(slide.headline)}</h2></div><span class="status">${data.layers.length} lớp chữ</span></div><div class="visual"><div class="canvas" data-canvas="${slide.id}">${background(slide, data)}<div class="safe-zone"></div>${data.layers.map((item, index) => layerHtml(item, index, index === active)).join("")}</div><div><div class="tools"><button class="tool add-layer">+ Thêm chữ</button><button class="tool remove-layer">Xóa lớp</button><button class="tool undo" ${canUndo ? "" : "disabled"}>Hoàn tác</button><button class="tool redo" ${canRedo ? "" : "disabled"}>Làm lại</button><button class="tool apply-all">Áp dụng kiểu cho tất cả slide</button></div><label class="field">Lớp chữ<select data-control="layer">${data.layers.map((item,index)=>`<option value="${index}" ${index===active?"selected":""}>${index+1}. ${esc(item.content.slice(0,30)||"Chữ mới")}</option>`).join("")}</select></label><div class="fields"><label class="field wide">Nội dung<input data-control="content" value="${esc(layer.content)}"></label></div><button class="action save-design" data-slide="${slide.id}">Lưu thiết kế</button></div></div></article>`;
+  return `<article class="card" data-editor="${slide.id}"><div class="card-head"><div><div class="number">Slide ${slide.position}</div><h2>${esc(slide.headline)}</h2></div><span class="status">${data.layers.length} lớp chữ</span></div><div class="visual"><div class="canvas" data-canvas="${slide.id}">${background(slide, data)}<div class="safe-zone"></div>${data.layers.map((item, index) => layerHtml(item, index, index === active)).join("")}</div><div><div class="tools"><button class="tool add-layer">+ Thêm chữ</button><button class="tool remove-layer">Xóa lớp</button><button class="tool undo" ${canUndo ? "" : "disabled"}>Hoàn tác</button><button class="tool redo" ${canRedo ? "" : "disabled"}>Làm lại</button><button class="tool apply-all">Áp dụng kiểu cho tất cả slide</button></div><label class="field">Lớp chữ<select data-control="layer">${data.layers.map((item,index)=>`<option value="${index}" ${index===active?"selected":""}>${index+1}. ${esc(item.content.slice(0,30)||"Chữ mới")}</option>`).join("")}</select></label><div class="fields"><label class="field wide">Nội dung<textarea data-control="content">${esc(layer.content)}</textarea></label></div><button class="action save-design" data-slide="${slide.id}">Lưu thiết kế</button></div></div></article>`;
 }
 
 function render() {
@@ -158,6 +200,14 @@ $("edit").addEventListener("toggle", event => {
 }, true);
 $("edit").onchange = event => { const editor = event.target.closest("[data-editor]"); if (!editor) return; if (event.target.dataset.control === "layer") { selectedLayers.set(editor.dataset.editor, Number(event.target.value)); render(); } };
 $("edit").onfocusin = event => { const editor = event.target.closest("[data-editor]"); if (editor && event.target.dataset.control && event.target.dataset.control !== "layer") remember(editor.dataset.editor); };
+function captureTextSelection(event) {
+  const input = event.target.closest('[data-control="content"]'), editor = event.target.closest("[data-editor]");
+  if (!input || !editor) return;
+  const index = selectedLayers.get(editor.dataset.editor) || 0;
+  textSelections.set(`${editor.dataset.editor}:${index}`, { start:input.selectionStart, end:input.selectionEnd });
+}
+$("edit").onselect = captureTextSelection;
+$("edit").onkeyup = captureTextSelection;
 $("edit").oninput = event => {
   const editor = event.target.closest("[data-editor]"); if (!editor) return; const slideId = editor.dataset.editor, data = drafts.get(slideId), index = selectedLayers.get(slideId) || 0, layer = data.layers[index], control = event.target.dataset.control; if (!control) return;
   if (control === "boxEnabled") layer.boxEnabled = event.target.checked;
@@ -169,7 +219,10 @@ $("edit").oninput = event => {
   else if (control === "frameColor") data.frameColor = event.target.value.toUpperCase();
   else if (control === "size" || control === "rotation") layer[control] = Number(event.target.value);
   else if (control === "opacity") layer.opacity = Number(event.target.value)/100;
-  else layer[control] = event.target.value;
+  else if (control === "content") {
+    layer.sizeRanges = remapSizeRanges(String(layer.content || ""), event.target.value, layer.sizeRanges || []);
+    layer.content = event.target.value;
+  } else layer[control] = event.target.value;
   const layerOutput = editor.querySelector(`[data-layer-value-for="${control}"]`);
   if (layerOutput) {
     if (["boxOpacity","boxBorderOpacity"].includes(control)) layerOutput.textContent = `${Math.round(layer[control]*100)}%`;
@@ -193,6 +246,13 @@ $("edit").onclick = async event => {
     if (event.target.closest(".remove-layer")) { if (data.layers.length > 1) { remember(slideId); data.layers.splice(index,1); selectedLayers.set(slideId,Math.max(0,index-1)); render(); } return; }
     if (event.target.closest(".undo")) { const history=histories.get(slideId)||[], redo=redos.get(slideId)||[]; if(history.length){redo.push(JSON.stringify(data));redos.set(slideId,redo);drafts.set(slideId,JSON.parse(history.pop()));render();} return; }
     if (event.target.closest(".redo")) { const redo=redos.get(slideId)||[], history=histories.get(slideId)||[]; if(redo.length){history.push(JSON.stringify(data));histories.set(slideId,history);drafts.set(slideId,JSON.parse(redo.pop()));render();} return; }
+    if (event.target.closest(".apply-selected-size")) {
+      const input = editor.querySelector('[data-control="content"]'), selection = textSelections.get(`${slideId}:${index}`) || { start:input.selectionStart, end:input.selectionEnd };
+      if (!selection || selection.end <= selection.start) { alert("Hãy bôi đen đoạn chữ cần đổi cỡ trong ô Nội dung."); return; }
+      const size = Math.max(24,Math.min(220,Number(editor.querySelector("[data-selection-size]").value)||72));
+      remember(slideId); data.layers[index].sizeRanges = [...normalizedSizeRanges(data.layers[index]), { start:selection.start, end:selection.end, size }]; render(); return;
+    }
+    if (event.target.closest(".clear-selected-sizes")) { remember(slideId); data.layers[index].sizeRanges = []; render(); return; }
     const boxPreset = event.target.closest("[data-box-preset]")?.dataset.boxPreset;
     if (boxPreset) {
       remember(slideId);
