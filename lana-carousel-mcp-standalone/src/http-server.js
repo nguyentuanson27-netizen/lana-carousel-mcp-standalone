@@ -186,7 +186,7 @@ app.patch("/api/projects/:projectId/slides/:slideId/content", (req, res) => {
       headline: z.string().min(1).max(300), body: z.string().min(1).max(2000),
       textEnabled: z.boolean(), overlayText: z.string().max(500),
       textFont: z.enum(["TikTok Sans", "Montserrat", "Poppins", "Bebas Neue", "Roboto", "Playfair Display", "Courier New"]),
-      textSize: z.number().int().min(32).max(160), textPosition: z.enum(["top", "center", "bottom"]),
+      textSize: z.number().int().min(24).max(220), textPosition: z.enum(["top", "center", "bottom"]),
       textColor: z.string().regex(/^#[0-9A-F]{6}$/i), textAlign: z.enum(["left", "center", "right"]),
       textX: z.number().min(5).max(95), textY: z.number().min(5).max(95),
       textLayers: z.array(z.object({

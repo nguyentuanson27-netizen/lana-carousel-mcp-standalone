@@ -151,7 +151,13 @@ function layerHtml(rawLayer, index, active, selection = null, editing = false) {
 }
 function directToolbarHtml(layer, slideId, index) {
   const editing = directEditing.has(`${slideId}:${index}`);
-  return `<div class="direct-toolbar" data-direct-toolbar="${slideId}"><span class="direct-hint">${editing ? "Đang sửa trực tiếp · chọn chữ để định dạng" : "Nhấp đúp hộp chữ để sửa trực tiếp"}</span><select data-direct-style="font" title="Font">${fonts.map(font=>`<option ${font===layer.font?"selected":""}>${font}</option>`).join("")}</select><input type="number" min="24" max="220" value="${layer.size}" data-direct-style="size" title="Cỡ chữ"><button type="button" class="tool direct-bold ${String(layer.weight||"700")!=="400"?"active":""}" title="Đậm"><strong>B</strong></button><button type="button" class="tool direct-underline ${layer.underline?"active":""}" title="Gạch chân"><u>U</u></button><input type="color" value="${layer.color}" data-direct-style="color" title="Màu chữ"><button type="button" class="tool direct-box ${layer.boxEnabled?"active":""}">Hộp chữ</button><input type="color" value="${layer.boxColor}" data-direct-style="boxColor" title="Màu hộp"><button type="button" class="tool direct-finish" ${editing?"":"disabled"}>Xong</button></div>`;
+  return `<div class="direct-toolbar" data-direct-toolbar="${slideId}"><span class="direct-hint">${editing ? "Đang sửa trực tiếp · chọn chữ để định dạng" : "Nhấp đúp hộp chữ để sửa trực tiếp"}</span><select data-direct-style="font" title="Font">${fonts.map(font=>`<option ${font===layer.font?"selected":""}>${font}</option>`).join("")}</select><input type="number" min="24" max="220" value="${layer.size}" data-direct-style="size" title="Cỡ chữ"><button type="button" class="tool direct-bold ${String(layer.weight||"700")!=="400"?"active":""}" title="Đậm"><strong>B</strong></button><button type="button" class="tool direct-underline ${layer.underline?"active":""}" title="Gạch chân"><u>U</u></button><input type="color" value="${layer.color}" data-direct-style="color" title="Màu chữ"><button type="button" class="tool direct-box ${layer.boxEnabled?"active":""}">Hộp chữ</button><input type="color" value="${layer.boxColor}" data-direct-style="boxColor" title="Màu hộp">${editing?'<button type="button" class="tool direct-finish">Xong</button>':'<button type="button" class="action direct-start">Sửa chữ trực tiếp</button>'}</div>`;
+}
+function startDirectEditing(slideId, index) {
+  selectedLayers.set(slideId,index);
+  directEditing.add(`${slideId}:${index}`);
+  render();
+  requestAnimationFrame(() => document.querySelector(`[data-editor="${slideId}"] [data-layer="${index}"]`)?.focus());
 }
 function directSelection(root) {
   const selection = window.getSelection();
@@ -303,15 +309,14 @@ $("edit").ondblclick = event => {
   if (!layerElement || !editor) return;
   event.preventDefault();
   const slideId = editor.dataset.editor, index = Number(layerElement.dataset.layer);
-  selectedLayers.set(slideId,index); directEditing.add(`${slideId}:${index}`); render();
-  const updated = document.querySelector(`[data-editor="${slideId}"] [data-layer="${index}"]`);
-  updated?.focus();
+  startDirectEditing(slideId,index);
 };
 $("edit").onclick = async event => {
   try {
     const editor = event.target.closest("[data-editor]");
     if (event.target.id === "saveBrand") { project = await json(`/api/projects/${projectId}/brand-kit`, { method:"PATCH", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ font:$("brandFont").value, color:$("brandColor").value.toUpperCase(), applyToAll:true }) }); drafts.clear(); render(); return; }
     if (!editor) return; const slideId = editor.dataset.editor, slide = project.slides.find(item=>item.id===slideId), data = drafts.get(slideId), index = selectedLayers.get(slideId)||0;
+    if (event.target.closest(".direct-start")) { startDirectEditing(slideId,index); return; }
     if (event.target.closest(".direct-finish")) { directEditing.delete(`${slideId}:${index}`); textSelections.delete(`${slideId}:${index}`); render(); return; }
     if (event.target.closest(".direct-bold")) { const selection=textSelections.get(`${slideId}:${index}`), current=styleAt(data.layers[index],selection?.start||0); applyDirectStyle(slideId,index,{weight:String(current.weight)==="400"?"700":"400"}); return; }
     if (event.target.closest(".direct-underline")) { const selection=textSelections.get(`${slideId}:${index}`), current=styleAt(data.layers[index],selection?.start||0); applyDirectStyle(slideId,index,{underline:!Boolean(current.underline)}); return; }
@@ -368,7 +373,7 @@ $("edit").onclick = async event => {
   } catch(error){alert(error.message);}
 };
 
-function bindDrag() { document.querySelectorAll(".canvas").forEach(canvas => canvas.querySelectorAll(".layer").forEach(element => { element.onpointerdown = event => { if (element.isContentEditable) return; const slideId=canvas.dataset.canvas,index=Number(element.dataset.layer),data=drafts.get(slideId);selectedLayers.set(slideId,index);remember(slideId);element.setPointerCapture(event.pointerId);element.onpointermove=move=>{const rect=canvas.getBoundingClientRect(),x=Math.max(3,Math.min(97,(move.clientX-rect.left)/rect.width*100)),y=Math.max(3,Math.min(97,(move.clientY-rect.top)/rect.height*100));data.layers[index].x=Number(x.toFixed(2));data.layers[index].y=Number(y.toFixed(2));element.style.left=`${x}%`;element.style.top=`${y}%`;};element.onpointerup=()=>{element.onpointermove=null;render();};}; })); }
+function bindDrag() { document.querySelectorAll(".canvas").forEach(canvas => canvas.querySelectorAll(".layer").forEach(element => { element.onpointerdown = event => { if (element.isContentEditable) return; const slideId=canvas.dataset.canvas,index=Number(element.dataset.layer),data=drafts.get(slideId),startX=event.clientX,startY=event.clientY;let moved=false;selectedLayers.set(slideId,index);canvas.querySelectorAll(".layer").forEach((item,i)=>item.classList.toggle("active",i===index));element.setPointerCapture(event.pointerId);element.onpointermove=move=>{if(Math.hypot(move.clientX-startX,move.clientY-startY)<4&&!moved)return;if(!moved){remember(slideId);moved=true;}const rect=canvas.getBoundingClientRect(),x=Math.max(3,Math.min(97,(move.clientX-rect.left)/rect.width*100)),y=Math.max(3,Math.min(97,(move.clientY-rect.top)/rect.height*100));data.layers[index].x=Number(x.toFixed(2));data.layers[index].y=Number(y.toFixed(2));element.style.left=`${x}%`;element.style.top=`${y}%`;};element.onpointerup=()=>{element.onpointermove=null;if(moved)render();};}; })); }
 
 $("download").onclick = async event => { if (event.target.id !== "startRender") return; try { const job=await json(`/api/projects/${projectId}/render-jobs`,{method:"POST"});$("jobBox").classList.remove("hidden");pollJob(job.id); } catch(error){alert(error.message);} };
 async function pollJob(id){clearTimeout(renderTimer);try{const job=await json(`/api/render-jobs/${id}`);$("jobText").textContent=`${job.status} · ${job.progress}%`;$("jobProgress").style.width=`${job.progress}%`;if(job.status==="READY"){$("jobDownload").href=job.downloadUrl;$("jobDownload").classList.remove("hidden");return;}if(job.status==="FAILED")throw Error(job.error);renderTimer=setTimeout(()=>pollJob(id),1000);}catch(error){alert(error.message);}}
