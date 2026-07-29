@@ -217,6 +217,7 @@ app.patch("/api/projects/:projectId/slides/:slideId/content", (req, res) => {
           end: z.number().int().min(0).max(500),
           size: z.number().min(24).max(220).optional(),
           font: z.string().min(1).max(100).optional(),
+          color: z.string().regex(/^#[0-9A-F]{6}$/i).optional(),
           weight: z.enum(["400", "500", "600", "700", "800", "900"]).optional(),
           underline: z.boolean().optional()
         })).max(60).optional()

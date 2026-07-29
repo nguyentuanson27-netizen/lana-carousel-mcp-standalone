@@ -3,7 +3,7 @@ const projectId = params.get("projectId");
 const $ = id => document.getElementById(id);
 const fonts = ["TikTok Sans", "Montserrat", "Poppins", "Bebas Neue", "Roboto", "Playfair Display", "Courier New"];
 let project, assets, view = "content", renderTimer;
-const picks = new Map(), drafts = new Map(), selectedLayers = new Map(), histories = new Map(), redos = new Map(), sectionStates = new Map(), textSelections = new Map();
+const picks = new Map(), drafts = new Map(), selectedLayers = new Map(), histories = new Map(), redos = new Map(), sectionStates = new Map(), textSelections = new Map(), directEditing = new Set();
 const esc = (value = "") => String(value).replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" })[char]);
 
 function selectedIds(slide) { return slide.selectedAssetIds?.length ? slide.selectedAssetIds : [slide.selectedAssetId].filter(Boolean); }
@@ -95,6 +95,7 @@ function normalizedStyleRanges(layer) {
     end: Math.max(0, Math.min(length, Math.round(Number(range.end) || 0))),
     ...(range.size == null ? {} : { size:Math.max(24, Math.min(220, Math.round(Number(range.size) || layer.size || 72))) }),
     ...(range.font ? { font:String(range.font).slice(0,100) } : {}),
+    ...(/^#[0-9a-f]{6}$/iu.test(range.color) ? { color:range.color } : {}),
     ...(range.weight ? { weight:["400","500","600","700","800","900"].includes(String(range.weight)) ? String(range.weight) : "700" } : {}),
     ...(range.underline == null ? {} : { underline:Boolean(range.underline) })
   })).filter(range => range.end > range.start);
@@ -103,10 +104,11 @@ function normalizedSizeRanges(layer) {
   return normalizedStyleRanges(layer).filter(range => range.size != null);
 }
 function styleAt(layer, index) {
-  const style = { size:layer.size || 72, font:layer.font || "TikTok Sans", weight:String(layer.weight || "700"), underline:Boolean(layer.underline) };
+  const style = { size:layer.size || 72, font:layer.font || "TikTok Sans", color:layer.color || "#FFFFFF", weight:String(layer.weight || "700"), underline:Boolean(layer.underline) };
   for (const range of normalizedStyleRanges(layer)) if (index >= range.start && index < range.end) Object.assign(style, {
     ...(range.size == null ? {} : { size:range.size }),
     ...(range.font ? { font:range.font } : {}),
+    ...(range.color ? { color:range.color } : {}),
     ...(range.weight ? { weight:range.weight } : {}),
     ...(range.underline == null ? {} : { underline:range.underline })
   });
@@ -123,7 +125,7 @@ function richTextHtml(layer, selection = null) {
     if (!next || key(next) !== key(style)) {
       const decoration = style.underline ? "text-decoration:underline;" : "";
       const highlight = style.selected ? "background:#1677ffcc;color:#fff;border-radius:.12em;" : "";
-      html += `<span ${style.selected?'class="text-selection-preview"':""} style="font-size:${style.size/10.8}cqw;font-family:'${esc(style.font)}',sans-serif;font-weight:${style.weight};${decoration}${highlight}">${esc(content.slice(start,index))}</span>`;
+      html += `<span ${style.selected?'class="text-selection-preview"':""} style="font-size:${style.size/10.8}cqw;font-family:'${esc(style.font)}',sans-serif;font-weight:${style.weight};color:${style.color};${decoration}${highlight}">${esc(content.slice(start,index))}</span>`;
       start = index; style = next;
     }
   }
@@ -142,10 +144,32 @@ function remapSizeRanges(oldContent, newContent, ranges = []) {
     return [];
   });
 }
-function layerHtml(rawLayer, index, active, selection = null) {
+function layerHtml(rawLayer, index, active, selection = null, editing = false) {
   const layer = withTextBox(rawLayer);
   const boxStyle = layer.boxEnabled ? `width:${layer.boxWidth}%;padding:${layer.boxPaddingY/10.8}cqw ${layer.boxPaddingX/10.8}cqw;background:${rgba(layer.boxColor,layer.boxOpacity)};border:${layer.boxBorderWidth/10.8}cqw solid ${rgba(layer.boxBorderColor,layer.boxBorderOpacity)};border-radius:${layer.boxRadius/10.8}cqw;text-shadow:none;` : "";
-  return `<div class="layer${active ? " active" : ""}" data-layer="${index}" style="left:${layer.x}%;top:${layer.y}%;font-family:'${esc(layer.font)}',sans-serif;font-size:${layer.size/10.8}cqw;font-weight:${layer.weight||700};text-decoration:${layer.underline?"underline":"none"};color:${layer.color};text-align:${layer.align};opacity:${layer.opacity};rotate:${layer.rotation}deg;${boxStyle}">${richTextHtml(layer, active ? selection : null)}</div>`;
+  return `<div class="layer${active ? " active" : ""}${editing ? " direct-editing" : ""}" data-layer="${index}" ${editing ? 'contenteditable="true" spellcheck="false"' : ""} style="left:${layer.x}%;top:${layer.y}%;font-family:'${esc(layer.font)}',sans-serif;font-size:${layer.size/10.8}cqw;font-weight:${layer.weight||700};text-decoration:${layer.underline?"underline":"none"};color:${layer.color};text-align:${layer.align};opacity:${layer.opacity};rotate:${layer.rotation}deg;${boxStyle}">${richTextHtml(layer, active ? selection : null)}</div>`;
+}
+function directToolbarHtml(layer, slideId, index) {
+  const editing = directEditing.has(`${slideId}:${index}`);
+  return `<div class="direct-toolbar" data-direct-toolbar="${slideId}"><span class="direct-hint">${editing ? "Đang sửa trực tiếp · chọn chữ để định dạng" : "Nhấp đúp hộp chữ để sửa trực tiếp"}</span><select data-direct-style="font" title="Font">${fonts.map(font=>`<option ${font===layer.font?"selected":""}>${font}</option>`).join("")}</select><input type="number" min="24" max="220" value="${layer.size}" data-direct-style="size" title="Cỡ chữ"><button type="button" class="tool direct-bold ${String(layer.weight||"700")!=="400"?"active":""}" title="Đậm"><strong>B</strong></button><button type="button" class="tool direct-underline ${layer.underline?"active":""}" title="Gạch chân"><u>U</u></button><input type="color" value="${layer.color}" data-direct-style="color" title="Màu chữ"><button type="button" class="tool direct-box ${layer.boxEnabled?"active":""}">Hộp chữ</button><input type="color" value="${layer.boxColor}" data-direct-style="boxColor" title="Màu hộp"><button type="button" class="tool direct-finish" ${editing?"":"disabled"}>Xong</button></div>`;
+}
+function directSelection(root) {
+  const selection = window.getSelection();
+  if (!selection?.rangeCount || !root.contains(selection.anchorNode) || !root.contains(selection.focusNode)) return null;
+  const range = selection.getRangeAt(0), before = range.cloneRange();
+  before.selectNodeContents(root); before.setEnd(range.startContainer, range.startOffset);
+  const start = before.toString().length;
+  return { start, end:start + range.toString().length };
+}
+function applyDirectStyle(slideId, index, patch) {
+  const data = drafts.get(slideId), layer = data?.layers[index];
+  if (!layer) return;
+  remember(slideId);
+  const selection = textSelections.get(`${slideId}:${index}`);
+  if (selection?.end > selection?.start && directEditing.has(`${slideId}:${index}`)) {
+    layer.styleRanges = [...(layer.styleRanges||[]), { start:selection.start, end:selection.end, ...patch }];
+  } else Object.assign(layer, patch);
+  render();
 }
 function sectionIsOpen(slideId, section) { return sectionStates.get(`${slideId}:${section}`) === true; }
 function textStyleControlsHtml(layer, slideId) {
@@ -174,7 +198,7 @@ function editCard(slide) {
   const data = draft(slide); let active = selectedLayers.get(slide.id) ?? 0; if (!data.layers[active]) active = 0; selectedLayers.set(slide.id, active);
   const layer = data.layers[active] || defaultLayer(slide);
   const canUndo = (histories.get(slide.id) || []).length > 0, canRedo = (redos.get(slide.id) || []).length > 0;
-  return `<article class="card" data-editor="${slide.id}"><div class="card-head"><div><div class="number">Slide ${slide.position}</div><h2>${esc(slide.headline)}</h2></div><span class="status">${data.layers.length} lớp chữ</span></div><div class="visual"><div class="canvas" data-canvas="${slide.id}">${background(slide, data)}<div class="safe-zone"></div>${data.layers.map((item, index) => layerHtml(item, index, index === active, textSelections.get(`${slide.id}:${index}`))).join("")}</div><div><div class="tools"><button class="tool add-layer">+ Thêm chữ</button><button class="tool remove-layer">Xóa lớp</button><button class="tool undo" ${canUndo ? "" : "disabled"}>Hoàn tác</button><button class="tool redo" ${canRedo ? "" : "disabled"}>Làm lại</button><details class="apply-targets"><summary class="tool">Chọn slide để áp dụng kiểu</summary><div class="apply-target-menu"><div class="apply-target-actions"><button type="button" class="tool select-all-targets">Chọn tất cả</button><button type="button" class="tool clear-all-targets">Bỏ chọn</button></div>${project.slides.map(target=>`<label class="toggle"><input type="checkbox" class="style-target-slide" value="${target.id}" ${target.id===slide.id?"checked":""}> Slide ${target.position}: ${esc(target.headline.slice(0,34))}</label>`).join("")}<button type="button" class="action apply-selected-slides">Áp dụng kiểu</button></div></details></div><label class="field">Lớp chữ<select data-control="layer">${data.layers.map((item,index)=>`<option value="${index}" ${index===active?"selected":""}>${index+1}. ${esc(item.content.slice(0,30)||"Chữ mới")}</option>`).join("")}</select></label><div class="fields"><label class="field wide">Nội dung<textarea data-control="content">${esc(layer.content)}</textarea></label></div><button class="action save-design" data-slide="${slide.id}">Lưu thiết kế</button></div></div></article>`;
+  return `<article class="card" data-editor="${slide.id}"><div class="card-head"><div><div class="number">Slide ${slide.position}</div><h2>${esc(slide.headline)}</h2></div><span class="status">${data.layers.length} lớp chữ</span></div><div class="visual"><div class="preview-column"><div class="canvas" data-canvas="${slide.id}">${background(slide, data)}<div class="safe-zone"></div>${data.layers.map((item, index) => layerHtml(item, index, index === active, textSelections.get(`${slide.id}:${index}`), directEditing.has(`${slide.id}:${index}`))).join("")}</div>${directToolbarHtml(layer,slide.id,active)}</div><div><div class="tools"><button class="tool add-layer">+ Thêm chữ</button><button class="tool remove-layer">Xóa lớp</button><button class="tool undo" ${canUndo ? "" : "disabled"}>Hoàn tác</button><button class="tool redo" ${canRedo ? "" : "disabled"}>Làm lại</button><details class="apply-targets"><summary class="tool">Chọn slide để áp dụng kiểu</summary><div class="apply-target-menu"><div class="apply-target-actions"><button type="button" class="tool select-all-targets">Chọn tất cả</button><button type="button" class="tool clear-all-targets">Bỏ chọn</button></div>${project.slides.map(target=>`<label class="toggle"><input type="checkbox" class="style-target-slide" value="${target.id}" ${target.id===slide.id?"checked":""}> Slide ${target.position}: ${esc(target.headline.slice(0,34))}</label>`).join("")}<button type="button" class="action apply-selected-slides">Áp dụng kiểu</button></div></details></div><label class="field">Lớp chữ<select data-control="layer">${data.layers.map((item,index)=>`<option value="${index}" ${index===active?"selected":""}>${index+1}. ${esc(item.content.slice(0,30)||"Chữ mới")}</option>`).join("")}</select></label><div class="fields"><label class="field wide">Nội dung<textarea data-control="content">${esc(layer.content)}</textarea></label></div><button class="action save-design" data-slide="${slide.id}">Lưu thiết kế</button></div></div></article>`;
 }
 
 function render() {
@@ -230,7 +254,22 @@ function captureTextSelection(event) {
 $("edit").onselect = captureTextSelection;
 $("edit").onkeyup = captureTextSelection;
 $("edit").oninput = event => {
-  const editor = event.target.closest("[data-editor]"); if (!editor) return; const slideId = editor.dataset.editor, data = drafts.get(slideId), index = selectedLayers.get(slideId) || 0, layer = data.layers[index], control = event.target.dataset.control; if (!control) return;
+  const editor = event.target.closest("[data-editor]"); if (!editor) return; const slideId = editor.dataset.editor, data = drafts.get(slideId), index = selectedLayers.get(slideId) || 0, layer = data.layers[index];
+  const editable = event.target.closest(".layer[contenteditable=true]");
+  if (editable) {
+    const layerIndex = Number(editable.dataset.layer), target = data.layers[layerIndex], content = editable.innerText.replace(/\r/g,"");
+    target.sizeRanges = remapSizeRanges(String(target.content||""),content,target.sizeRanges||[]);
+    target.styleRanges = remapSizeRanges(String(target.content||""),content,target.styleRanges||[]);
+    target.content = content; return;
+  }
+  const directControl = event.target.dataset.directStyle;
+  if (directControl) {
+    let value = event.target.value;
+    if (directControl === "size") value = Math.max(24,Math.min(220,Number(value)||72));
+    if (directControl === "boxColor") { remember(slideId); layer.boxColor=value; render(); return; }
+    applyDirectStyle(slideId,index,{[directControl]:value}); return;
+  }
+  const control = event.target.dataset.control; if (!control) return;
   if (control === "boxEnabled") layer.boxEnabled = event.target.checked;
   else if (["boxBorderWidth","boxRadius","boxPaddingX","boxPaddingY","boxWidth"].includes(control)) layer[control] = Number(event.target.value);
   else if (["boxOpacity","boxBorderOpacity"].includes(control)) layer[control] = Number(event.target.value)/100;
@@ -257,13 +296,26 @@ $("edit").oninput = event => {
     else if (control === "cropZoom") output.textContent = `${data.cropZoom.toFixed(1)}×`;
     else output.textContent = `${data[control]}px`;
   }
-  const slide = project.slides.find(item=>item.id===slideId); const canvas = editor.querySelector(".canvas"); canvas.outerHTML = `<div class="canvas" data-canvas="${slide.id}">${background(slide,data)}<div class="safe-zone"></div>${data.layers.map((item,i)=>layerHtml(item,i,i===index,textSelections.get(`${slide.id}:${i}`))).join("")}</div>`; bindDrag();
+  const slide = project.slides.find(item=>item.id===slideId); const canvas = editor.querySelector(".canvas"); canvas.outerHTML = `<div class="canvas" data-canvas="${slide.id}">${background(slide,data)}<div class="safe-zone"></div>${data.layers.map((item,i)=>layerHtml(item,i,i===index,textSelections.get(`${slide.id}:${i}`),directEditing.has(`${slide.id}:${i}`))).join("")}</div>`; bindDrag();
+};
+$("edit").ondblclick = event => {
+  const layerElement = event.target.closest(".layer"), editor = event.target.closest("[data-editor]");
+  if (!layerElement || !editor) return;
+  event.preventDefault();
+  const slideId = editor.dataset.editor, index = Number(layerElement.dataset.layer);
+  selectedLayers.set(slideId,index); directEditing.add(`${slideId}:${index}`); render();
+  const updated = document.querySelector(`[data-editor="${slideId}"] [data-layer="${index}"]`);
+  updated?.focus();
 };
 $("edit").onclick = async event => {
   try {
     const editor = event.target.closest("[data-editor]");
     if (event.target.id === "saveBrand") { project = await json(`/api/projects/${projectId}/brand-kit`, { method:"PATCH", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ font:$("brandFont").value, color:$("brandColor").value.toUpperCase(), applyToAll:true }) }); drafts.clear(); render(); return; }
     if (!editor) return; const slideId = editor.dataset.editor, slide = project.slides.find(item=>item.id===slideId), data = drafts.get(slideId), index = selectedLayers.get(slideId)||0;
+    if (event.target.closest(".direct-finish")) { directEditing.delete(`${slideId}:${index}`); textSelections.delete(`${slideId}:${index}`); render(); return; }
+    if (event.target.closest(".direct-bold")) { const selection=textSelections.get(`${slideId}:${index}`), current=styleAt(data.layers[index],selection?.start||0); applyDirectStyle(slideId,index,{weight:String(current.weight)==="400"?"700":"400"}); return; }
+    if (event.target.closest(".direct-underline")) { const selection=textSelections.get(`${slideId}:${index}`), current=styleAt(data.layers[index],selection?.start||0); applyDirectStyle(slideId,index,{underline:!Boolean(current.underline)}); return; }
+    if (event.target.closest(".direct-box")) { remember(slideId); data.layers[index].boxEnabled=!data.layers[index].boxEnabled; render(); return; }
     if (event.target.closest(".add-layer")) { remember(slideId); data.layers.push(withTextBox({ id:crypto.randomUUID(), role:"custom", content:"Chữ mới", enabled:true, font:project.brandKit?.font||"TikTok Sans", size:72, x:50, y:50, color:project.brandKit?.color||"#FFFFFF", align:"center", opacity:1, rotation:0 })); selectedLayers.set(slideId,data.layers.length-1); render(); return; }
     if (event.target.closest(".remove-layer")) { if (data.layers.length > 1) { remember(slideId); data.layers.splice(index,1); selectedLayers.set(slideId,Math.max(0,index-1)); render(); } return; }
     if (event.target.closest(".undo")) { const history=histories.get(slideId)||[], redo=redos.get(slideId)||[]; if(history.length){redo.push(JSON.stringify(data));redos.set(slideId,redo);drafts.set(slideId,JSON.parse(history.pop()));render();} return; }
@@ -316,9 +368,15 @@ $("edit").onclick = async event => {
   } catch(error){alert(error.message);}
 };
 
-function bindDrag() { document.querySelectorAll(".canvas").forEach(canvas => canvas.querySelectorAll(".layer").forEach(element => { element.onpointerdown = event => { const slideId=canvas.dataset.canvas,index=Number(element.dataset.layer),data=drafts.get(slideId);selectedLayers.set(slideId,index);remember(slideId);element.setPointerCapture(event.pointerId);element.onpointermove=move=>{const rect=canvas.getBoundingClientRect(),x=Math.max(3,Math.min(97,(move.clientX-rect.left)/rect.width*100)),y=Math.max(3,Math.min(97,(move.clientY-rect.top)/rect.height*100));data.layers[index].x=Number(x.toFixed(2));data.layers[index].y=Number(y.toFixed(2));element.style.left=`${x}%`;element.style.top=`${y}%`;};element.onpointerup=()=>{element.onpointermove=null;render();};}; })); }
+function bindDrag() { document.querySelectorAll(".canvas").forEach(canvas => canvas.querySelectorAll(".layer").forEach(element => { element.onpointerdown = event => { if (element.isContentEditable) return; const slideId=canvas.dataset.canvas,index=Number(element.dataset.layer),data=drafts.get(slideId);selectedLayers.set(slideId,index);remember(slideId);element.setPointerCapture(event.pointerId);element.onpointermove=move=>{const rect=canvas.getBoundingClientRect(),x=Math.max(3,Math.min(97,(move.clientX-rect.left)/rect.width*100)),y=Math.max(3,Math.min(97,(move.clientY-rect.top)/rect.height*100));data.layers[index].x=Number(x.toFixed(2));data.layers[index].y=Number(y.toFixed(2));element.style.left=`${x}%`;element.style.top=`${y}%`;};element.onpointerup=()=>{element.onpointermove=null;render();};}; })); }
 
 $("download").onclick = async event => { if (event.target.id !== "startRender") return; try { const job=await json(`/api/projects/${projectId}/render-jobs`,{method:"POST"});$("jobBox").classList.remove("hidden");pollJob(job.id); } catch(error){alert(error.message);} };
 async function pollJob(id){clearTimeout(renderTimer);try{const job=await json(`/api/render-jobs/${id}`);$("jobText").textContent=`${job.status} · ${job.progress}%`;$("jobProgress").style.width=`${job.progress}%`;if(job.status==="READY"){$("jobDownload").href=job.downloadUrl;$("jobDownload").classList.remove("hidden");return;}if(job.status==="FAILED")throw Error(job.error);renderTimer=setTimeout(()=>pollJob(id),1000);}catch(error){alert(error.message);}}
 
+document.addEventListener("selectionchange", () => {
+  const selection = window.getSelection(), layer = selection?.anchorNode?.parentElement?.closest?.(".layer[contenteditable=true]");
+  if (!layer) return;
+  const editor = layer.closest("[data-editor]"), index = Number(layer.dataset.layer), range = directSelection(layer);
+  if (editor && range) textSelections.set(`${editor.dataset.editor}:${index}`, range);
+});
 (async()=>{try{if(!projectId)throw Error("Thiếu projectId");project=await json(`/api/projects/${projectId}`);$("loading").classList.add("hidden");$("app").classList.remove("hidden");render();}catch(error){$("loading").textContent=error.message;}})();

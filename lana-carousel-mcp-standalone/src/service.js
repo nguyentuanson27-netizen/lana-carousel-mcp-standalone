@@ -359,11 +359,12 @@ function layerTextSvg(layer, width, height) {
     end: Math.max(0, Math.min(content.length, Math.round(number(range.end, 0)))),
     ...(range.size == null ? {} : { size:Math.max(24, Math.min(220, number(range.size, baseSize))) }),
     ...(range.font ? { font:String(range.font).slice(0,100) } : {}),
+    ...(/^#[0-9a-f]{6}$/iu.test(range.color) ? { color:range.color } : {}),
     ...(range.weight ? { weight:["400","500","600","700","800","900"].includes(String(range.weight)) ? String(range.weight) : "700" } : {}),
     ...(range.underline == null ? {} : { underline:Boolean(range.underline) })
   })).filter(range => range.end > range.start);
   const styleAt = index => {
-    const style = { size:baseSize, font:String(layer.font || "TikTok Sans"), weight:String(layer.weight || "700"), underline:Boolean(layer.underline) };
+    const style = { size:baseSize, font:String(layer.font || "TikTok Sans"), color:/^#[0-9a-f]{6}$/iu.test(layer.color) ? layer.color : "#FFFFFF", weight:String(layer.weight || "700"), underline:Boolean(layer.underline) };
     for (const range of ranges) if (index >= range.start && index < range.end) Object.assign(style, range);
     return style;
   };
@@ -405,8 +406,8 @@ function layerTextSvg(layer, width, height) {
     const segments = [];
     for (const entry of entries) {
       const previous = segments[segments.length-1];
-      if (previous?.size === entry.size && previous?.font === entry.font && previous?.weight === entry.weight && previous?.underline === entry.underline) previous.text += entry.character;
-      else segments.push({ text:entry.character, size:entry.size, font:entry.font, weight:entry.weight, underline:entry.underline });
+      if (previous?.size === entry.size && previous?.font === entry.font && previous?.color === entry.color && previous?.weight === entry.weight && previous?.underline === entry.underline) previous.text += entry.character;
+      else segments.push({ text:entry.character, size:entry.size, font:entry.font, color:entry.color, weight:entry.weight, underline:entry.underline });
     }
     return { maxSize, height:Math.round(maxSize*1.18), segments };
   });
@@ -436,7 +437,7 @@ function layerTextSvg(layer, width, height) {
   const text = preparedLines.map(item => {
     const baseline = cursorY + item.maxSize;
     cursorY += item.height;
-    const spans = item.segments.map(segment => `<tspan font-size="${segment.size}" font-family="${xmlEscape(segment.font)}" font-weight="${segment.weight}" text-decoration="${segment.underline ? "underline" : "none"}">${xmlEscape(segment.text)}</tspan>`).join("");
+    const spans = item.segments.map(segment => `<tspan font-size="${segment.size}" font-family="${xmlEscape(segment.font)}" font-weight="${segment.weight}" fill="${segment.color}" text-decoration="${segment.underline ? "underline" : "none"}">${xmlEscape(segment.text)}</tspan>`).join("");
     return `<text x="${x}" y="${baseline}" text-anchor="${anchor}" font-family="${font}" font-weight="${String(layer.weight || "700")}" fill="${color}" fill-opacity="${opacity}" stroke="#000000" stroke-opacity="${boxEnabled ? 0 : 0.45}" stroke-width="${boxEnabled ? 0 : 5}" paint-order="stroke">${spans}</text>`;
   }).join("");
   return `<g transform="rotate(${rotation} ${centerX} ${centerY})">${box}${text}</g>`;
