@@ -12,7 +12,7 @@ function withTextBox(layer = {}) {
   return {
     boxEnabled: false, boxColor: "#FFFFFF", boxOpacity: 0.9,
     boxBorderColor: "#333333", boxBorderWidth: 0, boxBorderOpacity: 1,
-    boxRadius: 24, boxPaddingX: 32, boxPaddingY: 20, boxWidth: 80, sizeRanges: [],
+    boxRadius: 24, boxPaddingX: 32, boxPaddingY: 20, boxWidth: 80, sizeRanges: [], styleRanges: [],
     ...layer
   };
 }
@@ -42,6 +42,7 @@ function syncContentLayers(slide, headline, body) {
     if (!layers.length) layers.push(headlineLayer);
   }
   headlineLayer.sizeRanges = remapSizeRanges(String(headlineLayer.content || ""), headline, headlineLayer.sizeRanges || []);
+  headlineLayer.styleRanges = remapSizeRanges(String(headlineLayer.content || ""), headline, headlineLayer.styleRanges || []);
   headlineLayer.content = headline;
   headlineLayer.enabled = true;
 
@@ -52,6 +53,7 @@ function syncContentLayers(slide, headline, body) {
     layers.splice(headlineIndex + 1, 0, bodyLayer);
   }
   bodyLayer.sizeRanges = remapSizeRanges(String(bodyLayer.content || ""), body, bodyLayer.sizeRanges || []);
+  bodyLayer.styleRanges = remapSizeRanges(String(bodyLayer.content || ""), body, bodyLayer.styleRanges || []);
   bodyLayer.content = body;
   bodyLayer.enabled = Boolean(body.trim());
   data.layers = layers;
@@ -85,28 +87,42 @@ function background(slide, data) {
   return `<div class="canvas-bg" style="grid-template-columns:repeat(${columns},1fr);filter:${filter}">${ids.map(id => `<div><img src="${esc(assets.get(id)?.publicUrl || "")}" style="transform:scale(${data.cropZoom});transform-origin:${data.cropX}% ${data.cropY}%"></div>`).join("")}</div>${frameHtml(data)}`;
 
 }
-function normalizedSizeRanges(layer) {
+function normalizedStyleRanges(layer) {
   const length = String(layer.content || "").length;
-  return (layer.sizeRanges || []).map(range => ({
+  const legacy = (layer.sizeRanges || []).map(range => ({ ...range, size:range.size }));
+  return [...legacy, ...(layer.styleRanges || [])].map(range => ({
     start: Math.max(0, Math.min(length, Math.round(Number(range.start) || 0))),
     end: Math.max(0, Math.min(length, Math.round(Number(range.end) || 0))),
-    size: Math.max(24, Math.min(220, Math.round(Number(range.size) || layer.size || 72)))
+    ...(range.size == null ? {} : { size:Math.max(24, Math.min(220, Math.round(Number(range.size) || layer.size || 72))) }),
+    ...(range.font ? { font:String(range.font).slice(0,100) } : {}),
+    ...(range.weight ? { weight:["400","500","600","700","800","900"].includes(String(range.weight)) ? String(range.weight) : "700" } : {}),
+    ...(range.underline == null ? {} : { underline:Boolean(range.underline) })
   })).filter(range => range.end > range.start);
 }
+function normalizedSizeRanges(layer) {
+  return normalizedStyleRanges(layer).filter(range => range.size != null);
+}
+function styleAt(layer, index) {
+  const style = { size:layer.size || 72, font:layer.font || "TikTok Sans", weight:String(layer.weight || "700"), underline:Boolean(layer.underline) };
+  for (const range of normalizedStyleRanges(layer)) if (index >= range.start && index < range.end) Object.assign(style, {
+    ...(range.size == null ? {} : { size:range.size }),
+    ...(range.font ? { font:range.font } : {}),
+    ...(range.weight ? { weight:range.weight } : {}),
+    ...(range.underline == null ? {} : { underline:range.underline })
+  });
+  return style;
+}
 function richTextHtml(layer) {
-  const content = String(layer.content || ""), ranges = normalizedSizeRanges(layer);
+  const content = String(layer.content || ""), ranges = normalizedStyleRanges(layer);
   if (!content || !ranges.length) return esc(content);
-  const sizeAt = index => {
-    let size = layer.size || 72;
-    for (const range of ranges) if (index >= range.start && index < range.end) size = range.size;
-    return size;
-  };
-  let html = "", start = 0, size = sizeAt(0);
+  let html = "", start = 0, style = styleAt(layer, 0);
+  const key = item => JSON.stringify(item);
   for (let index = 1; index <= content.length; index += 1) {
-    const nextSize = index < content.length ? sizeAt(index) : null;
-    if (nextSize !== size) {
-      html += `<span style="font-size:${size/10.8}cqw">${esc(content.slice(start,index))}</span>`;
-      start = index; size = nextSize;
+    const next = index < content.length ? styleAt(layer, index) : null;
+    if (!next || key(next) !== key(style)) {
+      const decoration = style.underline ? "text-decoration:underline;" : "";
+      html += `<span style="font-size:${style.size/10.8}cqw;font-family:'${esc(style.font)}',sans-serif;font-weight:${style.weight};${decoration}">${esc(content.slice(start,index))}</span>`;
+      start = index; style = next;
     }
   }
   return html;
@@ -127,14 +143,14 @@ function remapSizeRanges(oldContent, newContent, ranges = []) {
 function layerHtml(rawLayer, index, active) {
   const layer = withTextBox(rawLayer);
   const boxStyle = layer.boxEnabled ? `width:${layer.boxWidth}%;padding:${layer.boxPaddingY/10.8}cqw ${layer.boxPaddingX/10.8}cqw;background:${rgba(layer.boxColor,layer.boxOpacity)};border:${layer.boxBorderWidth/10.8}cqw solid ${rgba(layer.boxBorderColor,layer.boxBorderOpacity)};border-radius:${layer.boxRadius/10.8}cqw;text-shadow:none;` : "";
-  return `<div class="layer${active ? " active" : ""}" data-layer="${index}" style="left:${layer.x}%;top:${layer.y}%;font-family:'${esc(layer.font)}',sans-serif;font-size:${layer.size/10.8}cqw;color:${layer.color};text-align:${layer.align};opacity:${layer.opacity};rotate:${layer.rotation}deg;${boxStyle}">${richTextHtml(layer)}</div>`;
+  return `<div class="layer${active ? " active" : ""}" data-layer="${index}" style="left:${layer.x}%;top:${layer.y}%;font-family:'${esc(layer.font)}',sans-serif;font-size:${layer.size/10.8}cqw;font-weight:${layer.weight||700};text-decoration:${layer.underline?"underline":"none"};color:${layer.color};text-align:${layer.align};opacity:${layer.opacity};rotate:${layer.rotation}deg;${boxStyle}">${richTextHtml(layer)}</div>`;
 }
 function sectionIsOpen(slideId, section) { return sectionStates.get(`${slideId}:${section}`) === true; }
 function textStyleControlsHtml(layer, slideId) {
-  const open = sectionIsOpen(slideId, "textStyle"), styledCount = normalizedSizeRanges(layer).length;
-  return `<details class="editor-section text-style-controls" data-editor-section="textStyle" data-slide="${slideId}" ${open?"open":""}><summary><strong>Kiểu chữ</strong><span class="section-meta">${esc(layer.font)} · ${layer.size}px${styledCount?` · ${styledCount} đoạn riêng`:""}</span></summary><div class="section-body"><div class="fields"><label class="field">Font<select data-control="font">${fonts.map(font=>`<option ${font===layer.font?"selected":""}>${font}</option>`).join("")}</select></label><label class="field">Màu<input type="color" data-control="color" value="${layer.color}"></label><label class="field">Cỡ mặc định <span class="range-value">${layer.size}</span><input type="range" min="24" max="220" data-control="size" value="${layer.size}"></label><label class="field">Xoay <span class="range-value">${layer.rotation}°</span><input type="range" min="-180" max="180" data-control="rotation" value="${layer.rotation}"></label><label class="field">Độ trong <span class="range-value">${Math.round(layer.opacity*100)}%</span><input type="range" min="10" max="100" data-control="opacity" value="${layer.opacity*100}"></label><label class="field">Căn<select data-control="align"><option value="left" ${layer.align==="left"?"selected":""}>Trái</option><option value="center" ${layer.align==="center"?"selected":""}>Giữa</option><option value="right" ${layer.align==="right"?"selected":""}>Phải</option></select></label><div class="field wide selection-size-tools"><span>Bôi đen một đoạn trong ô Nội dung, chọn cỡ rồi áp dụng.</span><div class="selection-size-row"><input type="number" min="24" max="220" value="${Math.min(220,Math.max(24,(layer.size||72)+24))}" data-selection-size><button type="button" class="tool apply-selected-size">Áp dụng cho đoạn chọn</button><button type="button" class="tool clear-selected-sizes" ${styledCount?"":"disabled"}>Xóa cỡ riêng</button></div></div></div></div></details>`;
-
+  const open = sectionIsOpen(slideId, "textStyle"), styledCount = normalizedStyleRanges(layer).length;
+  return `<details class="editor-section text-style-controls" data-editor-section="textStyle" data-slide="${slideId}" ${open?"open":""}><summary><strong>Kiểu chữ</strong><span class="section-meta">${esc(layer.font)} · ${layer.size}px${styledCount?` · ${styledCount} đoạn riêng`:""}</span></summary><div class="section-body"><div class="fields"><label class="field">Font<select data-control="font">${fonts.map(font=>`<option ${font===layer.font?"selected":""}>${font}</option>`).join("")}</select></label><label class="field">Màu<input type="color" data-control="color" value="${layer.color}"></label><label class="field">Cỡ mặc định <span class="range-value">${layer.size}</span><input type="range" min="24" max="220" data-control="size" value="${layer.size}"></label><label class="field">Xoay <span class="range-value">${layer.rotation}°</span><input type="range" min="-180" max="180" data-control="rotation" value="${layer.rotation}"></label><label class="field">Độ trong <span class="range-value">${Math.round(layer.opacity*100)}%</span><input type="range" min="10" max="100" data-control="opacity" value="${layer.opacity*100}"></label><label class="field">Căn<select data-control="align"><option value="left" ${layer.align==="left"?"selected":""}>Trái</option><option value="center" ${layer.align==="center"?"selected":""}>Giữa</option><option value="right" ${layer.align==="right"?"selected":""}>Phải</option></select></label><div class="field wide selection-size-tools"><span>Bôi đen một đoạn trong ô Nội dung, chọn định dạng rồi áp dụng.</span><div class="selection-format-grid"><label>Font<select data-selection-font><option value="">Giữ nguyên</option>${fonts.map(font=>`<option>${font}</option>`).join("")}</select></label><label>Cỡ<input type="number" min="24" max="220" placeholder="Giữ nguyên" data-selection-size></label><label>Độ đậm<select data-selection-weight><option value="">Giữ nguyên</option><option value="400">Thường</option><option value="500">Vừa</option><option value="600">Hơi đậm</option><option value="700">Đậm</option><option value="800">Rất đậm</option><option value="900">Đen</option></select></label><label class="toggle"><input type="checkbox" data-selection-underline> Gạch chân</label></div><div class="selection-size-row"><button type="button" class="tool apply-selected-style">Áp dụng cho đoạn chọn</button><button type="button" class="tool clear-selected-styles" ${styledCount?"":"disabled"}>Xóa định dạng riêng</button></div></div></div></div></details>`;
 }
+
 function textBoxControlsHtml(rawLayer, slideId) {
   const layer = withTextBox(rawLayer), percent = value => Math.round(value * 100), open = sectionIsOpen(slideId, "textBox");
   return `<details class="editor-section text-box-controls" data-editor-section="textBox" data-slide="${slideId}" ${open?"open":""}><summary><strong>Hộp chữ</strong><span class="section-meta">${layer.boxEnabled?"Đang bật":"Đang tắt"}</span></summary><div class="section-body"><div class="control-title"><label class="toggle"><input type="checkbox" data-control="boxEnabled" ${layer.boxEnabled?"checked":""}> Bật hộp chữ</label></div><div class="box-presets"><button type="button" class="tool" data-box-preset="white">Hộp trắng</button><button type="button" class="tool" data-box-preset="dark">Hộp tối</button><button type="button" class="tool" data-box-preset="transparent">Trong suốt</button><button type="button" class="tool reset-text-box">Đặt lại hộp</button></div><div class="fields"><label class="field">Màu nền<input type="color" data-control="boxColor" value="${layer.boxColor}"></label><label class="field">Độ mờ nền <span class="range-value" data-layer-value-for="boxOpacity">${percent(layer.boxOpacity)}%</span><input type="range" min="0" max="100" data-control="boxOpacity" value="${percent(layer.boxOpacity)}"></label><label class="field">Màu viền<input type="color" data-control="boxBorderColor" value="${layer.boxBorderColor}"></label><label class="field">Độ dày viền <span class="range-value" data-layer-value-for="boxBorderWidth">${layer.boxBorderWidth}px</span><input type="range" min="0" max="40" step="1" data-control="boxBorderWidth" value="${layer.boxBorderWidth}"></label><label class="field">Độ mờ viền <span class="range-value" data-layer-value-for="boxBorderOpacity">${percent(layer.boxBorderOpacity)}%</span><input type="range" min="0" max="100" data-control="boxBorderOpacity" value="${percent(layer.boxBorderOpacity)}"></label><label class="field">Bo góc <span class="range-value" data-layer-value-for="boxRadius">${layer.boxRadius}px</span><input type="range" min="0" max="120" step="2" data-control="boxRadius" value="${layer.boxRadius}"></label><label class="field">Chiều rộng hộp <span class="range-value" data-layer-value-for="boxWidth">${layer.boxWidth}%</span><input type="range" min="20" max="96" step="1" data-control="boxWidth" value="${layer.boxWidth}"></label><label class="field">Đệm ngang <span class="range-value" data-layer-value-for="boxPaddingX">${layer.boxPaddingX}px</span><input type="range" min="0" max="120" step="2" data-control="boxPaddingX" value="${layer.boxPaddingX}"></label><label class="field">Đệm dọc <span class="range-value" data-layer-value-for="boxPaddingY">${layer.boxPaddingY}px</span><input type="range" min="0" max="80" step="2" data-control="boxPaddingY" value="${layer.boxPaddingY}"></label></div></div></details>`;
@@ -156,7 +172,7 @@ function editCard(slide) {
   const data = draft(slide); let active = selectedLayers.get(slide.id) ?? 0; if (!data.layers[active]) active = 0; selectedLayers.set(slide.id, active);
   const layer = data.layers[active] || defaultLayer(slide);
   const canUndo = (histories.get(slide.id) || []).length > 0, canRedo = (redos.get(slide.id) || []).length > 0;
-  return `<article class="card" data-editor="${slide.id}"><div class="card-head"><div><div class="number">Slide ${slide.position}</div><h2>${esc(slide.headline)}</h2></div><span class="status">${data.layers.length} lớp chữ</span></div><div class="visual"><div class="canvas" data-canvas="${slide.id}">${background(slide, data)}<div class="safe-zone"></div>${data.layers.map((item, index) => layerHtml(item, index, index === active)).join("")}</div><div><div class="tools"><button class="tool add-layer">+ Thêm chữ</button><button class="tool remove-layer">Xóa lớp</button><button class="tool undo" ${canUndo ? "" : "disabled"}>Hoàn tác</button><button class="tool redo" ${canRedo ? "" : "disabled"}>Làm lại</button><button class="tool apply-all">Áp dụng kiểu cho tất cả slide</button></div><label class="field">Lớp chữ<select data-control="layer">${data.layers.map((item,index)=>`<option value="${index}" ${index===active?"selected":""}>${index+1}. ${esc(item.content.slice(0,30)||"Chữ mới")}</option>`).join("")}</select></label><div class="fields"><label class="field wide">Nội dung<textarea data-control="content">${esc(layer.content)}</textarea></label></div><button class="action save-design" data-slide="${slide.id}">Lưu thiết kế</button></div></div></article>`;
+  return `<article class="card" data-editor="${slide.id}"><div class="card-head"><div><div class="number">Slide ${slide.position}</div><h2>${esc(slide.headline)}</h2></div><span class="status">${data.layers.length} lớp chữ</span></div><div class="visual"><div class="canvas" data-canvas="${slide.id}">${background(slide, data)}<div class="safe-zone"></div>${data.layers.map((item, index) => layerHtml(item, index, index === active)).join("")}</div><div><div class="tools"><button class="tool add-layer">+ Thêm chữ</button><button class="tool remove-layer">Xóa lớp</button><button class="tool undo" ${canUndo ? "" : "disabled"}>Hoàn tác</button><button class="tool redo" ${canRedo ? "" : "disabled"}>Làm lại</button><details class="apply-targets"><summary class="tool">Chọn slide để áp dụng kiểu</summary><div class="apply-target-menu"><div class="apply-target-actions"><button type="button" class="tool select-all-targets">Chọn tất cả</button><button type="button" class="tool clear-all-targets">Bỏ chọn</button></div>${project.slides.map(target=>`<label class="toggle"><input type="checkbox" class="style-target-slide" value="${target.id}" ${target.id===slide.id?"checked":""}> Slide ${target.position}: ${esc(target.headline.slice(0,34))}</label>`).join("")}<button type="button" class="action apply-selected-slides">Áp dụng kiểu</button></div></details></div><label class="field">Lớp chữ<select data-control="layer">${data.layers.map((item,index)=>`<option value="${index}" ${index===active?"selected":""}>${index+1}. ${esc(item.content.slice(0,30)||"Chữ mới")}</option>`).join("")}</select></label><div class="fields"><label class="field wide">Nội dung<textarea data-control="content">${esc(layer.content)}</textarea></label></div><button class="action save-design" data-slide="${slide.id}">Lưu thiết kế</button></div></div></article>`;
 }
 
 function render() {
@@ -221,6 +237,7 @@ $("edit").oninput = event => {
   else if (control === "opacity") layer.opacity = Number(event.target.value)/100;
   else if (control === "content") {
     layer.sizeRanges = remapSizeRanges(String(layer.content || ""), event.target.value, layer.sizeRanges || []);
+    layer.styleRanges = remapSizeRanges(String(layer.content || ""), event.target.value, layer.styleRanges || []);
     layer.content = event.target.value;
   } else layer[control] = event.target.value;
   const layerOutput = editor.querySelector(`[data-layer-value-for="${control}"]`);
@@ -246,13 +263,20 @@ $("edit").onclick = async event => {
     if (event.target.closest(".remove-layer")) { if (data.layers.length > 1) { remember(slideId); data.layers.splice(index,1); selectedLayers.set(slideId,Math.max(0,index-1)); render(); } return; }
     if (event.target.closest(".undo")) { const history=histories.get(slideId)||[], redo=redos.get(slideId)||[]; if(history.length){redo.push(JSON.stringify(data));redos.set(slideId,redo);drafts.set(slideId,JSON.parse(history.pop()));render();} return; }
     if (event.target.closest(".redo")) { const redo=redos.get(slideId)||[], history=histories.get(slideId)||[]; if(redo.length){history.push(JSON.stringify(data));histories.set(slideId,history);drafts.set(slideId,JSON.parse(redo.pop()));render();} return; }
-    if (event.target.closest(".apply-selected-size")) {
+    if (event.target.closest(".apply-selected-style")) {
       const input = editor.querySelector('[data-control="content"]'), selection = textSelections.get(`${slideId}:${index}`) || { start:input.selectionStart, end:input.selectionEnd };
-      if (!selection || selection.end <= selection.start) { alert("Hãy bôi đen đoạn chữ cần đổi cỡ trong ô Nội dung."); return; }
-      const size = Math.max(24,Math.min(220,Number(editor.querySelector("[data-selection-size]").value)||72));
-      remember(slideId); data.layers[index].sizeRanges = [...normalizedSizeRanges(data.layers[index]), { start:selection.start, end:selection.end, size }]; render(); return;
+      if (!selection || selection.end <= selection.start) { alert("Hãy bôi đen đoạn chữ cần định dạng trong ô Nội dung."); return; }
+      const sizeInput = editor.querySelector("[data-selection-size]").value;
+      const range = { start:selection.start, end:selection.end };
+      if (sizeInput) range.size = Math.max(24,Math.min(220,Number(sizeInput)||72));
+      const font = editor.querySelector("[data-selection-font]").value;
+      const weight = editor.querySelector("[data-selection-weight]").value;
+      if (font) range.font = font;
+      if (weight) range.weight = weight;
+      range.underline = editor.querySelector("[data-selection-underline]").checked;
+      remember(slideId); data.layers[index].styleRanges = [...(data.layers[index].styleRanges||[]), range]; render(); return;
     }
-    if (event.target.closest(".clear-selected-sizes")) { remember(slideId); data.layers[index].sizeRanges = []; render(); return; }
+    if (event.target.closest(".clear-selected-styles")) { remember(slideId); data.layers[index].sizeRanges = []; data.layers[index].styleRanges = []; render(); return; }
     const boxPreset = event.target.closest("[data-box-preset]")?.dataset.boxPreset;
     if (boxPreset) {
       remember(slideId);
@@ -265,7 +289,21 @@ $("edit").onclick = async event => {
     }
     if (event.target.closest(".reset-text-box")) { remember(slideId); Object.assign(data.layers[index], withTextBox()); render(); return; }
     if (event.target.closest(".reset-image")) { remember(slideId); Object.assign(data, imageDefaults()); render(); return; }
-    if (event.target.closest(".apply-all")) { for(const other of project.slides){const copy=structuredClone(data);copy.layers=copy.layers.map(layer=>({...layer,id:crypto.randomUUID()}));drafts.set(other.id,copy);}render();return; }
+    if (event.target.closest(".select-all-targets")) { editor.querySelectorAll(".style-target-slide").forEach(input=>input.checked=true); return; }
+    if (event.target.closest(".clear-all-targets")) { editor.querySelectorAll(".style-target-slide").forEach(input=>input.checked=false); return; }
+    if (event.target.closest(".apply-selected-slides")) {
+      const targetIds = [...editor.querySelectorAll(".style-target-slide:checked")].map(input=>input.value);
+      if (!targetIds.length) { alert("Hãy chọn ít nhất một slide."); return; }
+      const source = withTextBox(data.layers[index]);
+      const styleKeys = ["font","size","weight","underline","x","y","color","align","opacity","rotation","boxEnabled","boxColor","boxOpacity","boxBorderColor","boxBorderWidth","boxBorderOpacity","boxRadius","boxPaddingX","boxPaddingY","boxWidth"];
+      for (const targetId of targetIds) {
+        const targetSlide = project.slides.find(item=>item.id===targetId), targetData = draft(targetSlide);
+        const targetIndex = Math.min(index, targetData.layers.length-1), targetLayer = targetData.layers[targetIndex];
+        remember(targetId);
+        for (const key of styleKeys) targetLayer[key] = structuredClone(source[key]);
+      }
+      render(); return;
+    }
     if (event.target.closest(".save-design")) {
       project = await json(`/api/projects/${projectId}/slides/${slideId}/crop`, { method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({cropX:data.cropX,cropY:data.cropY,cropZoom:data.cropZoom,imageBrightness:data.imageBrightness,imageContrast:data.imageContrast,imageSaturation:data.imageSaturation,imageBlur:data.imageBlur,imageGrayscale:data.imageGrayscale,frameInset:data.frameInset,frameWidth:data.frameWidth,frameColor:data.frameColor,frameOpacity:data.frameOpacity,frameRadius:data.frameRadius}) });
       const primary=data.layers[0]||defaultLayer(slide); project=await json(`/api/projects/${projectId}/slides/${slideId}/content`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({headline:slide.headline,body:slide.body,textEnabled:true,overlayText:primary.content,textFont:primary.font,textSize:primary.size,textPosition:"center",textColor:primary.color,textAlign:primary.align,textX:primary.x,textY:primary.y,textLayers:data.layers})}); drafts.delete(slideId); histories.delete(slideId); redos.delete(slideId); render();

@@ -353,15 +353,19 @@ function layerTextSvg(layer, width, height) {
   const number = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
   const baseSize = Math.max(24, Math.min(220, number(layer.size, 72)));
   const content = String(layer.content || "");
-  const ranges = (layer.sizeRanges || []).map(range => ({
+  const legacyRanges = (layer.sizeRanges || []).map(range => ({ ...range, size:range.size }));
+  const ranges = [...legacyRanges, ...(layer.styleRanges || [])].map(range => ({
     start: Math.max(0, Math.min(content.length, Math.round(number(range.start, 0)))),
     end: Math.max(0, Math.min(content.length, Math.round(number(range.end, 0)))),
-    size: Math.max(24, Math.min(220, number(range.size, baseSize)))
+    ...(range.size == null ? {} : { size:Math.max(24, Math.min(220, number(range.size, baseSize))) }),
+    ...(range.font ? { font:String(range.font).slice(0,100) } : {}),
+    ...(range.weight ? { weight:["400","500","600","700","800","900"].includes(String(range.weight)) ? String(range.weight) : "700" } : {}),
+    ...(range.underline == null ? {} : { underline:Boolean(range.underline) })
   })).filter(range => range.end > range.start);
-  const sizeAt = index => {
-    let size = baseSize;
-    for (const range of ranges) if (index >= range.start && index < range.end) size = range.size;
-    return size;
+  const styleAt = index => {
+    const style = { size:baseSize, font:String(layer.font || "TikTok Sans"), weight:String(layer.weight || "700"), underline:Boolean(layer.underline) };
+    for (const range of ranges) if (index >= range.start && index < range.end) Object.assign(style, range);
+    return style;
   };
   const boxEnabled = layer.boxEnabled === true;
   const boxWidth = width * Math.max(20, Math.min(96, number(layer.boxWidth, 80))) / 100;
@@ -387,8 +391,8 @@ function layerTextSvg(layer, width, height) {
     const entries = [];
     let characterIndex = match.index;
     for (const character of match[0]) {
-      const size = sizeAt(characterIndex);
-      entries.push({ character, size, width:charWidth(character,size) });
+      const style = styleAt(characterIndex);
+      entries.push({ character, ...style, width:charWidth(character,style.size) });
       characterIndex += character.length;
     }
     const tokenWidth = entries.reduce((sum, entry) => sum + entry.width, 0);
@@ -401,8 +405,8 @@ function layerTextSvg(layer, width, height) {
     const segments = [];
     for (const entry of entries) {
       const previous = segments[segments.length-1];
-      if (previous?.size === entry.size) previous.text += entry.character;
-      else segments.push({ text:entry.character, size:entry.size });
+      if (previous?.size === entry.size && previous?.font === entry.font && previous?.weight === entry.weight && previous?.underline === entry.underline) previous.text += entry.character;
+      else segments.push({ text:entry.character, size:entry.size, font:entry.font, weight:entry.weight, underline:entry.underline });
     }
     return { maxSize, height:Math.round(maxSize*1.18), segments };
   });
@@ -432,8 +436,8 @@ function layerTextSvg(layer, width, height) {
   const text = preparedLines.map(item => {
     const baseline = cursorY + item.maxSize;
     cursorY += item.height;
-    const spans = item.segments.map(segment => `<tspan font-size="${segment.size}">${xmlEscape(segment.text)}</tspan>`).join("");
-    return `<text x="${x}" y="${baseline}" text-anchor="${anchor}" font-family="${font}" font-weight="700" fill="${color}" fill-opacity="${opacity}" stroke="#000000" stroke-opacity="${boxEnabled ? 0 : 0.45}" stroke-width="${boxEnabled ? 0 : 5}" paint-order="stroke">${spans}</text>`;
+    const spans = item.segments.map(segment => `<tspan font-size="${segment.size}" font-family="${xmlEscape(segment.font)}" font-weight="${segment.weight}" text-decoration="${segment.underline ? "underline" : "none"}">${xmlEscape(segment.text)}</tspan>`).join("");
+    return `<text x="${x}" y="${baseline}" text-anchor="${anchor}" font-family="${font}" font-weight="${String(layer.weight || "700")}" fill="${color}" fill-opacity="${opacity}" stroke="#000000" stroke-opacity="${boxEnabled ? 0 : 0.45}" stroke-width="${boxEnabled ? 0 : 5}" paint-order="stroke">${spans}</text>`;
   }).join("");
   return `<g transform="rotate(${rotation} ${centerX} ${centerY})">${box}${text}</g>`;
 

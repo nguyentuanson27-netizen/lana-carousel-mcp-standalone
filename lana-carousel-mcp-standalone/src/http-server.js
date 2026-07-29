@@ -205,11 +205,21 @@ app.patch("/api/projects/:projectId/slides/:slideId/content", (req, res) => {
         boxPaddingX: z.number().min(0).max(120).optional(),
         boxPaddingY: z.number().min(0).max(80).optional(),
         boxWidth: z.number().min(20).max(96).optional(),
+        weight: z.enum(["400", "500", "600", "700", "800", "900"]).optional(),
+        underline: z.boolean().optional(),
         sizeRanges: z.array(z.object({
           start: z.number().int().min(0).max(500),
           end: z.number().int().min(0).max(500),
           size: z.number().min(24).max(220)
-        })).max(30).optional()
+        })).max(30).optional(),
+        styleRanges: z.array(z.object({
+          start: z.number().int().min(0).max(500),
+          end: z.number().int().min(0).max(500),
+          size: z.number().min(24).max(220).optional(),
+          font: z.string().min(1).max(100).optional(),
+          weight: z.enum(["400", "500", "600", "700", "800", "900"]).optional(),
+          underline: z.boolean().optional()
+        })).max(60).optional()
       })).max(10).default([])
     }).parse(req.body);
     res.json(updateSlideContent({ projectId: req.params.projectId, slideId: req.params.slideId, ...body }));

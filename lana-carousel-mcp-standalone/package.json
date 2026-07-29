@@ -1,9 +1,11 @@
 {
   "name": "lana-carousel-mcp-standalone",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node src/http-server.js",
     "mcp": "node src/mcp-server.js",

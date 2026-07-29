@@ -176,3 +176,5 @@ Nhóm quản lý:
 - log và output build
 
 Không commit SSH key, token, database production hoặc thư mục asset.
+
+- Định dạng font, cỡ, độ đậm và gạch chân riêng cho từng vùng bôi đen trong một hộp chữ; có thể chọn nhiều slide đích để áp dụng kiểu mà không ghi đè nội dung.
