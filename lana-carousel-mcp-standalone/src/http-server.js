@@ -1,6 +1,7 @@
 import express from "express";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import archiver from "archiver";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -36,8 +37,14 @@ import {
 
 const app = express();
 const publicDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../public");
+const videoAudioDirectory = path.resolve(path.dirname(config.databasePath), "video-audio");
+await fs.mkdir(videoAudioDirectory,{recursive:true});
+async function purgeExpiredVideoAudio(){const cutoff=Date.now()-7*864e5;for(const entry of await fs.readdir(videoAudioDirectory,{withFileTypes:true})){if(!entry.isFile()||!entry.name.endsWith(".mp3"))continue;const file=path.join(videoAudioDirectory,entry.name),stat=await fs.stat(file).catch(()=>null);if(stat&&stat.mtimeMs<cutoff)await fs.unlink(file).catch(()=>{});}}
+purgeExpiredVideoAudio().catch(()=>{});
+setInterval(()=>purgeExpiredVideoAudio().catch(()=>{}),3600e3).unref();
 app.use(express.json({ limit: "1mb" }));
 app.use("/assets", express.static(config.assetDirectory, { fallthrough: false, immutable: true, maxAge: "1y" }));
+app.use("/video-audio",express.static(videoAudioDirectory,{fallthrough:false,maxAge:"7d"}));
 app.use(express.static(publicDirectory, { index: false, maxAge: "5m" }));
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
@@ -252,6 +259,7 @@ app.patch("/api/projects/:projectId/slides/:slideId/crop", (req, res) => {
 });
 
 
+app.post("/api/projects/:projectId/video-audio",express.raw({type:["audio/mpeg","audio/mp3","application/octet-stream"],limit:"25mb"}),async(req,res)=>{try{getProject(req.params.projectId);if(!Buffer.isBuffer(req.body)||req.body.length<128)throw new Error("File MP3 rong hoac khong hop le.");const header=req.body.subarray(0,3).toString("ascii"),isId3=header==="ID3",isFrame=req.body[0]===0xff&&(req.body[1]&0xe0)===0xe0;if(!isId3&&!isFrame)throw new Error("Chi chap nhan file MP3 hop le.");const name=req.params.projectId+"-"+randomUUID()+".mp3";await fs.writeFile(path.join(videoAudioDirectory,name),req.body,{flag:"wx"});res.status(201).json({url:`${config.publicBaseUrl}/video-audio/${name}`,size:req.body.length});}catch(error){const safe=publicError(error);res.status(safe.status).json(safe);}});
 app.patch("/api/projects/:projectId/video", (req,res)=>{try{const settings=z.object({aspectRatio:z.enum(["vertical","square","landscape"]).default("vertical"),fps:z.number().int().min(24).max(60).default(30),defaultSceneDuration:z.number().min(.5).max(15).default(3),transition:z.enum(["cut","fade","slide","zoom"]).default("fade"),motion:z.enum(["none","zoom-in","zoom-out","pan-left","pan-right","ken-burns","smart-ken-burns"]).default("zoom-in"),textAnimation:z.enum(["none","block","by-line","by-word","typewriter"]).default("none"),audioUrl:z.union([z.string().url(),z.literal("")]).default(""),audioVolume:z.number().min(0).max(1).default(.6),subtitles:z.boolean().default(false),beatSync:z.boolean().default(false),bpm:z.number().min(40).max(240).default(120),ttsEnabled:z.boolean().default(false),ttsProvider:z.enum(["google","gemini","vertex"]).default("google"),ttsVoice:z.string().max(100).default("vi-VN-Neural2-D"),ttsSpeed:z.number().min(.5).max(2).default(1),ttsVolume:z.number().min(0).max(1).default(1),geminiModel:z.enum(["gemini-3.1-flash-tts-preview","gemini-2.5-flash-tts","gemini-2.5-pro-tts","gemini-2.5-flash-preview-tts","gemini-2.5-pro-preview-tts"]).default("gemini-2.5-flash-tts"),geminiMultiSpeaker:z.boolean().default(false),geminiSpeaker1Name:z.string().min(1).max(50).default("Nguoi dan"),geminiSpeaker1Voice:z.string().min(1).max(50).default("Kore"),geminiSpeaker2Name:z.string().min(1).max(50).default("Khach moi"),geminiSpeaker2Voice:z.string().min(1).max(50).default("Puck"),geminiStylePrompt:z.string().max(500).default(""),autoTiming:z.boolean().default(true),smartKenBurns:z.boolean().default(true),kenBurnsIntensity:z.number().min(.04).max(.35).default(.14),subtitleStyle:z.enum(["static","karaoke","word","pop"]).default("karaoke"),subtitlePosition:z.number().min(55).max(94).default(88),layerStagger:z.number().min(0).max(1).default(.12),preset:z.enum(["fashion","tiktok","minimal","editorial"]).default("fashion")}).parse(req.body.settings||{});res.json(updateProjectVideo({projectId:req.params.projectId,enabled:Boolean(req.body.enabled),settings}));}catch(error){const safe=publicError(error);res.status(safe.status).json(safe);}});
 app.patch("/api/projects/:projectId/slides/:slideId/video",(req,res)=>{try{const settings=z.object({enabled:z.boolean().default(true),order:z.number().int().min(0).max(100),duration:z.number().min(.5).max(15),motion:z.enum(["none","zoom-in","zoom-out","pan-left","pan-right","ken-burns","smart-ken-burns"]),transition:z.enum(["cut","fade","slide","zoom"]),textAnimation:z.enum(["none","block","by-line","by-word","typewriter"]),subtitles:z.boolean(),caption:z.string().max(500),speaker:z.enum(["speaker1","speaker2"]),layerAnimations:z.record(z.string(),z.enum(["none","block","by-line","by-word","typewriter"])),focusX:z.number().min(0).max(100),focusY:z.number().min(0).max(100),kenBurnsIntensity:z.number().min(.04).max(.35),subtitleStyle:z.enum(["static","karaoke","word","pop"]),subtitlePosition:z.number().min(55).max(94)}).partial().parse(req.body);res.json(updateSlideVideo({projectId:req.params.projectId,slideId:req.params.slideId,settings}));}catch(error){const safe=publicError(error);res.status(safe.status).json(safe);}});
 app.post("/api/projects/:projectId/video-render-jobs",(req,res)=>{try{res.status(202).json(startVideoRenderJob(req.params.projectId));}catch(error){const safe=publicError(error);res.status(safe.status).json(safe);}});
