@@ -10,6 +10,7 @@ import { config } from "./config.js";
 import { publicError } from "./errors.js";
 import { createMcpServer } from "./mcp-tools.js";
 import { getRenderJob, getRenderJobBuffer, startRenderJob } from "./render-jobs.js";
+import { getVideoRenderFile, getVideoRenderJob, startVideoRenderJob } from "./video-jobs.js";
 import {
   addSlide,
   approveProjectContent,
@@ -28,7 +29,9 @@ import {
   restoreProjectVersion,
   updateBrandKit,
   updateSlideCrop,
-  updateSlideContent
+  updateSlideContent,
+  updateProjectVideo,
+  updateSlideVideo
 } from "./service.js";
 
 const app = express();
@@ -247,6 +250,13 @@ app.patch("/api/projects/:projectId/slides/:slideId/crop", (req, res) => {
     res.json(updateSlideCrop({ projectId: req.params.projectId, slideId: req.params.slideId, ...body }));
   } catch (error) { const safe = publicError(error); res.status(safe.status).json(safe); }
 });
+
+
+app.patch("/api/projects/:projectId/video", (req,res)=>{try{const settings=z.object({aspectRatio:z.enum(["vertical","square","landscape"]).default("vertical"),fps:z.number().int().min(24).max(60).default(30),defaultSceneDuration:z.number().min(.5).max(15).default(3),transition:z.enum(["cut","fade","slide","zoom"]).default("fade"),motion:z.enum(["none","zoom-in","zoom-out","pan-left","pan-right","ken-burns"]).default("zoom-in"),textAnimation:z.enum(["none","block","by-line","by-word","typewriter"]).default("none"),audioUrl:z.union([z.string().url(),z.literal("")]).default(""),audioVolume:z.number().min(0).max(1).default(.6),subtitles:z.boolean().default(false),beatSync:z.boolean().default(false),bpm:z.number().min(40).max(240).default(120),ttsEnabled:z.boolean().default(false),ttsVoice:z.string().max(100).default("vi-VN-Neural2-D"),preset:z.enum(["fashion","tiktok","minimal","editorial"]).default("fashion")}).parse(req.body.settings||{});res.json(updateProjectVideo({projectId:req.params.projectId,enabled:Boolean(req.body.enabled),settings}));}catch(error){const safe=publicError(error);res.status(safe.status).json(safe);}});
+app.patch("/api/projects/:projectId/slides/:slideId/video",(req,res)=>{try{const settings=z.object({enabled:z.boolean().default(true),order:z.number().int().min(0).max(100),duration:z.number().min(.5).max(15),motion:z.enum(["none","zoom-in","zoom-out","pan-left","pan-right","ken-burns"]),transition:z.enum(["cut","fade","slide","zoom"]),textAnimation:z.enum(["none","block","by-line","by-word","typewriter"]),subtitles:z.boolean(),caption:z.string().max(500)}).partial().parse(req.body);res.json(updateSlideVideo({projectId:req.params.projectId,slideId:req.params.slideId,settings}));}catch(error){const safe=publicError(error);res.status(safe.status).json(safe);}});
+app.post("/api/projects/:projectId/video-render-jobs",(req,res)=>{try{res.status(202).json(startVideoRenderJob(req.params.projectId));}catch(error){const safe=publicError(error);res.status(safe.status).json(safe);}});
+app.get("/api/video-render-jobs/:jobId",(req,res)=>{try{res.json(getVideoRenderJob(req.params.jobId));}catch(error){const safe=publicError(error);res.status(safe.status).json(safe);}});
+app.get("/api/video-render-jobs/:jobId/download",(req,res)=>{try{res.download(getVideoRenderFile(req.params.jobId),"lana-video-"+req.params.jobId+".mp4");}catch(error){const safe=publicError(error);res.status(safe.status).json(safe);}});
 
 app.post("/api/projects/:projectId/render-jobs", (req, res) => {
   try { getProject(req.params.projectId); res.status(202).json(startRenderJob(req.params.projectId)); }

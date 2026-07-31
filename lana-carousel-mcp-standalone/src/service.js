@@ -30,7 +30,8 @@ function mapSlide(row) {
     imageGrayscale: row.image_grayscale ?? 0, frameInset: row.frame_inset ?? 40,
     frameWidth: row.frame_width ?? 0, frameColor: row.frame_color || "#FFFFFF",
     frameOpacity: row.frame_opacity ?? 1, frameRadius: row.frame_radius ?? 0,
-    textLayers: (() => { try { return JSON.parse(row.text_layers || "[]"); } catch { return []; } })()
+    textLayers: (() => { try { return JSON.parse(row.text_layers || "[]"); } catch { return []; } })(),
+    video: (() => { try { return JSON.parse(row.video_settings || "{}"); } catch { return {}; } })()
   };
 }
 
@@ -83,6 +84,8 @@ export function getProject(projectId) {
     contentStatus: project.content_status || "PENDING", imageStatus: project.image_status || "PENDING", slideLimit: project.slide_limit || 10,
     createdAt: project.created_at, updatedAt: project.updated_at, expiresAt: project.expires_at,
     brandKit: { font: project.brand_font || "TikTok Sans", color: project.brand_color || "#FFFFFF" },
+    videoEnabled: bool(project.video_enabled),
+    videoSettings: (() => { try { return JSON.parse(project.video_settings || "{}"); } catch { return {}; } })(),
     slides: sql.getSlides.all(projectId).map(mapSlide), assets: sql.getAssets.all(projectId).map(mapAsset)
   };
 }
@@ -527,3 +530,6 @@ export async function getApprovedAssetFiles(projectId) {
     name: `${String(slide.position).padStart(2, "0")}-${slide.subject.replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "")}.webp`
   })));
 }
+
+export function updateProjectVideo({projectId,enabled,settings}) { if(!sql.getProject.get(projectId)) throw new AppError("PROJECT_NOT_FOUND","Không tìm thấy dự án.",404); sql.updateVideoSettings.run(enabled?1:0,JSON.stringify(settings||{}),now(),projectId); saveVersion(projectId,"update_video_settings"); return getProject(projectId); }
+export function updateSlideVideo({projectId,slideId,settings}) { const row=sql.getSlide.get(slideId); if(!row||row.project_id!==projectId) throw new AppError("SLIDE_NOT_FOUND","Không tìm thấy slide.",404); sql.updateSlideVideo.run(JSON.stringify(settings||{}),now(),slideId,projectId); return getProject(projectId); }

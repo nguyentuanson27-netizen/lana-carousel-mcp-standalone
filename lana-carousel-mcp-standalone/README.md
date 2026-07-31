@@ -178,3 +178,19 @@ Nhóm quản lý:
 Không commit SSH key, token, database production hoặc thư mục asset.
 
 - Định dạng font, cỡ, độ đậm và gạch chân riêng cho từng vùng bôi đen trong một hộp chữ; có thể chọn nhiều slide đích để áp dụng kiểu mà không ghi đè nội dung.
+
+
+## Video Remotion tùy chọn
+
+Luồng tải ảnh vẫn hoạt động độc lập. Bước **Video (tùy chọn)** hỗ trợ:
+
+- MP4 9:16, 1:1 và 16:9; 24–60fps.
+- Bật/tắt, sắp xếp và chỉnh thời lượng từng cảnh.
+- Zoom, pan, Ken Burns; cut, fade, slide và zoom transition.
+- Hiệu ứng chữ cả khối, theo dòng, theo từ và typewriter.
+- Nhạc nền HTTPS, âm lượng, phụ đề, BPM/beat sync.
+- Preset Fashion, TikTok, Minimal và Editorial.
+- Google Cloud TTS khi có credentials; fallback tiếng Việt qua Google Translate TTS.
+- Hàng đợi render giới hạn concurrency 1 và tự dọn kết quả sau 14 ngày.
+
+Các API chính: `PATCH /api/projects/:id/video`, `PATCH /api/projects/:id/slides/:slideId/video`, `POST /api/projects/:id/video-render-jobs`.

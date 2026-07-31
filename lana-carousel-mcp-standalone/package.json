@@ -1,6 +1,6 @@
 {
   "name": "lana-carousel-mcp-standalone",
-  "version": "1.8.1",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node src/http-server.js",
     "mcp": "node src/mcp-server.js",
-    "check": "node --check src/config.js && node --check src/db.js && node --check src/ssrf.js && node --check src/image-importer.js && node --check src/service.js && node --check src/mcp-tools.js && node --check src/http-server.js && node --check src/mcp-server.js"
+    "check": "node --check src/config.js && node --check src/db.js && node --check src/ssrf.js && node --check src/image-importer.js && node --check src/service.js && node --check src/mcp-tools.js && node --check src/http-server.js && node --check src/mcp-server.js && node --check src/video-jobs.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.0",
@@ -19,6 +19,13 @@
     "file-type": "^21.0.0",
     "ipaddr.js": "^2.2.0",
     "sharp": "^0.34.3",
-    "zod": "^3.25.0"
+    "zod": "^3.25.0",
+    "@remotion/bundler": "4.0.484",
+    "@remotion/renderer": "4.0.484",
+    "@remotion/transitions": "4.0.484",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "remotion": "4.0.484",
+    "@google-cloud/text-to-speech": "6.4.1"
   }
 }

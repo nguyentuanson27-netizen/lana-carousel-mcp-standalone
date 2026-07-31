@@ -97,7 +97,9 @@ if (!projectColumns.has("expires_at")) {
 for (const [name, definition] of Object.entries({
   brand_font: "TEXT NOT NULL DEFAULT 'TikTok Sans'",
   brand_color: "TEXT NOT NULL DEFAULT '#FFFFFF'",
-  updated_at: "TEXT"
+  updated_at: "TEXT",
+  video_enabled: "INTEGER NOT NULL DEFAULT 0",
+  video_settings: "TEXT"
 })) {
   if (!projectColumns.has(name)) db.exec(`ALTER TABLE projects ADD COLUMN ${name} ${definition}`);
 }
@@ -132,6 +134,7 @@ for (const [name, definition] of Object.entries({
   ,frame_opacity: "REAL NOT NULL DEFAULT 1"
   ,frame_radius: "INTEGER NOT NULL DEFAULT 0"
   ,text_layers: "TEXT"
+  ,video_settings: "TEXT"
 })) {
   if (!slideColumns.has(name)) db.exec(`ALTER TABLE slides ADD COLUMN ${name} ${definition}`);
 }
@@ -228,4 +231,6 @@ export const sql = {
   ,createVersion: db.prepare(`INSERT INTO project_versions (id, project_id, action, snapshot, created_at) VALUES (?, ?, ?, ?, ?)`)
   ,getVersions: db.prepare(`SELECT id, action, created_at FROM project_versions WHERE project_id = ? ORDER BY created_at DESC LIMIT 50`)
   ,getVersion: db.prepare(`SELECT * FROM project_versions WHERE id = ? AND project_id = ?`)
+  ,updateVideoSettings: db.prepare(`UPDATE projects SET video_enabled = ?, video_settings = ?, updated_at = ? WHERE id = ?`)
+  ,updateSlideVideo: db.prepare(`UPDATE slides SET video_settings = ?, updated_at = ? WHERE id = ? AND project_id = ?`)
 };
