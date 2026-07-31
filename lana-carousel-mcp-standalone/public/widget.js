@@ -236,7 +236,7 @@ function render() {
   document.querySelectorAll(".panel").forEach(panel => panel.classList.toggle("active", panel.id === view));
   decorateImageEditors();
   bindDrag();
-  if(view==="video")updateTimelineTotal();
+  if(view==="video"){updateTimelineTotal();const firstVideoRow=document.querySelector(".timeline-scene");if(firstVideoRow)showVideoScene(firstVideoRow);}
 }
 
 async function json(url, options = {}) { const response = await fetch(url, options); const value = await response.json(); if (!response.ok) throw new Error(value.message || "Yêu cầu thất bại"); return value; }
