@@ -20,13 +20,13 @@ function propsFor(project){
   if(cfg.beatSync&&cfg.bpm)duration=Math.max(.5,Math.round(duration/(60/cfg.bpm))*(60/cfg.bpm));
   return{id:slide.id,enabled:s.enabled!==false,order:Number(s.order??index),duration,motion:s.motion||cfg.motion||preset.motion||"zoom-in",transition:s.transition||cfg.transition||preset.transition||"fade",textAnimation:s.textAnimation||cfg.textAnimation||preset.textAnimation||"none",subtitles:s.subtitles??cfg.subtitles??false,caption:s.caption||slide.body,headline:slide.headline,body:slide.body,textLayers:slide.textLayers,imageUrl:asset?.publicUrl||""};
  }).sort((a,b)=>a.order-b.order).filter(s=>s.imageUrl);
- return{scenes,audioUrl:cfg.audioUrl||cfg.ttsAudioUrl||"",audioVolume:Number(cfg.audioVolume??.6),aspectRatio:cfg.aspectRatio||"vertical",fps:Number(cfg.fps||30)};
+ return{scenes,audioUrl:cfg.audioUrl||"",audioVolume:Number(cfg.audioVolume??.6),voiceUrl:"",voiceVolume:Number(cfg.ttsVolume??1),voicePlaybackRate:Number(cfg.ttsSpeed??1),aspectRatio:cfg.aspectRatio||"vertical",fps:Number(cfg.fps||30)};
 }
 async function serveUrl(){bundlePromise??=bundle({entryPoint:path.resolve("video/index.jsx")});return bundlePromise;}
 async function work(job){
  try{
   job.status="RENDERING";job.progress=5;await fs.mkdir(outputDir,{recursive:true});
-  const project=getProject(job.projectId),inputProps=propsFor(project);if(project.videoSettings?.ttsEnabled)inputProps.audioUrl=await generateVideoTtsData(project,project.videoSettings.ttsVoice);if(!inputProps.scenes.length)throw new Error("Không có cảnh đã duyệt để render.");
+  const project=getProject(job.projectId),inputProps=propsFor(project);if(project.videoSettings?.ttsEnabled)inputProps.voiceUrl=await generateVideoTtsData(project,project.videoSettings);if(!inputProps.scenes.length)throw new Error("Không có cảnh đã duyệt để render.");
   const url=await serveUrl();job.progress=20;
   const composition=await selectComposition({serveUrl:url,id:"LanaCarouselVideo",inputProps,browserExecutable:process.env.REMOTION_BROWSER_EXECUTABLE||undefined});
   const output=path.join(outputDir,`${job.id}.mp4`);

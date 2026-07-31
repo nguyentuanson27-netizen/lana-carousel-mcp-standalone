@@ -32,8 +32,8 @@ const Scene=({scene})=>{
   {scene.subtitles?<Caption text={scene.caption||scene.body||scene.headline}/>:null}
  </AbsoluteFill>;
 };
-export const LanaVideo=({scenes=[],audioUrl="",audioVolume=.6})=>{
+export const LanaVideo=({scenes=[],audioUrl="",audioVolume=.6,voiceUrl="",voiceVolume=1,voicePlaybackRate=1})=>{
  const {fps}=useVideoConfig();let cursor=0;
- return <AbsoluteFill style={{background:"#111"}}>{audioUrl?<Audio src={audioUrl} volume={audioVolume}/>:null}{scenes.filter(s=>s.enabled!==false).map(scene=>{const from=cursor;const frames=Math.max(fps,Math.round(scene.duration*fps));cursor+=frames;return <Sequence key={scene.id} from={from} durationInFrames={frames} premountFor={fps}><Scene scene={scene}/></Sequence>})}</AbsoluteFill>;
+ return <AbsoluteFill style={{background:"#111"}}>{audioUrl?<Audio src={audioUrl} volume={audioVolume}/>:null}{voiceUrl?<Audio src={voiceUrl} volume={voiceVolume} playbackRate={voicePlaybackRate}/>:null}{scenes.filter(s=>s.enabled!==false).map(scene=>{const from=cursor;const frames=Math.max(fps,Math.round(scene.duration*fps));cursor+=frames;return <Sequence key={scene.id} from={from} durationInFrames={frames} premountFor={fps}><Scene scene={scene}/></Sequence>})}</AbsoluteFill>;
 };
 export const LanaVideoRoot=()=> <Composition id="LanaCarouselVideo" component={LanaVideo} width={1080} height={1920} fps={30} durationInFrames={300} defaultProps={{scenes:[]}} calculateMetadata={({props})=>{const [width,height]=dims[props.aspectRatio]||dims.vertical;const fps=props.fps||30;const duration=(props.scenes||[]).filter(s=>s.enabled!==false).reduce((n,s)=>n+Number(s.duration||3),0);return{width,height,fps,durationInFrames:Math.max(fps,Math.ceil(duration*fps))}}}/>;
