@@ -10,7 +10,7 @@ import { config } from "./config.js";
 import { publicError } from "./errors.js";
 import { createMcpServer } from "./mcp-tools.js";
 import { getRenderJob, getRenderJobBuffer, startRenderJob } from "./render-jobs.js";
-import { getVideoRenderFile, getVideoRenderJob, startVideoRenderJob } from "./video-jobs.js";
+import { deleteVideoRenderJob, getVideoRenderFile, getVideoRenderJob, startVideoRenderJob } from "./video-jobs.js";
 import {
   addSlide,
   approveProjectContent,
@@ -257,6 +257,7 @@ app.patch("/api/projects/:projectId/slides/:slideId/video",(req,res)=>{try{const
 app.post("/api/projects/:projectId/video-render-jobs",(req,res)=>{try{res.status(202).json(startVideoRenderJob(req.params.projectId));}catch(error){const safe=publicError(error);res.status(safe.status).json(safe);}});
 app.get("/api/video-render-jobs/:jobId",(req,res)=>{try{res.json(getVideoRenderJob(req.params.jobId));}catch(error){const safe=publicError(error);res.status(safe.status).json(safe);}});
 app.get("/api/video-render-jobs/:jobId/download",(req,res)=>{try{res.download(getVideoRenderFile(req.params.jobId),"lana-video-"+req.params.jobId+".mp4");}catch(error){const safe=publicError(error);res.status(safe.status).json(safe);}});
+app.delete("/api/video-render-jobs/:jobId",async(req,res)=>{try{res.json(await deleteVideoRenderJob(req.params.jobId));}catch(error){const safe=publicError(error);res.status(safe.status).json(safe);}});
 
 app.post("/api/projects/:projectId/render-jobs", (req, res) => {
   try { getProject(req.params.projectId); res.status(202).json(startRenderJob(req.params.projectId)); }
