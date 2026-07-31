@@ -6,7 +6,7 @@ import {renderMedia,selectComposition} from "@remotion/renderer";
 import {config} from "./config.js";
 import {AppError} from "./errors.js";
 import {getProject} from "./service.js";
-import {generateVideoTtsData} from "./video-tts.js";
+import {generateVideoTtsTrack} from "./video-tts.js";
 
 const jobs=new Map(),queue=[];let running=false,bundlePromise;
 const outputDir=path.resolve(path.dirname(config.databasePath),"video-renders");
@@ -18,7 +18,8 @@ function propsFor(project){
   const s=slide.video||{},ids=slide.selectedAssetIds?.length?slide.selectedAssetIds:[slide.selectedAssetId].filter(Boolean),asset=assetMap.get(ids[0]);
   let duration=Number(s.duration||cfg.defaultSceneDuration||3);
   if(cfg.beatSync&&cfg.bpm)duration=Math.max(.5,Math.round(duration/(60/cfg.bpm))*(60/cfg.bpm));
-  return{id:slide.id,enabled:s.enabled!==false,order:Number(s.order??index),duration,motion:s.motion||cfg.motion||preset.motion||"zoom-in",transition:s.transition||cfg.transition||preset.transition||"fade",textAnimation:s.textAnimation||cfg.textAnimation||preset.textAnimation||"none",subtitles:s.subtitles??cfg.subtitles??false,caption:s.caption||slide.body,headline:slide.headline,body:slide.body,textLayers:slide.textLayers,imageUrl:asset?.publicUrl||""};
+  const layers=(slide.textLayers||[]).map((layer,layerIndex)=>({...layer,animation:s.layerAnimations?.[layer.id]||s.layerAnimations?.[String(layerIndex)]||layer.animation||s.textAnimation||cfg.textAnimation||preset.textAnimation||"none",animationDelay:Number(layer.animationDelay??layerIndex*(cfg.layerStagger??.12))}));
+  return{id:slide.id,enabled:s.enabled!==false,order:Number(s.order??index),duration,motion:(s.motion==="ken-burns"&&cfg.smartKenBurns)?"smart-ken-burns":s.motion||cfg.motion||preset.motion||"zoom-in",transition:s.transition||cfg.transition||preset.transition||"fade",textAnimation:s.textAnimation||cfg.textAnimation||preset.textAnimation||"none",subtitles:s.subtitles??cfg.subtitles??false,subtitleStyle:s.subtitleStyle||cfg.subtitleStyle||"karaoke",subtitlePosition:Number(s.subtitlePosition??cfg.subtitlePosition??88),caption:s.caption||slide.body||slide.headline,headline:slide.headline,body:slide.body,textLayers:layers,imageUrl:asset?.publicUrl||"",focusX:Number(s.focusX??slide.cropX??50),focusY:Number(s.focusY??slide.cropY??50),kenBurnsIntensity:Number(s.kenBurnsIntensity??cfg.kenBurnsIntensity??.14)};
  }).sort((a,b)=>a.order-b.order).filter(s=>s.imageUrl);
  return{scenes,audioUrl:cfg.audioUrl||"",audioVolume:Number(cfg.audioVolume??.6),voiceUrl:"",voiceVolume:Number(cfg.ttsVolume??1),voicePlaybackRate:Number(cfg.ttsSpeed??1),aspectRatio:cfg.aspectRatio||"vertical",fps:Number(cfg.fps||30)};
 }
@@ -26,7 +27,7 @@ async function serveUrl(){bundlePromise??=bundle({entryPoint:path.resolve("video
 async function work(job){
  try{
   job.status="RENDERING";job.progress=5;await fs.mkdir(outputDir,{recursive:true});
-  const project=getProject(job.projectId),inputProps=propsFor(project);if(project.videoSettings?.ttsEnabled)inputProps.voiceUrl=await generateVideoTtsData(project,project.videoSettings);if(!inputProps.scenes.length)throw new Error("Không có cảnh đã duyệt để render.");
+  const project=getProject(job.projectId),inputProps=propsFor(project);if(project.videoSettings?.ttsEnabled){const track=await generateVideoTtsTrack(project,project.videoSettings);inputProps.voiceUrl=track.dataUrl;if(project.videoSettings.autoTiming!==false&&track.durationSeconds){const active=inputProps.scenes.filter(s=>s.enabled!==false),weights=active.map(s=>Math.max(1,String(s.caption||s.body||s.headline||"").replace(/\s+/gu,"").length)),totalWeight=weights.reduce((a,b)=>a+b,0),target=track.durationSeconds/Math.max(.5,inputProps.voicePlaybackRate);active.forEach((scene,i)=>{scene.duration=Math.max(.8,Math.min(15,target*weights[i]/totalWeight));});}}if(!inputProps.scenes.length)throw new Error("Không có cảnh đã duyệt để render.");
   const url=await serveUrl();job.progress=20;
   const composition=await selectComposition({serveUrl:url,id:"LanaCarouselVideo",inputProps,browserExecutable:process.env.REMOTION_BROWSER_EXECUTABLE||undefined});
   const output=path.join(outputDir,`${job.id}.mp4`);

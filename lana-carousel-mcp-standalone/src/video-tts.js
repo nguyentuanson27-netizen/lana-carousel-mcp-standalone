@@ -44,8 +44,9 @@ async function generateVertex(project,settings){
  const body=await response.json(),part=body?.candidates?.[0]?.content?.parts?.find(p=>p.inlineData?.data||p.inline_data?.data),base64=part?.inlineData?.data||part?.inline_data?.data;
  if(!base64)throw new Error("Vertex AI TTS khong tra ve du lieu am thanh.");
  const mime=part?.inlineData?.mimeType||part?.inline_data?.mime_type||"audio/L16;rate=24000";
- if(/wav/i.test(mime))return `data:audio/wav;base64,${base64}`;
- return `data:audio/wav;base64,${pcmToWav(Buffer.from(base64,"base64")).toString("base64")}`;
+ const pcm=Buffer.from(base64,"base64"),durationSeconds=pcm.length/48000;
+ if(/wav/i.test(mime))return {dataUrl:`data:audio/wav;base64,${base64}`,durationSeconds};
+ return {dataUrl:`data:audio/wav;base64,${pcmToWav(pcm).toString("base64")}`,durationSeconds};
 }
 
 async function generateGoogle(project,settings){
@@ -61,9 +62,13 @@ async function generateGoogle(project,settings){
   for(const chunk of chunks){const url="https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=vi&q="+encodeURIComponent(chunk.trim());const response=await fetch(url,{headers:{"User-Agent":"Mozilla/5.0"}});if(!response.ok)throw new Error("Google TTS fallback loi "+response.status);parts.push(Buffer.from(await response.arrayBuffer()));}
   buffer=Buffer.concat(parts);
  }
- return `data:audio/mpeg;base64,${buffer.toString("base64")}`;
+ const words=text.trim().split(/\s+/u).length;
+ return {dataUrl:`data:audio/mpeg;base64,${buffer.toString("base64")}`,durationSeconds:Math.max(1,words/2.7)};
 }
 
-export async function generateVideoTtsData(project,settings={}){
+export async function generateVideoTtsTrack(project,settings={}){
  return ["gemini","vertex"].includes(settings.ttsProvider)?generateVertex(project,settings):generateGoogle(project,settings);
+}
+export async function generateVideoTtsData(project,settings={}){
+ return (await generateVideoTtsTrack(project,settings)).dataUrl;
 }
