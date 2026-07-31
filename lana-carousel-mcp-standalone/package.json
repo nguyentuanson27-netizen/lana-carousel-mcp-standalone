@@ -1,6 +1,6 @@
 {
   "name": "lana-carousel-mcp-standalone",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "private": true,
   "type": "module",
   "engines": {
@@ -26,6 +26,7 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "remotion": "4.0.484",
-    "@google-cloud/text-to-speech": "6.4.1"
+    "@google-cloud/text-to-speech": "6.4.1",
+    "google-auth-library": "10.5.0"
   }
 }

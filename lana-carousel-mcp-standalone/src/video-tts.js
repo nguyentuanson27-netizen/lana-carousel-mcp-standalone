@@ -1,4 +1,5 @@
 import textToSpeech from "@google-cloud/text-to-speech";
+import {GoogleAuth} from "google-auth-library";
 const {TextToSpeechClient}=textToSpeech;
 
 const enabledSlides=project=>project.slides.filter(s=>(s.video||{}).enabled!==false);
@@ -12,9 +13,12 @@ const pcmToWav=(pcm,sampleRate=24000)=>{
 };
 const voiceConfig=name=>({prebuiltVoiceConfig:{voiceName:name||"Kore"}});
 
-async function generateGemini(project,settings){
- const key=process.env.GEMINI_API_KEY;
- if(!key)throw new Error("Chua cau hinh GEMINI_API_KEY tren VPS.");
+async function generateVertex(project,settings){
+ const auth=new GoogleAuth({scopes:["https://www.googleapis.com/auth/cloud-platform"]});
+ const projectId=process.env.VERTEX_AI_PROJECT||process.env.GOOGLE_CLOUD_PROJECT||await auth.getProjectId();
+ if(!projectId)throw new Error("Chua cau hinh project cho Vertex AI.");
+ const client=await auth.getClient(),tokenResult=await client.getAccessToken(),accessToken=typeof tokenResult==="string"?tokenResult:tokenResult?.token;
+ if(!accessToken)throw new Error("Khong lay duoc access token Vertex AI.");
  const slides=enabledSlides(project).filter(slideText);
  if(!slides.length)return "";
  const multi=Boolean(settings.geminiMultiSpeaker),speaker1=(settings.geminiSpeaker1Name||"Nguoi dan").trim(),speaker2=(settings.geminiSpeaker2Name||"Khach moi").trim();
@@ -26,16 +30,19 @@ async function generateGemini(project,settings){
   {speaker:speaker1,voiceConfig:voiceConfig(settings.geminiSpeaker1Voice||"Kore")},
   {speaker:speaker2,voiceConfig:voiceConfig(settings.geminiSpeaker2Voice||"Puck")}
  ]};else speechConfig.voiceConfig=voiceConfig(settings.geminiSpeaker1Voice||"Kore");
- const model=settings.geminiModel||"gemini-2.5-flash-preview-tts";
+ const legacyModels={"gemini-2.5-flash-preview-tts":"gemini-2.5-flash-tts","gemini-2.5-pro-preview-tts":"gemini-2.5-pro-tts"};
+ const model=legacyModels[settings.geminiModel]||settings.geminiModel||"gemini-2.5-flash-tts",location=process.env.VERTEX_AI_LOCATION||process.env.GOOGLE_CLOUD_LOCATION||"global";
+ const host=location==="global"?"aiplatform.googleapis.com":`${location}-aiplatform.googleapis.com`;
+ const endpoint=`https://${host}/v1/projects/${encodeURIComponent(projectId)}/locations/${encodeURIComponent(location)}/publishers/google/models/${encodeURIComponent(model)}:generateContent`;
  let response;
  for(let attempt=0;attempt<3;attempt++){
-  response=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":key},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseModalities:["AUDIO"],speechConfig}})});
+  response=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${accessToken}`},body:JSON.stringify({contents:[{role:"user",parts:[{text:prompt}]}],generationConfig:{responseModalities:["AUDIO"],speechConfig}})});
   if(response.ok||response.status<500)break;
   await new Promise(resolve=>setTimeout(resolve,400*(attempt+1)));
  }
- if(!response?.ok){const detail=await response.text().catch(()=>"");throw new Error(`Gemini TTS loi ${response?.status||"network"}: ${detail.slice(0,240)}`);}
+ if(!response?.ok){const detail=await response.text().catch(()=>"");throw new Error(`Vertex AI TTS loi ${response?.status||"network"}: ${detail.slice(0,240)}`);}
  const body=await response.json(),part=body?.candidates?.[0]?.content?.parts?.find(p=>p.inlineData?.data||p.inline_data?.data),base64=part?.inlineData?.data||part?.inline_data?.data;
- if(!base64)throw new Error("Gemini TTS khong tra ve du lieu am thanh.");
+ if(!base64)throw new Error("Vertex AI TTS khong tra ve du lieu am thanh.");
  const mime=part?.inlineData?.mimeType||part?.inline_data?.mime_type||"audio/L16;rate=24000";
  if(/wav/i.test(mime))return `data:audio/wav;base64,${base64}`;
  return `data:audio/wav;base64,${pcmToWav(Buffer.from(base64,"base64")).toString("base64")}`;
@@ -58,5 +65,5 @@ async function generateGoogle(project,settings){
 }
 
 export async function generateVideoTtsData(project,settings={}){
- return settings.ttsProvider==="gemini"?generateGemini(project,settings):generateGoogle(project,settings);
+ return ["gemini","vertex"].includes(settings.ttsProvider)?generateVertex(project,settings):generateGoogle(project,settings);
 }
