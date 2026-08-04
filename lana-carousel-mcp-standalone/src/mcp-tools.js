@@ -7,6 +7,8 @@ import {
   updateSlideContent, updateSlideCrop
 } from "./service.js";
 import { getRenderJob, startRenderJob } from "./render-jobs.js";
+import {attachVideoSource,createVideoAnalysisProject,getVideoAnalysisProject,getVideoAnalysisVersions,restoreVideoAnalysisVersion,saveVideoAnalysisScript} from "./video-analysis-service.js";
+import {getVideoAnalysisJob,startVideoAnalysisJob} from "./video-analysis-jobs.js";
 
 function ok(value) {
   return {
@@ -241,5 +243,13 @@ export function createMcpServer() {
   server.tool("list_project_versions", "List up to 50 saved versions for rollback.", { project_id: z.string().uuid() },
     async args => { try { return ok({ versions: getProjectVersions(args.project_id) }); } catch (error) { return fail(error); } });
 
+  server.tool("create_video_analysis_project","Create an independent video analysis project. ChatGPT analyzes the video and only hands approved structured script to Lana. Return studioUrl to the user.",{title:z.string().min(1).max(200),source_url:z.string().url().optional(),source_filename:z.string().max(255).optional()},async a=>{try{return ok(createVideoAnalysisProject({title:a.title,sourceUrl:a.source_url,sourceFilename:a.source_filename}))}catch(e){return fail(e)}});
+  server.tool("get_video_analysis_project","Get source reference, approved script, settings, versions and direct studio link.",{project_id:z.string().uuid()},async a=>{try{return ok(getVideoAnalysisProject(a.project_id))}catch(e){return fail(e)}});
+  server.tool("attach_video_reference","Attach an HTTPS video file reference supplied by ChatGPT or a previously uploaded Lana asset.",{project_id:z.string().uuid(),video_url:z.string().url(),filename:z.string().max(255).default("video.mp4"),mime_type:z.string().max(100).default("video/mp4"),duration:z.number().min(0).default(0)},async a=>{try{return ok(attachVideoSource({projectId:a.project_id,url:a.video_url,filename:a.filename,mime:a.mime_type,duration:a.duration}))}catch(e){return fail(e)}});
+  server.tool("save_approved_video_script","Save a draft or approved voice-over/subtitle script as a new immutable version. Rendering is optional.",{project_id:z.string().uuid(),approved:z.boolean().default(true),version_note:z.string().max(200).optional(),summary:z.string().max(5000).default(""),segments:z.array(z.object({id:z.string().optional(),start:z.number().min(0),end:z.number().positive(),subtitle_text:z.string().max(2000),voice_over_text:z.string().max(4000),speaker:z.enum(["speaker1","speaker2"]).default("speaker1"),enabled:z.boolean().default(true)})).max(500),settings:z.record(z.any()).optional()},async a=>{try{return ok(saveVideoAnalysisScript({projectId:a.project_id,approved:a.approved,note:a.version_note,script:{summary:a.summary,language:"vi-VN",segments:a.segments.map(s=>({id:s.id,start:s.start,end:s.end,subtitleText:s.subtitle_text,voiceOverText:s.voice_over_text,speaker:s.speaker,enabled:s.enabled}))},settings:a.settings||{}}))}catch(e){return fail(e)}});
+  server.tool("list_video_analysis_versions","List immutable script/settings versions.",{project_id:z.string().uuid()},async a=>{try{return ok({versions:getVideoAnalysisVersions(a.project_id)})}catch(e){return fail(e)}});
+  server.tool("restore_video_analysis_version","Restore a version and create a new version recording that restore.",{project_id:z.string().uuid(),version_id:z.string().uuid()},async a=>{try{return ok(restoreVideoAnalysisVersion(a.project_id,a.version_id))}catch(e){return fail(e)}});
+  server.tool("start_video_analysis_render","Start optional subtitle + TTS render. Script must already be approved.",{project_id:z.string().uuid()},async a=>{try{return ok(startVideoAnalysisJob(a.project_id))}catch(e){return fail(e)}});
+  server.tool("get_video_analysis_job","Get render job progress and download URL.",{job_id:z.string().uuid()},async a=>{try{return ok(getVideoAnalysisJob(a.job_id))}catch(e){return fail(e)}});
   return server;
 }

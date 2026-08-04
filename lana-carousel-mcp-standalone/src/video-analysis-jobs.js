@@ -1,0 +1,18 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import {randomUUID} from "node:crypto";
+import {bundle} from "@remotion/bundler";
+import {renderMedia,selectComposition} from "@remotion/renderer";
+import {db} from "./db.js";
+import {AppError} from "./errors.js";
+import {getVideoAnalysisProject,videoAnalysisOutputDir} from "./video-analysis-service.js";
+import {generateVideoTtsTrack} from "./video-tts.js";
+const jobs=new Map(),queue=[];let running=false,bundlePromise;
+const insert=db.prepare(`INSERT INTO video_analysis_jobs(id,project_id,status,progress,created_at,updated_at,expires_at) VALUES(?,?,?,?,?,?,?)`),update=db.prepare(`UPDATE video_analysis_jobs SET status=?,progress=?,error=?,output_path=?,updated_at=? WHERE id=?`),get=db.prepare(`SELECT * FROM video_analysis_jobs WHERE id=?`);
+const publish=j=>({id:j.id,projectId:j.projectId,status:j.status,progress:j.progress,error:j.error||null,downloadUrl:j.status==="READY"?`/api/video-analysis-jobs/${j.id}/download`:null,createdAt:j.createdAt});
+function persist(j){update.run(j.status,j.progress,j.error||null,j.output||null,new Date().toISOString(),j.id)}
+async function work(j){try{j.status="RENDERING";j.progress=5;persist(j);const p=getVideoAnalysisProject(j.projectId);if(p.status!=="APPROVED")throw new Error("Script cần được duyệt trước khi render.");if(!p.source.url)throw new Error("Chưa có video nguồn.");let voiceUrl="";if(p.settings.ttsEnabled){const fake={slides:p.script.segments.filter(s=>s.enabled).map(s=>({headline:s.subtitleText,body:s.voiceOverText,video:{enabled:true,caption:s.voiceOverText,speaker:s.speaker}}))};voiceUrl=(await generateVideoTtsTrack(fake,p.settings)).dataUrl;}const props={sourceVideoUrl:p.source.url,segments:p.script.segments,settings:p.settings,voiceUrl};const serveUrl=await (bundlePromise??=bundle({entryPoint:path.resolve("video/index.jsx")}));j.progress=20;persist(j);const composition=await selectComposition({serveUrl,id:"LanaAnalyzedVideo",inputProps:props,browserExecutable:process.env.REMOTION_BROWSER_EXECUTABLE||undefined});const output=path.join(videoAnalysisOutputDir,`${j.id}.mp4`);await renderMedia({composition,serveUrl,codec:"h264",outputLocation:output,inputProps:props,concurrency:1,crf:20,chromiumOptions:{disableWebSecurity:true},onProgress:({progress})=>{j.progress=20+Math.round(progress*78);persist(j)}});j.output=output;j.status="READY";j.progress=100;persist(j)}catch(e){j.status="FAILED";j.error=String(e.message||e).slice(0,500);persist(j)}}
+async function drain(){if(running)return;running=true;while(queue.length)await work(queue.shift());running=false}
+export function startVideoAnalysisJob(projectId){getVideoAnalysisProject(projectId);const j={id:randomUUID(),projectId,status:"QUEUED",progress:0,createdAt:new Date().toISOString()};jobs.set(j.id,j);insert.run(j.id,projectId,j.status,0,j.createdAt,j.createdAt,new Date(Date.now()+7*864e5).toISOString());queue.push(j);queueMicrotask(drain);return publish(j)}
+export function getVideoAnalysisJob(id){const live=jobs.get(id);if(live)return publish(live);const r=get.get(id);if(!r)throw new AppError("VIDEO_ANALYSIS_JOB_NOT_FOUND","Không tìm thấy job.",404);return{id:r.id,projectId:r.project_id,status:r.status,progress:r.progress,error:r.error,downloadUrl:r.status==="READY"?`/api/video-analysis-jobs/${r.id}/download`:null,createdAt:r.created_at}}
+export function getVideoAnalysisFile(id){const live=jobs.get(id),r=live||get.get(id);const output=live?.output||r?.output_path,status=live?.status||r?.status;if(status!=="READY"||!output)throw new AppError("VIDEO_ANALYSIS_JOB_NOT_READY","Video chưa sẵn sàng.",409);return output}

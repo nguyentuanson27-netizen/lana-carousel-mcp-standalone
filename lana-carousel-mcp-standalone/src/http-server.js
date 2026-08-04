@@ -12,6 +12,9 @@ import { publicError } from "./errors.js";
 import { createMcpServer } from "./mcp-tools.js";
 import { getRenderJob, getRenderJobBuffer, startRenderJob } from "./render-jobs.js";
 import { deleteVideoRenderJob, getVideoRenderFile, getVideoRenderJob, startVideoRenderJob } from "./video-jobs.js";
+import {attachVideoSource,createVideoAnalysisProject,getVideoAnalysisProject,getVideoAnalysisVersions,listVideoAnalysisProjects,restoreVideoAnalysisVersion,saveVideoAnalysisScript,videoAnalysisAssetDir,purgeExpiredVideoAnalysis} from "./video-analysis-service.js";
+import {getVideoAnalysisFile,getVideoAnalysisJob,startVideoAnalysisJob} from "./video-analysis-jobs.js";
+import {videoAnalysisRouter} from "./video-analysis-routes.js";
 import {
   addSlide,
   approveProjectContent,
@@ -43,13 +46,16 @@ async function purgeExpiredVideoAudio(){const cutoff=Date.now()-7*864e5;for(cons
 purgeExpiredVideoAudio().catch(()=>{});
 setInterval(()=>purgeExpiredVideoAudio().catch(()=>{}),3600e3).unref();
 app.use(express.json({ limit: "1mb" }));
+app.use("/api/video-analysis",videoAnalysisRouter);
 app.use("/assets", express.static(config.assetDirectory, { fallthrough: false, immutable: true, maxAge: "1y" }));
 app.use("/video-audio",express.static(videoAudioDirectory,{fallthrough:false,maxAge:"7d"}));
+app.use("/video-analysis-assets",express.static(videoAnalysisAssetDir,{fallthrough:false,maxAge:"14d"}));
 app.use(express.static(publicDirectory, { index: false, maxAge: "5m" }));
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 app.get("/widget", (_req, res) => res.sendFile(path.join(publicDirectory, "widget.html")));
 app.get("/projects", (_req, res) => res.sendFile(path.join(publicDirectory, "projects.html")));
+app.get("/video-studio",(_req,res)=>res.sendFile(path.join(publicDirectory,"video-studio.html")));
 
 const mcpTransports = new Map();
 
@@ -335,6 +341,7 @@ app.listen(config.port, () => {
 });
 
 purgeExpiredProjects().catch(error => console.error("Initial project expiry cleanup failed", error));
+purgeExpiredVideoAnalysis().catch(error=>console.error("Initial video analysis cleanup failed",error));
 const expiryTimer = setInterval(() => {
   purgeExpiredProjects().catch(error => console.error("Scheduled project expiry cleanup failed", error));
 }, 6 * 60 * 60 * 1000);
