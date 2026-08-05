@@ -87,7 +87,7 @@
         <div class="grid">
           <label><span><input id="ttsEnabled" type="checkbox"> Bật TTS</span></label>
           <label>Nhà cung cấp<select id="ttsProvider"><option value="vertex">Vertex Gemini</option><option value="google">Google TTS</option></select></label>
-          <label>Tốc độ đọc<div class="range-control"><input id="ttsSpeed" type="range" min=".5" max="2" step=".05"><output id="ttsSpeedValue">1.00×</output></div></label>
+          <label>Tốc độ đọc<div class="range-control"><select id="ttsSpeed"><option value="0.8">Chậm (x0.8)</option><option value="1">Bình thường (x1)</option><option value="1.2">Nhanh (x1.2)</option><option value="1.5">Rất nhanh (x1.5)</option><option value="1.8">Siêu nhanh (x1.8)</option><option value="2">Tối đa (x2)</option></select><output id="ttsSpeedValue">1.00×</output></div></label>
           <label>Giọng<select id="voice"><option>Kore</option><option>Puck</option><option>Aoede</option><option>Charon</option><option>Fenrir</option></select></label>
           <label>Âm lượng video<div class="range-control"><input id="originalVolume" type="range" min="0" max="1" step=".05"><output id="originalVolumeValue">25%</output></div></label>
           <label>Âm lượng TTS<div class="range-control"><input id="ttsVolume" type="range" min="0" max="1" step=".05"><output id="ttsVolumeValue">100%</output></div></label>
