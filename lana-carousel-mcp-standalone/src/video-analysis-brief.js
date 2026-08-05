@@ -17,8 +17,20 @@ export const VIDEO_TONE_STYLES = [
 
 export const VIDEO_TTS_SPEEDS = [0.8, 1, 1.2, 1.5, 1.8, 2];
 export const VIDEO_SCRIPT_OPTION_IDS = ["natural_full", "punchy_short"];
+export const VIDEO_EDITABLE_SETTING_KEYS = [
+  "ttsEnabled", "ttsProvider", "ttsSpeed", "ttsVolume", "ttsVoice",
+  "originalAudioVolume", "subtitleEnabled", "subtitleFont", "subtitleSize",
+  "subtitleColor", "subtitleBackgroundColor", "subtitleBackgroundOpacity",
+  "subtitleX", "subtitlePosition", "subtitleStyle", "geminiSpeaker1Voice",
+  "geminiSpeaker2Voice", "geminiSpeaker1Name", "geminiSpeaker2Name",
+  "geminiMultiSpeaker", "geminiModel"
+];
 export const BASE_WORDS_PER_SECOND = 2.5;
 export const WORD_BUDGET_SAFETY_FACTOR = 0.85;
+
+const TIMELINE_TOLERANCE_SECONDS = 0.001;
+const MIN_DIFFERENT_SEGMENT_RATIO = 0.5;
+const MIN_PUNCHY_WORD_REDUCTION_RATIO = 0.1;
 
 const TONE_PROMPTS = {
   humorous: "Đọc tiếng Việt tự nhiên, hài hước, có nhịp và nhấn đúng punchline.",
@@ -89,6 +101,14 @@ export function getVideoTonePrompt(toneStyle) {
   return TONE_PROMPTS[toneStyle] || TONE_PROMPTS.friendly;
 }
 
+export function sanitizeVideoAnalysisEditableSettings(settings = {}) {
+  const sanitized = {};
+  for (const key of VIDEO_EDITABLE_SETTING_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(settings, key)) sanitized[key] = settings[key];
+  }
+  return sanitized;
+}
+
 export function countVideoWords(value) {
   return String(value || "").trim().split(/\s+/u).filter(Boolean).length;
 }
@@ -97,17 +117,90 @@ const optionTargets = optionId => optionId === "natural_full"
   ? {min: 0.8, max: 0.9}
   : {min: 0.55, max: 0.7};
 
+const normalizeText = value => String(value || "")
+  .normalize("NFKC")
+  .toLocaleLowerCase("vi-VN")
+  .replace(/[^\p{L}\p{N}]+/gu, " ")
+  .trim();
+
+const segmentContent = segment => normalizeText(`${segment.subtitleText} ${segment.voiceOverText}`);
+
 const normalizeOption = option => ({
   optionId: option.optionId || option.option_id,
   label: String(option.label || "").trim(),
-  segments: (option.segments || []).map((segment, index) => ({
-    id: segment.id || `segment-${index + 1}`,
+  segments: (option.segments || []).map(segment => ({
+    id: String(segment.id || "").trim(),
     start: Number(segment.start),
     end: Number(segment.end),
-    subtitleText: String(segment.subtitleText ?? segment.subtitle_text ?? ""),
-    voiceOverText: String(segment.voiceOverText ?? segment.voice_over_text ?? "")
+    subtitleText: String(segment.subtitleText ?? segment.subtitle_text ?? "").trim(),
+    voiceOverText: String(segment.voiceOverText ?? segment.voice_over_text ?? "").trim(),
+    speaker: segment.speaker || "speaker1",
+    enabled: segment.enabled !== false
   }))
 });
+
+function validateOptionSegments(option) {
+  if (!option.segments.length) {
+    throw new AppError("EMPTY_VIDEO_SCRIPT_OPTION", `Phương án ${option.optionId} phải có ít nhất một đoạn.`, 422);
+  }
+
+  const ids = new Set();
+  for (const segment of option.segments) {
+    if (!segment.id) {
+      throw new AppError("VIDEO_SCRIPT_SEGMENT_ID_REQUIRED", "Mỗi đoạn trong hai phương án phải có segment id ổn định.", 422);
+    }
+    if (ids.has(segment.id)) {
+      throw new AppError("DUPLICATE_VIDEO_SCRIPT_SEGMENT_ID", `Segment id ${segment.id} bị trùng trong phương án ${option.optionId}.`, 422);
+    }
+    ids.add(segment.id);
+    if (!(segment.start >= 0) || !(segment.end > segment.start)) {
+      throw new AppError("INVALID_SEGMENT_TIME", "Thời gian kết thúc phải lớn hơn thời gian bắt đầu.", 422);
+    }
+    if (!segment.subtitleText || !segment.voiceOverText) {
+      throw new AppError("EMPTY_VIDEO_SCRIPT_SEGMENT", "Mỗi đoạn phải có cả phụ đề và voice-over.", 422);
+    }
+  }
+}
+
+function validateSharedTimeline(naturalOption, punchyOption) {
+  if (naturalOption.segments.length !== punchyOption.segments.length) {
+    throw new AppError("VIDEO_SCRIPT_TIMELINE_MISMATCH", "Hai phương án phải dùng cùng số lượng đoạn và cùng timeline.", 422);
+  }
+
+  for (let index = 0; index < naturalOption.segments.length; index += 1) {
+    const natural = naturalOption.segments[index];
+    const punchy = punchyOption.segments[index];
+    const sameTime = Math.abs(natural.start - punchy.start) <= TIMELINE_TOLERANCE_SECONDS
+      && Math.abs(natural.end - punchy.end) <= TIMELINE_TOLERANCE_SECONDS;
+    if (natural.id !== punchy.id || !sameTime) {
+      throw new AppError(
+        "VIDEO_SCRIPT_TIMELINE_MISMATCH",
+        `Hai phương án phải dùng cùng segment id và timestamp tại vị trí ${index + 1}.`,
+        422
+      );
+    }
+  }
+}
+
+function validateDistinctOptions(naturalOption, punchyOption) {
+  const naturalWords = naturalOption.segments.reduce((total, segment) => total + countVideoWords(segment.voiceOverText || segment.subtitleText), 0);
+  const punchyWords = punchyOption.segments.reduce((total, segment) => total + countVideoWords(segment.voiceOverText || segment.subtitleText), 0);
+  const differentSegments = naturalOption.segments.reduce((total, segment, index) => (
+    total + (segmentContent(segment) !== segmentContent(punchyOption.segments[index]) ? 1 : 0)
+  ), 0);
+  const requiredDifferentSegments = Math.max(1, Math.ceil(naturalOption.segments.length * MIN_DIFFERENT_SEGMENT_RATIO));
+  const requiredWordGap = naturalWords >= 10
+    ? Math.max(1, Math.ceil(naturalWords * MIN_PUNCHY_WORD_REDUCTION_RATIO))
+    : 1;
+
+  if (differentSegments < requiredDifferentSegments || naturalWords - punchyWords < requiredWordGap) {
+    throw new AppError(
+      "VIDEO_SCRIPT_OPTIONS_TOO_SIMILAR",
+      "Phương án punchy_short phải ngắn hơn và khác rõ ràng về nội dung ở ít nhất một nửa số đoạn.",
+      422
+    );
+  }
+}
 
 export function evaluateVideoScriptOptions({brief, options}) {
   const analysisBrief = normalizeVideoAnalysisBrief(brief);
@@ -125,6 +218,12 @@ export function evaluateVideoScriptOptions({brief, options}) {
     );
   }
 
+  for (const option of normalizedOptions) validateOptionSegments(option);
+  const naturalOption = normalizedOptions.find(option => option.optionId === "natural_full");
+  const punchyOption = normalizedOptions.find(option => option.optionId === "punchy_short");
+  validateSharedTimeline(naturalOption, punchyOption);
+  validateDistinctOptions(naturalOption, punchyOption);
+
   const evaluatedOptions = normalizedOptions.map(option => {
     const target = optionTargets(option.optionId);
     let totalWords = 0;
@@ -132,9 +231,6 @@ export function evaluateVideoScriptOptions({brief, options}) {
     let overBudgetSegments = 0;
 
     const segments = option.segments.map(segment => {
-      if (!(segment.start >= 0) || !(segment.end > segment.start)) {
-        throw new AppError("INVALID_SEGMENT_TIME", "Thời gian kết thúc phải lớn hơn thời gian bắt đầu.", 422);
-      }
       const duration = segment.end - segment.start;
       const maxWords = Math.max(1, Math.floor(duration * BASE_WORDS_PER_SECOND * analysisBrief.ttsSpeed * WORD_BUDGET_SAFETY_FACTOR));
       const recommendedMinWords = Math.max(1, Math.floor(maxWords * target.min));
