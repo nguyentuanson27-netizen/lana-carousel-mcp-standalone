@@ -15,6 +15,7 @@ import {
 import {
   attachVideoSource,
   createVideoAnalysisProject,
+  deleteVideoAnalysisProject,
   getVideoAnalysisProject,
   getVideoAnalysisVersions,
   listVideoAnalysisProjects,
@@ -88,6 +89,7 @@ videoAnalysisRouter.post("/projects",safe((req,res)=>{
 
 videoAnalysisRouter.get("/projects",safe((_req,res)=>res.json({projects:listVideoAnalysisProjects()})));
 videoAnalysisRouter.get("/projects/:id",safe((req,res)=>res.json(getVideoAnalysisProject(req.params.id))));
+videoAnalysisRouter.delete("/projects/:id",safe(async(req,res)=>res.json(await deleteVideoAnalysisProject(req.params.id))));
 
 videoAnalysisRouter.put("/projects/:id/source-reference",safe((req,res)=>{
  const body=z.object({
