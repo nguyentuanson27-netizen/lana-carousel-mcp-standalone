@@ -53,6 +53,50 @@ test("requires non-empty aligned and distinct natural_full and punchy_short opti
   assert.throws(()=>evaluateVideoScriptOptions({brief,options:identical}),error=>error.code==="VIDEO_SCRIPT_OPTIONS_TOO_SIMILAR");
 });
 
+test("requires matching enabled flags and evaluates only enabled segments",()=>{
+  const enabledMismatch=validOptions();
+  enabledMismatch[0].segments[1].enabled=false;
+  assert.throws(
+    ()=>evaluateVideoScriptOptions({brief,options:enabledMismatch}),
+    error=>error.code==="VIDEO_SCRIPT_ENABLED_STATE_MISMATCH"
+  );
+
+  const disabledSecondScene=validOptions();
+  disabledSecondScene[0].segments[1].enabled=false;
+  disabledSecondScene[1].segments[1].enabled=false;
+  const result=evaluateVideoScriptOptions({brief,options:disabledSecondScene});
+  for(const option of result.options){
+    assert.equal(option.segments[1].fitStatus,"disabled");
+    assert.equal(option.segments[1].wordCount,0);
+    assert.equal(option.segments[1].maxWords,0);
+    assert.equal(option.totalWords,option.segments[0].wordCount);
+    assert.equal(option.totalBudget,option.segments[0].maxWords);
+  }
+
+  const allDisabled=validOptions();
+  for(const option of allDisabled){
+    for(const segment of option.segments)segment.enabled=false;
+  }
+  assert.throws(
+    ()=>evaluateVideoScriptOptions({brief,options:allDisabled}),
+    error=>error.code==="VIDEO_SCRIPT_OPTIONS_NO_ENABLED_SEGMENTS"
+  );
+});
+
+test("rejects options that differ only in disabled segments",()=>{
+  const options=validOptions();
+  options[1].segments[0]=structuredClone(options[0].segments[0]);
+  options[0].segments[1].enabled=false;
+  options[1].segments[1].enabled=false;
+  options[0].segments[1].voiceOverText="Nội dung dài khác biệt nhưng không được render vì segment này đã tắt";
+  options[1].segments[1].voiceOverText="Ngắn";
+
+  assert.throws(
+    ()=>evaluateVideoScriptOptions({brief,options}),
+    error=>error.code==="VIDEO_SCRIPT_OPTIONS_TOO_SIMILAR"
+  );
+});
+
 test("whitelists editable settings and drops server-managed fields",()=>{
   assert.deepEqual(
     sanitizeVideoAnalysisEditableSettings({ttsEnabled:true,subtitleSize:60,analysisBrief:{ttsSpeed:2},selectedScriptOption:"punchy_short",preparedScriptOptions:{id:"x"},unknown:true}),
