@@ -4,6 +4,7 @@ const {TextToSpeechClient}=textToSpeech;
 
 const enabledSlides=project=>project.slides.filter(s=>(s.video||{}).enabled!==false);
 const slideText=slide=>(slide.video||{}).caption||slide.body||slide.headline||"";
+const emptyTrack=()=>({dataUrl:"",durationSeconds:0});
 const pcmToWav=(pcm,sampleRate=24000)=>{
  const header=Buffer.alloc(44),dataSize=pcm.length;
  header.write("RIFF",0);header.writeUInt32LE(36+dataSize,4);header.write("WAVE",8);header.write("fmt ",12);
@@ -20,7 +21,7 @@ async function generateVertex(project,settings){
  const client=await auth.getClient(),tokenResult=await client.getAccessToken(),accessToken=typeof tokenResult==="string"?tokenResult:tokenResult?.token;
  if(!accessToken)throw new Error("Khong lay duoc access token Vertex AI.");
  const slides=enabledSlides(project).filter(slideText);
- if(!slides.length)return "";
+ if(!slides.length)return emptyTrack();
  const multi=Boolean(settings.geminiMultiSpeaker),speaker1=(settings.geminiSpeaker1Name||"Nguoi dan").trim(),speaker2=(settings.geminiSpeaker2Name||"Khach moi").trim();
  const transcript=multi?slides.map((s,i)=>`${(s.video||{}).speaker==="speaker2"?speaker2:(s.video||{}).speaker==="speaker1"?speaker1:i%2?speaker2:speaker1}: ${slideText(s)}`).join("\n"):slides.map(slideText).join(". ");
  const pace=Number(settings.ttsSpeed||1),style=(settings.geminiStylePrompt||"Doc tieng Viet tu nhien, ro rang, phu hop video mang xa hoi.").trim();
@@ -51,7 +52,7 @@ async function generateVertex(project,settings){
 
 async function generateGoogle(project,settings){
  const text=enabledSlides(project).map(slideText).filter(Boolean).join(". ");
- if(!text)return "";
+ if(!text)return emptyTrack();
  let buffer;
  if(process.env.GOOGLE_APPLICATION_CREDENTIALS||process.env.GOOGLE_CLOUD_PROJECT){
   const client=new TextToSpeechClient();
@@ -70,5 +71,5 @@ export async function generateVideoTtsTrack(project,settings={}){
  return ["gemini","vertex"].includes(settings.ttsProvider)?generateVertex(project,settings):generateGoogle(project,settings);
 }
 export async function generateVideoTtsData(project,settings={}){
- return (await generateVideoTtsTrack(project,settings)).dataUrl;
+ return (await generateVideoTtsTrack(project,settings))?.dataUrl||"";
 }

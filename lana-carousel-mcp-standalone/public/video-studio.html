@@ -1,3 +1,115 @@
-<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Video Analysis Studio</title><style>
-:root{--red:#963f3b;--paper:#faf7f2;--line:#dfd3c8}*{box-sizing:border-box}body{margin:0;background:#eee8e0;color:#241d18;font:15px Arial,sans-serif}header{padding:18px 28px;background:#fff;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}h1,h2{font-family:Georgia,serif;margin:0}.layout{display:grid;grid-template-columns:minmax(340px,42%) 1fr;gap:18px;padding:20px;align-items:start}.preview{position:sticky;top:16px;background:#171717;border-radius:20px;padding:14px}.stage{aspect-ratio:9/16;max-height:78vh;margin:auto;position:relative;background:#000}.stage video{width:100%;height:100%;object-fit:contain}.caption{position:absolute;left:6%;right:6%;transform:translateY(-50%);padding:12px 16px;border-radius:14px;text-align:center;font-weight:700;line-height:1.2}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.panel,details{background:#fff;border:1px solid var(--line);border-radius:16px;margin-bottom:12px;padding:16px}summary{font-weight:700;cursor:pointer}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}label{display:grid;gap:6px;color:#6c5a4d}input,textarea,select,button{font:inherit;padding:11px;border:1px solid var(--line);border-radius:10px;background:#fff}textarea{min-height:90px;resize:vertical}button.primary{background:var(--red);color:#fff;border:0;font-weight:700}.segments{display:grid;gap:10px}.segment{border:1px solid var(--line);border-radius:12px;padding:12px;display:grid;grid-template-columns:80px 80px 1fr 1fr;gap:8px}.versions{display:grid;gap:6px}.muted{color:#806f63;font-size:13px}.status{color:#fff;margin-top:8px}.full{grid-column:1/-1}@media(max-width:900px){.layout{grid-template-columns:1fr}.preview{position:relative}.segment{grid-template-columns:1fr 1fr}.segment textarea{grid-column:1/-1}}
-</style></head><body><header><div><div class="muted">LANA MCP · ĐỘC LẬP VỚI CAROUSEL</div><h1>Video Analysis Studio</h1></div><button id="newBtn">Dự án mới</button></header><main class="layout"><aside class="preview"><div class="stage"><video id="video" controls></video><div id="caption" class="caption" hidden></div></div><div id="job" class="status">Chưa render</div><div class="actions"><button class="primary" id="save">Lưu bản nháp</button><button id="approve">Duyệt script</button><button class="primary" id="render">Render MP4</button><a id="download" hidden><button>Tải MP4</button></a></div></aside><section><div class="panel"><h2 id="title">Dự án video</h2><p class="muted">ChatGPT phân tích và duyệt script; Lana lưu asset, phiên bản và render.</p><div class="grid"><label class="full">Tải video nguồn<input id="upload" type="file" accept="video/mp4,video/webm,video/quicktime"></label><label class="full">Hoặc URL HTTPS<input id="sourceUrl" placeholder="https://.../video.mp4"></label><button id="attach">Gắn URL video</button><span id="sourceInfo" class="muted"></span></div></div><details open><summary>Script đã duyệt / voice-over / phụ đề</summary><div class="grid"><label class="full">Tóm tắt<textarea id="summary"></textarea></label><div class="full"><button id="addSegment">+ Thêm đoạn</button></div><div id="segments" class="segments full"></div></div></details><details open><summary>Giọng đọc và âm thanh</summary><div class="grid"><label><span><input id="ttsEnabled" type="checkbox"> Bật TTS</span></label><label>Nhà cung cấp<select id="ttsProvider"><option value="vertex">Vertex Gemini</option><option value="google">Google TTS</option></select></label><label>Tốc độ đọc<input id="ttsSpeed" type="range" min=".5" max="2" step=".05"></label><label>Giọng<select id="voice"><option>Kore</option><option>Puck</option><option>Aoede</option><option>Charon</option><option>Fenrir</option></select></label><label>Âm lượng video<input id="originalVolume" type="range" min="0" max="1" step=".05"></label><label>Âm lượng TTS<input id="ttsVolume" type="range" min="0" max="1" step=".05"></label></div></details><details open><summary>Kiểu phụ đề realtime</summary><div class="grid"><label><span><input id="subtitleEnabled" type="checkbox"> Hiện phụ đề</span></label><label>Kiểu<select id="subtitleStyle"><option value="karaoke">Karaoke</option><option value="static">Tĩnh</option></select></label><label>Font<select id="subtitleFont"><option>TikTok Sans</option><option>Montserrat</option><option>Poppins</option><option>Roboto</option><option>Playfair Display</option></select></label><label>Cỡ chữ<input id="subtitleSize" type="range" min="20" max="96"></label><label>Màu chữ<input id="subtitleColor" type="color"></label><label>Màu nền<input id="subtitleBg" type="color"></label><label>Độ mờ nền<input id="subtitleOpacity" type="range" min="0" max="1" step=".05"></label><label>Vị trí<input id="subtitlePosition" type="range" min="55" max="94"></label></div></details><details><summary>Lịch sử phiên bản</summary><div id="versions" class="versions"></div></details></section></main><script src="/video-studio.js"></script></body></html>
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Video Analysis Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&family=Playfair+Display:wght@400;700&family=Poppins:wght@400;700&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root{--red:#963f3b;--paper:#faf7f2;--line:#dfd3c8}
+    *{box-sizing:border-box}
+    body{margin:0;background:#eee8e0;color:#241d18;font:15px Arial,sans-serif}
+    header{padding:18px 28px;background:#fff;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+    h1,h2{font-family:Georgia,serif;margin:0}
+    .layout{display:grid;grid-template-columns:minmax(340px,42%) 1fr;gap:18px;padding:20px;align-items:start}
+    .preview{position:sticky;top:16px;background:#171717;border-radius:20px;padding:14px}
+    .stage{aspect-ratio:9/16;max-height:78vh;margin:auto;position:relative;background:#000;overflow:hidden;touch-action:none}
+    .stage video{width:100%;height:100%;object-fit:contain}
+    .caption{position:absolute;left:50%;top:86%;width:88%;transform:translate(-50%,-50%);padding:12px 16px;border-radius:14px;text-align:center;font-weight:700;line-height:1.2;cursor:grab;user-select:none;touch-action:none;white-space:pre-wrap;overflow-wrap:anywhere}
+    .caption.dragging{cursor:grabbing;outline:2px dashed rgba(255,255,255,.85);outline-offset:4px}
+    .caption.word-mode{width:auto;max-width:88%;min-width:76px}
+    .caption .active-word{color:#ffdf70}
+    .caption.word-mode .active-word{color:inherit;display:inline-block;transform:scale(1.06)}
+    .preview-hint{color:#d7cbc1;font-size:12px;text-align:center;margin-top:8px}
+    .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+    .panel,details{background:#fff;border:1px solid var(--line);border-radius:16px;margin-bottom:12px;padding:16px}
+    summary{font-weight:700;cursor:pointer}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+    label{display:grid;gap:6px;color:#6c5a4d}
+    input,textarea,select,button{font:inherit;padding:11px;border:1px solid var(--line);border-radius:10px;background:#fff}
+    input[type="range"]{padding:0;border:0;border-radius:0;min-width:0}
+    textarea{min-height:90px;resize:vertical}
+    button.primary{background:var(--red);color:#fff;border:0;font-weight:700}
+    button:disabled{opacity:.55;cursor:not-allowed}
+    .segments{display:grid;gap:10px}
+    .segment{border:1px solid var(--line);border-radius:12px;padding:12px;display:grid;grid-template-columns:80px 80px 1fr 1fr;gap:8px}
+    .versions{display:grid;gap:6px}
+    .muted{color:#806f63;font-size:13px}
+    .status{color:#fff;margin-top:8px}
+    .full{grid-column:1/-1}
+    .range-control{display:grid;grid-template-columns:minmax(0,1fr) 64px;gap:10px;align-items:center}
+    .range-control output{font-variant-numeric:tabular-nums;text-align:right;color:#4f4036;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:6px 8px;white-space:nowrap}
+    @media(max-width:900px){.layout{grid-template-columns:1fr}.preview{position:relative}.segment{grid-template-columns:1fr 1fr}.segment textarea{grid-column:1/-1}}
+  </style>
+</head>
+<body>
+  <header>
+    <div><div class="muted">LANA MCP · ĐỘC LẬP VỚI CAROUSEL</div><h1>Video Analysis Studio</h1></div>
+    <button id="newBtn">Dự án mới</button>
+  </header>
+  <main class="layout">
+    <aside class="preview">
+      <div class="stage" id="stage">
+        <video id="video" controls></video>
+        <div id="caption" class="caption" hidden></div>
+      </div>
+      <div class="preview-hint">Kéo phụ đề trực tiếp trên video để đổi vị trí.</div>
+      <div id="job" class="status">Chưa render</div>
+      <div class="actions">
+        <button class="primary" id="save">Lưu bản nháp</button>
+        <button id="approve">Duyệt script</button>
+        <button class="primary" id="render">Render MP4</button>
+        <a id="download" hidden><button>Tải MP4</button></a>
+      </div>
+    </aside>
+    <section>
+      <div class="panel">
+        <h2 id="title">Dự án video</h2>
+        <p class="muted">ChatGPT phân tích và duyệt script; Lana lưu asset, phiên bản và render.</p>
+        <div class="grid">
+          <label class="full">Tải video nguồn<input id="upload" type="file" accept="video/mp4,video/webm,video/quicktime"></label>
+          <label class="full">Hoặc URL HTTPS<input id="sourceUrl" placeholder="https://.../video.mp4"></label>
+          <button id="attach">Gắn URL video</button><span id="sourceInfo" class="muted"></span>
+        </div>
+      </div>
+      <details open>
+        <summary>Script đã duyệt / voice-over / phụ đề</summary>
+        <div class="grid">
+          <label class="full">Tóm tắt<textarea id="summary"></textarea></label>
+          <div class="full"><button id="addSegment">+ Thêm đoạn</button></div>
+          <div id="segments" class="segments full"></div>
+        </div>
+      </details>
+      <details open>
+        <summary>Giọng đọc và âm thanh</summary>
+        <div class="grid">
+          <label><span><input id="ttsEnabled" type="checkbox"> Bật TTS</span></label>
+          <label>Nhà cung cấp<select id="ttsProvider"><option value="vertex">Vertex Gemini</option><option value="google">Google TTS</option></select></label>
+          <label>Tốc độ đọc<div class="range-control"><input id="ttsSpeed" type="range" min=".5" max="2" step=".05"><output id="ttsSpeedValue">1.00×</output></div></label>
+          <label>Giọng<select id="voice"><option>Kore</option><option>Puck</option><option>Aoede</option><option>Charon</option><option>Fenrir</option></select></label>
+          <label>Âm lượng video<div class="range-control"><input id="originalVolume" type="range" min="0" max="1" step=".05"><output id="originalVolumeValue">25%</output></div></label>
+          <label>Âm lượng TTS<div class="range-control"><input id="ttsVolume" type="range" min="0" max="1" step=".05"><output id="ttsVolumeValue">100%</output></div></label>
+        </div>
+      </details>
+      <details open>
+        <summary>Kiểu phụ đề realtime</summary>
+        <div class="grid">
+          <label><span><input id="subtitleEnabled" type="checkbox"> Hiện phụ đề</span></label>
+          <label>Kiểu<select id="subtitleStyle"><option value="karaoke">Karaoke</option><option value="word">Từng từ</option><option value="static">Tĩnh</option></select></label>
+          <label>Font<select id="subtitleFont"><option>TikTok Sans</option><option>Montserrat</option><option>Poppins</option><option>Roboto</option><option>Playfair Display</option></select></label>
+          <label>Cỡ chữ<div class="range-control"><input id="subtitleSize" type="range" min="20" max="96"><output id="subtitleSizeValue">52 px</output></div></label>
+          <label>Màu chữ<input id="subtitleColor" type="color"></label>
+          <label>Màu nền<input id="subtitleBg" type="color"></label>
+          <label>Độ mờ nền<div class="range-control"><input id="subtitleOpacity" type="range" min="0" max="1" step=".05"><output id="subtitleOpacityValue">72%</output></div></label>
+          <label>Vị trí ngang<div class="range-control"><input id="subtitleX" type="range" min="6" max="94" step="1"><output id="subtitleXValue">50%</output></div></label>
+          <label>Vị trí dọc<div class="range-control"><input id="subtitlePosition" type="range" min="6" max="94" step="1"><output id="subtitlePositionValue">86%</output></div></label>
+        </div>
+      </details>
+      <details><summary>Lịch sử phiên bản</summary><div id="versions" class="versions"></div></details>
+    </section>
+  </main>
+  <script src="/video-studio.js"></script>
+</body>
+</html>
