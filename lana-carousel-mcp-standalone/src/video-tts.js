@@ -24,8 +24,8 @@ async function generateVertex(project,settings){
  if(!slides.length)return emptyTrack();
  const multi=Boolean(settings.geminiMultiSpeaker),speaker1=(settings.geminiSpeaker1Name||"Nguoi dan").trim(),speaker2=(settings.geminiSpeaker2Name||"Khach moi").trim();
  const transcript=multi?slides.map((s,i)=>`${(s.video||{}).speaker==="speaker2"?speaker2:(s.video||{}).speaker==="speaker1"?speaker1:i%2?speaker2:speaker1}: ${slideText(s)}`).join("\n"):slides.map(slideText).join(". ");
- const pace=Number(settings.ttsSpeed||1),style=(settings.geminiStylePrompt||"Doc tieng Viet tu nhien, ro rang, phu hop video mang xa hoi.").trim();
- const prompt=`Synthesize the transcript only. Do not read these instructions aloud. Language: Vietnamese. Style: ${style} Pace: ${pace.toFixed(2)}x.\n\nTranscript:\n${transcript}`;
+ const style=(settings.geminiStylePrompt||"Doc tieng Viet tu nhien, ro rang, phu hop video mang xa hoi.").trim();
+ const prompt=`Synthesize the transcript only. Do not read these instructions aloud. Language: Vietnamese. Style: ${style}\n\nTranscript:\n${transcript}`;
  const speechConfig={languageCode:"vi-VN"};
  if(multi)speechConfig.multiSpeakerVoiceConfig={speakerVoiceConfigs:[
   {speaker:speaker1,voiceConfig:voiceConfig(settings.geminiSpeaker1Voice||"Kore")},
