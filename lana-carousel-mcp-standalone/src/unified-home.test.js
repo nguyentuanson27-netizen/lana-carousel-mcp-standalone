@@ -6,8 +6,10 @@ const publicRoot=new URL("../public/",import.meta.url);
 const html=fs.readFileSync(new URL("projects.html",publicRoot),"utf8");
 const client=fs.readFileSync(new URL("projects.js",publicRoot),"utf8");
 const videoRoutes=fs.readFileSync(new URL("./video-analysis-routes.js",import.meta.url),"utf8");
+const httpServer=fs.readFileSync(new URL("./http-server.js",import.meta.url),"utf8");
 
-test("unified home exposes image and video creation entry points",()=>{
+test("unified home is served at root and exposes image and video creation entry points",()=>{
+  assert.match(httpServer,/app\.get\("\/"[^\n]+projects\.html/u);
   assert.match(html,/data-create="carousel"/u);
   assert.match(html,/data-create="video"/u);
   assert.match(html,/data-filter="carousel"/u);
