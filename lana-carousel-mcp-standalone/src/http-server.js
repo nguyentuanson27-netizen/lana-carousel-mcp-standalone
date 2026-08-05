@@ -53,6 +53,7 @@ app.use("/video-analysis-assets",express.static(videoAnalysisAssetDir,{fallthrou
 app.use(express.static(publicDirectory, { index: false, maxAge: "5m" }));
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
+app.get("/", (_req, res) => res.sendFile(path.join(publicDirectory, "projects.html")));
 app.get("/widget", (_req, res) => res.sendFile(path.join(publicDirectory, "widget.html")));
 app.get("/projects", (_req, res) => res.sendFile(path.join(publicDirectory, "projects.html")));
 app.get("/video-studio",(_req,res)=>res.sendFile(path.join(publicDirectory,"video-studio.html")));
