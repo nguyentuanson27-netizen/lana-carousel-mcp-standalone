@@ -97,7 +97,12 @@ test("prepare persists options and select saves only the chosen validated script
   );
   assert.equal(saved.settings.ttsEnabled,true);
   assert.equal(saved.settings.ttsSpeed,brief.ttsSpeed);
-  assert.deepEqual(saved.settings.analysisBrief,brief);
+  assert.equal(saved.settings.analysisBrief.contentDomain,brief.contentDomain);
+  assert.equal(saved.settings.analysisBrief.contentGoal,brief.contentGoal);
+  assert.equal(saved.settings.analysisBrief.toneStyle,brief.toneStyle);
+  assert.equal(saved.settings.analysisBrief.ttsSpeed,brief.ttsSpeed);
+  assert.equal(saved.settings.analysisBrief.customContentDomain,null);
+  assert.equal(saved.settings.analysisBrief.customContentGoal,null);
   assert.equal(saved.settings.geminiStylePrompt,"Đọc tiếng Việt tự nhiên, hài hước, có nhịp và nhấn đúng punchline.");
   assert.equal(saved.settings.unknownSetting,undefined);
 });
