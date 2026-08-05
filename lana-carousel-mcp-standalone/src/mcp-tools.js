@@ -3,7 +3,6 @@ import {z} from "zod";
 import {publicError} from "./errors.js";
 import {registerCarouselTools} from "./mcp-tools-carousel.js";
 import {
-  evaluateVideoScriptOptions,
   VIDEO_CONTENT_DOMAINS,
   VIDEO_CONTENT_GOALS,
   VIDEO_SCRIPT_OPTION_IDS,
@@ -15,19 +14,43 @@ import {
   createVideoAnalysisProject,
   getVideoAnalysisProject,
   getVideoAnalysisVersions,
+  prepareVideoAnalysisScriptOptions,
   restoreVideoAnalysisVersion,
-  saveVideoAnalysisScript
+  savePreparedVideoAnalysisScript
 } from "./video-analysis-service.js";
 import {getVideoAnalysisJob,startVideoAnalysisJob} from "./video-analysis-jobs.js";
 
 const ok=value=>({content:[{type:"text",text:JSON.stringify(value)}],structuredContent:value});
 const fail=error=>{const safe=publicError(error);return{isError:true,content:[{type:"text",text:JSON.stringify(safe)}]}};
 const ttsSpeedSchema=z.union(VIDEO_TTS_SPEEDS.map(value=>z.literal(value)));
-const segmentSchema=z.object({
-  id:z.string().optional(),start:z.number().min(0),end:z.number().positive(),
-  subtitle_text:z.string().max(2000),voice_over_text:z.string().max(4000),
+const colorSchema=z.string().regex(/^#[0-9A-F]{6}$/iu);
+const preparedSegmentSchema=z.object({
+  id:z.string().min(1).max(100),start:z.number().min(0),end:z.number().positive(),
+  subtitle_text:z.string().min(1).max(2000),voice_over_text:z.string().min(1).max(4000),
   speaker:z.enum(["speaker1","speaker2"]).default("speaker1"),enabled:z.boolean().default(true)
-});
+}).strict();
+const editableVideoSettingsSchema=z.object({
+  ttsEnabled:z.boolean().optional(),
+  ttsProvider:z.enum(["vertex","gemini","google"]).optional(),
+  ttsVolume:z.number().min(0).max(1).optional(),
+  ttsVoice:z.string().min(1).max(100).optional(),
+  originalAudioVolume:z.number().min(0).max(1).optional(),
+  subtitleEnabled:z.boolean().optional(),
+  subtitleFont:z.string().min(1).max(100).optional(),
+  subtitleSize:z.number().min(20).max(96).optional(),
+  subtitleColor:colorSchema.optional(),
+  subtitleBackgroundColor:colorSchema.optional(),
+  subtitleBackgroundOpacity:z.number().min(0).max(1).optional(),
+  subtitleX:z.number().min(6).max(94).optional(),
+  subtitlePosition:z.number().min(6).max(94).optional(),
+  subtitleStyle:z.enum(["karaoke","word","static"]).optional(),
+  geminiSpeaker1Voice:z.string().min(1).max(100).optional(),
+  geminiSpeaker2Voice:z.string().min(1).max(100).optional(),
+  geminiSpeaker1Name:z.string().min(1).max(100).optional(),
+  geminiSpeaker2Name:z.string().min(1).max(100).optional(),
+  geminiMultiSpeaker:z.boolean().optional(),
+  geminiModel:z.string().min(1).max(150).optional()
+}).strict();
 
 function registerVideoAnalysisTools(server){
   server.tool(
@@ -47,43 +70,53 @@ function registerVideoAnalysisTools(server){
     }))}catch(error){return fail(error)}}
   );
 
-  server.tool("get_video_analysis_project","Get source reference, content brief, selected script option, approved script, settings, versions and direct studio link.",{project_id:z.string().uuid()},async args=>{try{return ok(getVideoAnalysisProject(args.project_id))}catch(error){return fail(error)}});
+  server.tool("get_video_analysis_project","Get source reference, content brief, prepared options metadata, selected script option, approved script, settings, versions and direct studio link.",{project_id:z.string().uuid()},async args=>{try{return ok(getVideoAnalysisProject(args.project_id))}catch(error){return fail(error)}});
   server.tool("attach_video_reference","Attach an HTTPS video file reference supplied by ChatGPT or a previously uploaded Lana asset.",{project_id:z.string().uuid(),video_url:z.string().url(),filename:z.string().max(255).default("video.mp4"),mime_type:z.string().max(100).default("video/mp4"),duration:z.number().min(0).default(0)},async args=>{try{return ok(attachVideoSource({projectId:args.project_id,url:args.video_url,filename:args.filename,mime:args.mime_type,duration:args.duration}))}catch(error){return fail(error)}});
 
   server.tool(
     "prepare_video_script_options",
-    "Validate exactly two subtitle/voice-over options before presenting them. natural_full uses complete natural sentences and targets 80–90% of the safe word budget. punchy_short must be structurally different, short and rhythmic, targeting 55–70%. Budgets use each segment duration and the selected project TTS speed. Show both options and fit warnings, then wait for explicit user selection. Do not save either option yet.",
+    "Validate and persist exactly two subtitle/voice-over options. Both options must contain at least one segment, use the same ordered segment ids and timestamps, and be materially different. natural_full uses complete natural sentences; punchy_short must be shorter and rhythmic. Return prepared_options_id, show both options and fit warnings, then wait for explicit user selection.",
     {
       project_id:z.string().uuid(),summary:z.string().max(5000).default(""),
       options:z.array(z.object({
         option_id:z.enum(VIDEO_SCRIPT_OPTION_IDS),label:z.string().min(1).max(200),
-        segments:z.array(segmentSchema.pick({id:true,start:true,end:true,subtitle_text:true,voice_over_text:true})).max(500)
-      })).length(2)
+        segments:z.array(preparedSegmentSchema).min(1).max(500)
+      }).strict()).length(2)
     },
-    async args=>{try{
-      const project=getVideoAnalysisProject(args.project_id);
-      const evaluated=evaluateVideoScriptOptions({brief:project.settings.analysisBrief,options:args.options.map(option=>({optionId:option.option_id,label:option.label,segments:option.segments.map(segment=>({id:segment.id,start:segment.start,end:segment.end,subtitleText:segment.subtitle_text,voiceOverText:segment.voice_over_text}))}))});
-      return ok({projectId:project.id,summary:args.summary,...evaluated});
-    }catch(error){return fail(error)}}
+    async args=>{try{return ok(prepareVideoAnalysisScriptOptions({
+      projectId:args.project_id,
+      summary:args.summary,
+      options:args.options.map(option=>({
+        optionId:option.option_id,
+        label:option.label,
+        segments:option.segments.map(segment=>({
+          id:segment.id,start:segment.start,end:segment.end,
+          subtitleText:segment.subtitle_text,voiceOverText:segment.voice_over_text,
+          speaker:segment.speaker,enabled:segment.enabled
+        }))
+      }))
+    }))}catch(error){return fail(error)}}
   );
 
   server.tool(
     "save_approved_video_script",
-    "Save only the script option explicitly selected by the user after both prepared options were shown. Never choose on the user's behalf. selected_option is required. The project brief TTS speed is applied automatically and the selected option is recorded in immutable version settings.",
+    "Save only the option explicitly selected by the user from a previously persisted prepared_options_id. Do not send segments again: the server loads the exact validated option, verifies its hash and freshness, and records the selected option. Server-managed analysisBrief, TTS speed and selectedScriptOption cannot be overridden.",
     {
-      project_id:z.string().uuid(),selected_option:z.enum(VIDEO_SCRIPT_OPTION_IDS),approved:z.boolean().default(true),
-      version_note:z.string().max(200).optional(),summary:z.string().max(5000).default(""),
-      segments:z.array(segmentSchema).max(500),settings:z.record(z.any()).optional()
+      project_id:z.string().uuid(),
+      prepared_options_id:z.string().uuid(),
+      selected_option:z.enum(VIDEO_SCRIPT_OPTION_IDS),
+      approved:z.boolean().default(true),
+      version_note:z.string().max(200).optional(),
+      settings:editableVideoSettingsSchema.optional()
     },
-    async args=>{try{
-      const project=getVideoAnalysisProject(args.project_id);
-      if(!project.settings.analysisBrief)throw new Error("Project chưa có content brief. Hãy tạo lại project bằng create_video_analysis_project.");
-      return ok(saveVideoAnalysisScript({
-        projectId:args.project_id,approved:args.approved,note:args.version_note,
-        script:{summary:args.summary,language:"vi-VN",segments:args.segments.map(segment=>({id:segment.id,start:segment.start,end:segment.end,subtitleText:segment.subtitle_text,voiceOverText:segment.voice_over_text,speaker:segment.speaker,enabled:segment.enabled}))},
-        settings:{...(args.settings||{}),ttsSpeed:project.settings.analysisBrief.ttsSpeed,geminiStylePrompt:project.settings.geminiStylePrompt,selectedScriptOption:args.selected_option}
-      }));
-    }catch(error){return fail(error)}}
+    async args=>{try{return ok(savePreparedVideoAnalysisScript({
+      projectId:args.project_id,
+      preparedOptionsId:args.prepared_options_id,
+      selectedOption:args.selected_option,
+      approved:args.approved,
+      note:args.version_note,
+      settings:args.settings||{}
+    }))}catch(error){return fail(error)}}
   );
 
   server.tool("list_video_analysis_versions","List immutable script/settings versions.",{project_id:z.string().uuid()},async args=>{try{return ok({versions:getVideoAnalysisVersions(args.project_id)})}catch(error){return fail(error)}});
