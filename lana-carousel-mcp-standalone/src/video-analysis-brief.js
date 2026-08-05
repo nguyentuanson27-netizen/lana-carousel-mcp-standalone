@@ -179,16 +179,44 @@ function validateSharedTimeline(naturalOption, punchyOption) {
         422
       );
     }
+    if (natural.enabled !== punchy.enabled) {
+      throw new AppError(
+        "VIDEO_SCRIPT_ENABLED_STATE_MISMATCH",
+        `Hai phương án phải dùng cùng trạng thái bật/tắt tại segment ${natural.id}.`,
+        422
+      );
+    }
   }
 }
 
+function enabledSegmentPairs(naturalOption, punchyOption) {
+  return naturalOption.segments
+    .map((natural, index) => ({natural, punchy: punchyOption.segments[index]}))
+    .filter(pair => pair.natural.enabled);
+}
+
 function validateDistinctOptions(naturalOption, punchyOption) {
-  const naturalWords = naturalOption.segments.reduce((total, segment) => total + countVideoWords(segment.voiceOverText || segment.subtitleText), 0);
-  const punchyWords = punchyOption.segments.reduce((total, segment) => total + countVideoWords(segment.voiceOverText || segment.subtitleText), 0);
-  const differentSegments = naturalOption.segments.reduce((total, segment, index) => (
-    total + (segmentContent(segment) !== segmentContent(punchyOption.segments[index]) ? 1 : 0)
+  const activePairs = enabledSegmentPairs(naturalOption, punchyOption);
+  if (!activePairs.length) {
+    throw new AppError(
+      "VIDEO_SCRIPT_OPTIONS_NO_ENABLED_SEGMENTS",
+      "Hai phương án phải có ít nhất một segment đang bật để so sánh và render.",
+      422
+    );
+  }
+
+  const naturalWords = activePairs.reduce(
+    (total, pair) => total + countVideoWords(pair.natural.voiceOverText || pair.natural.subtitleText),
+    0
+  );
+  const punchyWords = activePairs.reduce(
+    (total, pair) => total + countVideoWords(pair.punchy.voiceOverText || pair.punchy.subtitleText),
+    0
+  );
+  const differentSegments = activePairs.reduce((total, pair) => (
+    total + (segmentContent(pair.natural) !== segmentContent(pair.punchy) ? 1 : 0)
   ), 0);
-  const requiredDifferentSegments = Math.max(1, Math.ceil(naturalOption.segments.length * MIN_DIFFERENT_SEGMENT_RATIO));
+  const requiredDifferentSegments = Math.max(1, Math.ceil(activePairs.length * MIN_DIFFERENT_SEGMENT_RATIO));
   const requiredWordGap = naturalWords >= 10
     ? Math.max(1, Math.ceil(naturalWords * MIN_PUNCHY_WORD_REDUCTION_RATIO))
     : 1;
@@ -196,7 +224,7 @@ function validateDistinctOptions(naturalOption, punchyOption) {
   if (differentSegments < requiredDifferentSegments || naturalWords - punchyWords < requiredWordGap) {
     throw new AppError(
       "VIDEO_SCRIPT_OPTIONS_TOO_SIMILAR",
-      "Phương án punchy_short phải ngắn hơn và khác rõ ràng về nội dung ở ít nhất một nửa số đoạn.",
+      "Phương án punchy_short phải ngắn hơn và khác rõ ràng ở ít nhất một nửa số segment đang bật.",
       422
     );
   }
@@ -232,6 +260,19 @@ export function evaluateVideoScriptOptions({brief, options}) {
 
     const segments = option.segments.map(segment => {
       const duration = segment.end - segment.start;
+      if (!segment.enabled) {
+        return {
+          ...segment,
+          duration,
+          wordCount:0,
+          maxWords:0,
+          recommendedMinWords:0,
+          recommendedMaxWords:0,
+          utilization:0,
+          fitStatus:"disabled"
+        };
+      }
+
       const maxWords = Math.max(1, Math.floor(duration * BASE_WORDS_PER_SECOND * analysisBrief.ttsSpeed * WORD_BUDGET_SAFETY_FACTOR));
       const recommendedMinWords = Math.max(1, Math.floor(maxWords * target.min));
       const recommendedMaxWords = Math.max(recommendedMinWords, Math.floor(maxWords * target.max));
@@ -262,7 +303,7 @@ export function evaluateVideoScriptOptions({brief, options}) {
     budgetModel: {
       baseWordsPerSecond: BASE_WORDS_PER_SECOND,
       safetyFactor: WORD_BUDGET_SAFETY_FACTOR,
-      formula: "duration × 2.5 words/s × ttsSpeed × 0.85"
+      formula: "enabled duration × 2.5 words/s × ttsSpeed × 0.85"
     },
     options: evaluatedOptions,
     nextAction: "Hiển thị cả hai phương án cho người dùng và chờ họ chọn rõ một phương án trước khi lưu script."
