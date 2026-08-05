@@ -1,6 +1,7 @@
+import {McpServer} from "@modelcontextprotocol/sdk/server/mcp.js";
 import {z} from "zod";
 import {publicError} from "./errors.js";
-import {createMcpServer as createLegacyMcpServer} from "./mcp-tools-legacy.js";
+import {registerCarouselTools} from "./mcp-tools-carousel.js";
 import {
   evaluateVideoScriptOptions,
   VIDEO_CONTENT_DOMAINS,
@@ -27,22 +28,8 @@ const segmentSchema=z.object({
   subtitle_text:z.string().max(2000),voice_over_text:z.string().max(4000),
   speaker:z.enum(["speaker1","speaker2"]).default("speaker1"),enabled:z.boolean().default(true)
 });
-const legacyVideoTools=[
-  "create_video_analysis_project","get_video_analysis_project","attach_video_reference",
-  "save_approved_video_script","list_video_analysis_versions","restore_video_analysis_version",
-  "start_video_analysis_render","get_video_analysis_job"
-];
 
-function removeLegacyVideoTools(server){
-  const tools=Reflect.get(server,"_registeredTools");
-  if(!(tools instanceof Map))throw new Error("MCP SDK does not expose the expected registered tool map.");
-  for(const name of legacyVideoTools)tools.delete(name);
-}
-
-export function createMcpServer(){
-  const server=createLegacyMcpServer();
-  removeLegacyVideoTools(server);
-
+function registerVideoAnalysisTools(server){
   server.tool(
     "create_video_analysis_project",
     "Create an independent video analysis project only after collecting a content brief. If content_domain, tone_style, or tts_speed is missing from the conversation, ask the user one consolidated question and do not call this tool yet. Do not infer missing values. Suggested compact reply: 'Thời trang – Hài hước – x1.2 – Giới thiệu sản phẩm'. Video playback speed never changes. After analysis, call prepare_video_script_options with exactly two genuinely different options, show both in chat, and wait for explicit user selection before saving.",
@@ -103,5 +90,13 @@ export function createMcpServer(){
   server.tool("restore_video_analysis_version","Restore a version and create a new version recording that restore.",{project_id:z.string().uuid(),version_id:z.string().uuid()},async args=>{try{return ok(restoreVideoAnalysisVersion(args.project_id,args.version_id))}catch(error){return fail(error)}});
   server.tool("start_video_analysis_render","Start optional subtitle + TTS render. Script must already be approved.",{project_id:z.string().uuid()},async args=>{try{return ok(startVideoAnalysisJob(args.project_id))}catch(error){return fail(error)}});
   server.tool("get_video_analysis_job","Get render job progress and download URL.",{job_id:z.string().uuid()},async args=>{try{return ok(getVideoAnalysisJob(args.job_id))}catch(error){return fail(error)}});
+
+  return server;
+}
+
+export function createMcpServer(){
+  const server=new McpServer({name:"lana-carousel-standalone",version:"1.4.0"});
+  registerCarouselTools(server);
+  registerVideoAnalysisTools(server);
   return server;
 }
