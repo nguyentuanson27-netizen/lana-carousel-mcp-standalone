@@ -24,10 +24,20 @@ Thời trang – Hài hước – x1.2 – Giới thiệu sản phẩm
 2. Generate exactly two structurally different options:
    - `natural_full`: complete natural sentences, target 80–90% of the safe word budget.
    - `punchy_short`: short rhythmic lines, target 55–70% of the safe word budget.
-3. Call `prepare_video_script_options` to validate both options.
-4. Show both options and timeline-fit warnings to the user.
-5. Wait for an explicit selection.
-6. Call `save_approved_video_script` with `selected_option` and only the selected segments.
+3. Call `prepare_video_script_options` with at least one segment per option. Both options must use the same ordered segment IDs and timestamps.
+4. The server validates the options, persists their exact content and returns `prepared_options_id` plus a SHA-256 content hash.
+5. Show both options and timeline-fit warnings to the user, then wait for an explicit selection.
+6. Call `save_approved_video_script` with only `prepared_options_id` and `selected_option`. The server loads the exact persisted segments; callers cannot resend or alter them.
+
+A prepared set becomes invalid if the project version, content brief or source video changes. It is cleared after a successful save.
+
+## Option integrity rules
+
+- Neither option may be empty.
+- Every segment must have a stable ID, valid timestamps, subtitle text and voice-over text.
+- Both options must have the same ordered IDs and timestamps.
+- `punchy_short` must be shorter than `natural_full` and differ in at least half of the segments.
+- Server-managed settings (`analysisBrief`, `selectedScriptOption`, `preparedScriptOptions`) are never accepted from caller settings.
 
 ## Word budget
 
