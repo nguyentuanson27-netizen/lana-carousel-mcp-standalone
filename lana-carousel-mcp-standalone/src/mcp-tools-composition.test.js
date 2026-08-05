@@ -10,3 +10,13 @@ test("MCP composition does not depend on SDK private tool registry",()=>{
   assert.match(source,/registerCarouselTools\(server\)/u);
   assert.match(source,/registerVideoAnalysisTools\(server\)/u);
 });
+
+test("approved script save is bound to persisted prepared options",()=>{
+  const start=source.indexOf('"save_approved_video_script"');
+  const end=source.indexOf('server.tool("list_video_analysis_versions"',start);
+  const saveToolSource=source.slice(start,end);
+  assert.match(saveToolSource,/prepared_options_id:z\.string\(\)\.uuid\(\)/u);
+  assert.match(saveToolSource,/savePreparedVideoAnalysisScript/u);
+  assert.doesNotMatch(saveToolSource,/segments\s*:/u);
+  assert.doesNotMatch(saveToolSource,/z\.record\(z\.any\(\)\)/u);
+});
