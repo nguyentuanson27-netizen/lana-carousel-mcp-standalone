@@ -1,12 +1,14 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import {randomUUID} from "node:crypto";
+import {createHash,randomUUID} from "node:crypto";
 import {db} from "./db.js";
 import {config} from "./config.js";
 import {AppError} from "./errors.js";
 import {
+  evaluateVideoScriptOptions,
   getVideoTonePrompt,
   normalizeVideoAnalysisBrief,
+  sanitizeVideoAnalysisEditableSettings,
   VIDEO_SCRIPT_OPTION_IDS
 } from "./video-analysis-brief.js";
 
@@ -41,6 +43,7 @@ const q={
  get:db.prepare(`SELECT * FROM video_analysis_projects WHERE id=?`),
  list:db.prepare(`SELECT * FROM video_analysis_projects ORDER BY created_at DESC`),
  updateSource:db.prepare(`UPDATE video_analysis_projects SET source_url=?,source_filename=?,source_mime=?,source_size=?,duration=?,updated_at=? WHERE id=?`),
+ updateSettings:db.prepare(`UPDATE video_analysis_projects SET settings_json=?,updated_at=? WHERE id=?`),
  update:db.prepare(`UPDATE video_analysis_projects SET status=?,script_json=?,settings_json=?,current_version=?,updated_at=? WHERE id=?`),
  addVersion:db.prepare(`INSERT INTO video_analysis_versions(id,project_id,version,note,snapshot_json,created_at) VALUES(?,?,?,?,?,?)`),
  versions:db.prepare(`SELECT id,version,note,created_at FROM video_analysis_versions WHERE project_id=? ORDER BY version DESC`),
@@ -68,7 +71,8 @@ const defaults={
  geminiSpeaker1Voice:"Kore",
  geminiStylePrompt:"Đọc tiếng Việt tự nhiên, rõ ràng.",
  analysisBrief:null,
- selectedScriptOption:null
+ selectedScriptOption:null,
+ preparedScriptOptions:null
 };
 
 function view(row){
@@ -83,12 +87,75 @@ function view(row){
   settings,
   analysisBrief:settings.analysisBrief,
   selectedScriptOption:settings.selectedScriptOption,
+  preparedScriptOptions:settings.preparedScriptOptions,
   currentVersion:row.current_version,
   createdAt:row.created_at,
   updatedAt:row.updated_at,
   expiresAt:row.expires_at,
   studioUrl:`${config.publicBaseUrl}/video-studio?projectId=${row.id}`
  };
+}
+
+function normalizedStoredOption(option){
+ return{
+  optionId:option.optionId,
+  label:option.label,
+  segments:option.segments.map(segment=>({
+   id:segment.id,
+   start:segment.start,
+   end:segment.end,
+   subtitleText:segment.subtitleText,
+   voiceOverText:segment.voiceOverText,
+   speaker:segment.speaker||"speaker1",
+   enabled:segment.enabled!==false
+  }))
+ };
+}
+
+function preparedHashPayload(prepared){
+ return{
+  projectId:prepared.projectId,
+  baseVersion:prepared.baseVersion,
+  summary:prepared.summary,
+  analysisBrief:prepared.analysisBrief,
+  sourceUrl:prepared.sourceUrl,
+  sourceDuration:prepared.sourceDuration,
+  options:prepared.options
+ };
+}
+
+function hashPreparedOptions(prepared){
+ return createHash("sha256").update(JSON.stringify(preparedHashPayload(prepared))).digest("hex");
+}
+
+function sameJson(left,right){return JSON.stringify(left)===JSON.stringify(right)}
+
+function resolveManagedSettings(currentSettings,editableSettings,managedSettings={}){
+ const hasManagedBrief=Object.prototype.hasOwnProperty.call(managedSettings,"analysisBrief");
+ const hasManagedSelection=Object.prototype.hasOwnProperty.call(managedSettings,"selectedScriptOption");
+ const hasManagedPrepared=Object.prototype.hasOwnProperty.call(managedSettings,"preparedScriptOptions");
+ const analysisBrief=hasManagedBrief
+  ? normalizeVideoAnalysisBrief(managedSettings.analysisBrief,{required:false})
+  : currentSettings.analysisBrief;
+ const selectedScriptOption=hasManagedSelection
+  ? managedSettings.selectedScriptOption
+  : currentSettings.selectedScriptOption;
+ if(selectedScriptOption&&!VIDEO_SCRIPT_OPTION_IDS.includes(selectedScriptOption)){
+  throw new AppError("INVALID_VIDEO_SCRIPT_OPTION","Phương án script được chọn không hợp lệ.",422);
+ }
+ const preparedScriptOptions=hasManagedPrepared?managedSettings.preparedScriptOptions:null;
+ const nextSettings={
+  ...currentSettings,
+  ...sanitizeVideoAnalysisEditableSettings(editableSettings),
+  analysisBrief,
+  selectedScriptOption,
+  preparedScriptOptions
+ };
+ if(analysisBrief){
+  nextSettings.ttsSpeed=analysisBrief.ttsSpeed;
+  nextSettings.geminiStylePrompt=getVideoTonePrompt(analysisBrief.toneStyle);
+ }
+ return nextSettings;
 }
 
 export function createVideoAnalysisProject({title,sourceUrl="",sourceFilename="",analysisBrief=null}){
@@ -127,7 +194,38 @@ export function attachVideoSource({projectId,url,filename,mime="video/mp4",size=
  return getVideoAnalysisProject(projectId);
 }
 
-export function saveVideoAnalysisScript({projectId,script,settings={},approved=false,note=""}){
+export function prepareVideoAnalysisScriptOptions({projectId,summary="",options}){
+ const row=q.get.get(projectId);
+ if(!row)return view(null);
+ const currentSettings={...defaults,...parse(row.settings_json,{})};
+ if(!currentSettings.analysisBrief){
+  throw new AppError("VIDEO_ANALYSIS_BRIEF_REQUIRED","Project chưa có content brief.",422);
+ }
+ const evaluated=evaluateVideoScriptOptions({brief:currentSettings.analysisBrief,options});
+ const prepared={
+  id:randomUUID(),
+  projectId,
+  baseVersion:Number(row.current_version||0),
+  createdAt:new Date().toISOString(),
+  summary:String(summary||""),
+  analysisBrief:evaluated.analysisBrief,
+  sourceUrl:row.source_url||"",
+  sourceDuration:Number(row.duration||0),
+  options:evaluated.options.map(normalizedStoredOption)
+ };
+ prepared.contentHash=hashPreparedOptions(prepared);
+ const nextSettings={...currentSettings,preparedScriptOptions:prepared};
+ q.updateSettings.run(JSON.stringify(nextSettings),new Date().toISOString(),projectId);
+ return{
+  projectId,
+  preparedOptionsId:prepared.id,
+  contentHash:prepared.contentHash,
+  summary:prepared.summary,
+  ...evaluated
+ };
+}
+
+export function saveVideoAnalysisScript({projectId,script,settings={},managedSettings={},approved=false,note=""}){
  const row=q.get.get(projectId);
  if(!row)return view(null);
  const segments=(script?.segments||[]).map((segment,index)=>({
@@ -146,14 +244,7 @@ export function saveVideoAnalysisScript({projectId,script,settings={},approved=f
 
  const normalized={summary:String(script?.summary||""),language:script?.language||"vi-VN",segments};
  const currentSettings={...defaults,...parse(row.settings_json,{})};
- const nextAnalysisBrief=settings.analysisBrief===undefined
-  ? currentSettings.analysisBrief
-  : normalizeVideoAnalysisBrief(settings.analysisBrief,{required:false});
- const selectedScriptOption=settings.selectedScriptOption??currentSettings.selectedScriptOption;
- if(selectedScriptOption&&!VIDEO_SCRIPT_OPTION_IDS.includes(selectedScriptOption)){
-  throw new AppError("INVALID_VIDEO_SCRIPT_OPTION","Phương án script được chọn không hợp lệ.",422);
- }
- const nextSettings={...currentSettings,...settings,analysisBrief:nextAnalysisBrief,selectedScriptOption};
+ const nextSettings=resolveManagedSettings(currentSettings,settings,managedSettings);
  const version=Number(row.current_version||0)+1;
  const snapshot={status:approved?"APPROVED":"DRAFT",script:normalized,settings:nextSettings};
  const transaction=db.transaction(()=>{
@@ -162,6 +253,47 @@ export function saveVideoAnalysisScript({projectId,script,settings={},approved=f
  });
  transaction();
  return getVideoAnalysisProject(projectId);
+}
+
+export function savePreparedVideoAnalysisScript({projectId,preparedOptionsId,selectedOption,settings={},approved=true,note=""}){
+ const row=q.get.get(projectId);
+ if(!row)return view(null);
+ const currentSettings={...defaults,...parse(row.settings_json,{})};
+ const prepared=currentSettings.preparedScriptOptions;
+ if(!prepared||prepared.id!==preparedOptionsId){
+  throw new AppError("VIDEO_SCRIPT_OPTIONS_NOT_PREPARED","Không tìm thấy bộ phương án đã chuẩn bị hoặc bộ phương án đã bị thay thế.",409);
+ }
+ if(Number(row.current_version||0)!==Number(prepared.baseVersion||0)){
+  throw new AppError("VIDEO_SCRIPT_OPTIONS_STALE","Project đã thay đổi sau khi chuẩn bị phương án. Hãy chuẩn bị lại hai phương án.",409);
+ }
+ if(!sameJson(currentSettings.analysisBrief,prepared.analysisBrief)){
+  throw new AppError("VIDEO_SCRIPT_OPTIONS_STALE","Content brief đã thay đổi. Hãy chuẩn bị lại hai phương án.",409);
+ }
+ if((row.source_url||"")!==(prepared.sourceUrl||"")||Number(row.duration||0)!==Number(prepared.sourceDuration||0)){
+  throw new AppError("VIDEO_SCRIPT_OPTIONS_STALE","Video nguồn đã thay đổi. Hãy chuẩn bị lại hai phương án.",409);
+ }
+ if(hashPreparedOptions(prepared)!==prepared.contentHash){
+  throw new AppError("VIDEO_SCRIPT_OPTIONS_INTEGRITY_ERROR","Dữ liệu phương án đã chuẩn bị không còn toàn vẹn.",409);
+ }
+ if(!VIDEO_SCRIPT_OPTION_IDS.includes(selectedOption)){
+  throw new AppError("INVALID_VIDEO_SCRIPT_OPTION","Phương án script được chọn không hợp lệ.",422);
+ }
+ const option=prepared.options.find(item=>item.optionId===selectedOption);
+ if(!option){
+  throw new AppError("VIDEO_SCRIPT_OPTION_NOT_FOUND","Không tìm thấy nội dung của phương án được chọn.",409);
+ }
+ return saveVideoAnalysisScript({
+  projectId,
+  approved,
+  note,
+  script:{summary:prepared.summary,language:"vi-VN",segments:option.segments},
+  settings,
+  managedSettings:{
+   analysisBrief:currentSettings.analysisBrief,
+   selectedScriptOption:selectedOption,
+   preparedScriptOptions:null
+  }
+ });
 }
 
 export function getVideoAnalysisVersions(id){getVideoAnalysisProject(id);return q.versions.all(id);}
@@ -174,6 +306,11 @@ export function restoreVideoAnalysisVersion(projectId,versionId){
   projectId,
   script:snapshot.script,
   settings:snapshot.settings,
+  managedSettings:{
+   analysisBrief:snapshot.settings?.analysisBrief??null,
+   selectedScriptOption:snapshot.settings?.selectedScriptOption??null,
+   preparedScriptOptions:null
+  },
   approved:snapshot.status==="APPROVED",
   note:`Khôi phục v${version.version}`
  });
