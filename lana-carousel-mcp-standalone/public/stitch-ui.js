@@ -1,7 +1,7 @@
 (() => {
   const q = (selector, root = document) => root.querySelector(selector);
   const qa = (selector, root = document) => [...root.querySelectorAll(selector)];
-  const state = { selectedByView: new Map(), filter: 'all', search: '', enhancing: false };
+  const state = { selectedByView: new Map(), filter: 'all', search: '', enhancing: false, railCollapsed: false };
   let observer;
 
   const viewMeta = {
@@ -36,16 +36,23 @@
     return q('#workflow .step.active')?.dataset.view || 'content';
   }
 
+  function contentIsApproved() {
+    return q('#workflow .step[data-view="content"]')?.classList.contains('done') === true;
+  }
+
   function getCards(view) {
     const panel = q(`#${view}`);
     if (!panel) return [];
-    if (view === 'content') return qa('[data-content]', panel).map(card => ({
-      id: card.dataset.content,
-      card,
-      title: q('[data-f="headline"]', card)?.value || 'Slide nội dung',
-      subtitle: q('[data-f="body"]', card)?.value || 'Chưa có nội dung',
-      status: 'pending'
-    }));
+    if (view === 'content') {
+      const approved = contentIsApproved();
+      return qa('[data-content]', panel).map(card => ({
+        id: card.dataset.content,
+        card,
+        title: q('[data-f="headline"]', card)?.value || 'Slide nội dung',
+        subtitle: q('[data-f="body"]', card)?.value || 'Chưa có nội dung',
+        status: approved ? 'done' : 'pending'
+      }));
+    }
     if (view === 'images') return qa('.card', panel).filter(card => q('[data-slide]', card)).map(card => {
       const trigger = q('[data-slide]', card);
       const statusDone = q('.status.done', card);
@@ -78,11 +85,25 @@
   }
 
   function statusLabel(status, view) {
-    if (status === 'done') return view === 'images' ? 'Đã duyệt ảnh' : 'Hoàn tất';
+    if (status === 'done') return view === 'images' ? 'Đã duyệt ảnh' : view === 'content' ? 'Đã duyệt nội dung' : 'Hoàn tất';
     if (view === 'content') return 'Cần kiểm tra';
     if (view === 'images') return 'Chờ duyệt ảnh';
     if (view === 'edit') return 'Chưa lưu thiết kế';
     return 'Đang xử lý';
+  }
+
+  function applySlideNavigationState() {
+    const button = q('#slideNavCollapse');
+    ['#slideSearch', '#slideFilters', '#slideRail'].forEach(selector => {
+      const element = q(selector);
+      if (element) element.hidden = state.railCollapsed;
+    });
+    if (button) {
+      button.textContent = state.railCollapsed ? '+' : '−';
+      button.setAttribute('aria-expanded', String(!state.railCollapsed));
+      button.setAttribute('aria-label', state.railCollapsed ? 'Mở danh sách slide' : 'Thu gọn danh sách slide');
+      button.title = state.railCollapsed ? 'Mở danh sách slide' : 'Thu gọn danh sách slide';
+    }
   }
 
   function refreshRail(view, items) {
@@ -92,6 +113,7 @@
     const hasSlides = items.length > 0 && !['download', 'video'].includes(view);
     navigation.hidden = !hasSlides;
     if (!hasSlides) return null;
+    applySlideNavigationState();
 
     const term = state.search.toLocaleLowerCase('vi');
     const filtered = items.filter(item => {
@@ -132,9 +154,47 @@
     if (number) {
       const header = document.createElement('div');
       header.className = 'card-head';
-      header.innerHTML = `<div><span class="number">${escapeHtml(number.textContent)}</span><h2>${escapeHtml(item.title)}</h2></div><span class="status">Chưa duyệt</span>`;
+      const done = item.status === 'done';
+      header.innerHTML = `<div><span class="number">${escapeHtml(number.textContent)}</span><h2>${escapeHtml(item.title)}</h2></div><span class="status${done ? ' done' : ''}">${done ? 'Đã duyệt' : 'Chưa duyệt'}</span>`;
       number.replaceWith(header);
     }
+  }
+
+  function configureWorkflowAction(view) {
+    const action = q('#nextWorkflowAction');
+    if (!action) return;
+    const steps = qa('#workflow .step');
+    const current = q('#workflow .step.active');
+    const index = steps.indexOf(current);
+    const next = index >= 0 ? steps[index + 1] : null;
+    action.disabled = false;
+    action.dataset.mode = 'navigate';
+    action.removeAttribute('title');
+
+    if (view === 'video') {
+      action.textContent = viewMeta.video.action;
+      action.dataset.mode = 'save-video';
+      return;
+    }
+    if (next && !next.disabled) {
+      action.textContent = viewMeta[view].action;
+      return;
+    }
+    if (view === 'content') {
+      action.textContent = 'Duyệt toàn bộ nội dung';
+      action.dataset.mode = 'approve-content';
+      action.title = 'Lưu các thay đổi, duyệt nội dung và mở bước Duyệt ảnh';
+      return;
+    }
+    if (view === 'images') {
+      action.textContent = 'Duyệt đủ ảnh để tiếp tục';
+      action.dataset.mode = 'locked-images';
+      action.disabled = true;
+      action.title = 'Mỗi slide cần có ảnh đã duyệt trước khi mở bước Sửa thiết kế';
+      return;
+    }
+    action.disabled = true;
+    action.textContent = 'Chưa thể tiếp tục';
   }
 
   function updateHeader(view, items) {
@@ -142,7 +202,7 @@
     q('#workspaceEyebrow').textContent = meta.step;
     q('#workspaceTitle').textContent = meta.title;
     q('#workspaceDescription').textContent = meta.description;
-    q('#nextWorkflowAction').textContent = meta.action;
+    configureWorkflowAction(view);
     const done = items.filter(item => item.status === 'done').length;
     q('#workspaceStats').innerHTML = items.length
       ? `<span>${items.length} slide</span><span>${done} hoàn tất</span><span>${items.length - done} cần xử lý</span>`
@@ -249,7 +309,7 @@
       bindLiveContentPreview(selected);
     } finally {
       state.enhancing = false;
-      observer?.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+      observer?.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'disabled'] });
     }
   }
 
@@ -270,6 +330,10 @@
     qa('#slideFilters button').forEach(x => x.classList.toggle('active', x === button));
     enhance();
   });
+  q('#slideNavCollapse')?.addEventListener('click', () => {
+    state.railCollapsed = !state.railCollapsed;
+    applySlideNavigationState();
+  });
 
   function openSidebar() { q('#studioSidebar')?.classList.add('open'); q('#mobileBackdrop').hidden = false; }
   function closeSidebar() { q('#studioSidebar')?.classList.remove('open'); q('#mobileBackdrop').hidden = true; }
@@ -278,18 +342,28 @@
   q('#mobileBackdrop')?.addEventListener('click', closeSidebar);
 
   q('#nextWorkflowAction')?.addEventListener('click', () => {
-    const steps = qa('#workflow .step:not(:disabled)');
+    const action = q('#nextWorkflowAction');
+    if (!action || action.disabled) return;
+    if (action.dataset.mode === 'approve-content') {
+      q('#approveContent')?.click();
+      return;
+    }
+    if (action.dataset.mode === 'save-video') {
+      q('#saveVideo')?.click();
+      return;
+    }
+    const steps = qa('#workflow .step');
     const current = q('#workflow .step.active');
     const index = steps.indexOf(current);
-    const target = steps[Math.min(index + 1, steps.length - 1)];
-    if (target && target !== current) target.click();
-    else if (activeView() === 'video') q('#saveVideo')?.click();
+    const target = index >= 0 ? steps[index + 1] : null;
+    if (target && !target.disabled) target.click();
   });
 
   q('#workflow')?.addEventListener('click', () => requestAnimationFrame(enhance));
 
   installMutationStatusTracking();
+  applySlideNavigationState();
   observer = new MutationObserver(() => requestAnimationFrame(enhance));
-  observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+  observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'disabled'] });
   window.addEventListener('load', () => setTimeout(enhance, 80));
 })();
