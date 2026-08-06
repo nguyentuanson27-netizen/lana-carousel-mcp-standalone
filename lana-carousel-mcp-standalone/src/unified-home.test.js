@@ -8,25 +8,24 @@ const client=fs.readFileSync(new URL("projects.js",publicRoot),"utf8");
 const videoRoutes=fs.readFileSync(new URL("./video-analysis-routes.js",import.meta.url),"utf8");
 const httpServer=fs.readFileSync(new URL("./http-server.js",import.meta.url),"utf8");
 
-test("unified home is served at root and exposes image and video creation entry points",()=>{
-  assert.match(httpServer,/app\.get\("\/"[^\n]+projects\.html/u);
-  assert.match(html,/data-create="carousel"/u);
-  assert.match(html,/data-create="video"/u);
-  assert.match(html,/data-filter="carousel"/u);
-  assert.match(html,/data-filter="video"/u);
-  assert.match(html,/projects\.js/u);
+test("unified home is served at root and exposes image and video entry points",()=>{
+ assert.match(httpServer,/app\.get\("\/"[^\n]+projects\.html/u);
+ assert.match(html,/data-create="carousel"/u);
+ assert.match(html,/data-create="video"/u);
+ assert.match(html,/data-filter="carousel"/u);
+ assert.match(html,/data-filter="video"/u);
+ assert.match(html,/src="\/projects\.js/u);
 });
 
-test("unified home loads and creates both project types",()=>{
-  assert.match(client,/requestJson\("\/api\/projects"\)/u);
-  assert.match(client,/requestJson\("\/api\/video-analysis\/projects"\)/u);
-  assert.match(client,/method:"POST"/u);
-  assert.match(client,/\/video-studio\?projectId=/u);
-  assert.match(client,/\/widget\?projectId=/u);
+test("dashboard loads the tested API module and has persistent retry states",()=>{
+ assert.match(client,/await import\("\/projects-api\.js"\)/u);
+ assert.match(client,/Cả dịch vụ ảnh và video đều không phản hồi/u);
+ assert.match(client,/Danh sách chưa đầy đủ/u);
+ assert.match(client,/data-action="retry"/u);
+ assert.match(client,/Dữ liệu chưa được xác nhận là trống/u);
 });
 
-test("video projects can be deleted from the shared dashboard",()=>{
-  assert.match(client,/\/api\/video-analysis\/projects\/\$\{encodeURIComponent\(id\)\}/u);
-  assert.match(videoRoutes,/videoAnalysisRouter\.delete\("\/projects\/:id"/u);
-  assert.match(videoRoutes,/deleteVideoAnalysisProject/u);
+test("video deletion route is connected to lifecycle-aware service cleanup",()=>{
+ assert.match(videoRoutes,/videoAnalysisRouter\.delete\("\/projects\/:id"/u);
+ assert.match(videoRoutes,/await deleteVideoAnalysisProject/u);
 });
