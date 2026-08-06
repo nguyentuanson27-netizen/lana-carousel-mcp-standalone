@@ -3,6 +3,7 @@ module.exports = {
     name: "lana-carousel",
     script: "src/http-server.js",
     cwd: __dirname,
+    node_args: "--env-file-if-exists=.env",
     env: {
       NODE_ENV: "production",
       PORT: "8787",

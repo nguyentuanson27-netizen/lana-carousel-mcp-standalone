@@ -44,6 +44,13 @@ test("legacy script payload is draft-only and must preserve brief and selection"
   assert.match(source,/saveVideoAnalysisScript/u);
 });
 
+test("hardening wrappers remain active after stale-schema integration",()=>{
+  assert.match(source,/installToolQuota/u);
+  assert.match(source,/consumeApiQuota/u);
+  assert.match(source,/withStudioAccess/u);
+  assert.match(source,/createVideoAnalysisAccessUrl/u);
+});
+
 test("MCP version changes when the public tool contract changes",()=>{
-  assert.match(source,/version:"1\.5\.0"/u);
+  assert.match(source,/version:"1\.7\.0"/u);
 });

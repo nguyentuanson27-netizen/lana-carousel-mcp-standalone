@@ -1,6 +1,9 @@
 import {McpServer} from "@modelcontextprotocol/sdk/server/mcp.js";
 import {z} from "zod";
 import {AppError,publicError} from "./errors.js";
+import {consumeApiQuota} from "./api-quota.js";
+import {currentQuotaClientId,runWithQuotaPrincipal} from "./quota-principal.js";
+import {createVideoAnalysisAccessUrl} from "./project-access.js";
 import {registerCarouselTools} from "./mcp-tools-carousel.js";
 import {
  VIDEO_CONTENT_DOMAINS,
@@ -72,7 +75,60 @@ const legacyDraftSettingsSchema=editableVideoSettingsSchema.extend({
  selectedScriptOption:z.enum(VIDEO_SCRIPT_OPTION_IDS).optional()
 }).strict();
 
+const readOnlyTools=new Set([
+ "list_projects",
+ "get_render_status",
+ "list_project_versions",
+ "list_video_analysis_versions",
+ "get_video_analysis_job"
+]);
+
+const alwaysHeavyTools=new Set([
+ "import_asset_from_url",
+ "add_image_candidate",
+ "add_image_candidates",
+ "render_project",
+ "clone_project",
+ "attach_video_reference",
+ "start_video_analysis_render"
+]);
+
+export function quotaPolicyForTool(name,args={}){
+ const mutations=readOnlyTools.has(name)?0:1;
+ let heavy=alwaysHeavyTools.has(name)?1:0;
+ if(name==="create_video_analysis_project"&&args.source_url)heavy=1;
+ return{mutations,heavy};
+}
+
+function installToolQuota(server,clientId){
+ const originalTool=server.tool.bind(server);
+ server.tool=(name,...definition)=>{
+  const index=definition.length-1;
+  const handler=definition[index];
+  if(typeof handler==="function"){
+   definition[index]=async(...handlerArgs)=>{
+    try{
+     const policy=quotaPolicyForTool(name,handlerArgs[0]||{});
+     consumeApiQuota(clientId,policy);
+     return await runWithQuotaPrincipal(clientId,()=>handler(...handlerArgs));
+    }catch(error){
+     return fail(error);
+    }
+   };
+  }
+  return originalTool(name,...definition);
+ };
+ return server;
+}
+
 function briefFromArgs(args){return parseBriefFromArgs(args)}
+
+function withStudioAccess(project){
+ return{
+  ...project,
+  studioUrl:createVideoAnalysisAccessUrl(project.id)
+ };
+}
 
 function legacyDraftSave(args){
  if(args.approved!==false){
@@ -148,18 +204,19 @@ function registerVideoAnalysisTools(server){
     sourceFilename:args.source_filename,
     analysisBrief:briefFromArgs(args)
    };
-   return ok(args.source_url
+   const project=args.source_url
     ?await createVideoAnalysisProjectFromRemoteSource(input)
-    :createVideoAnalysisProject(input));
+    :createVideoAnalysisProject(input);
+   return ok(withStudioAccess(project));
   }catch(error){return fail(error)}}
  );
 
- server.tool("get_video_analysis_project","Get source reference, content brief, prepared options metadata, selected script option, approved script, settings, versions and direct studio link.",{project_id:z.string().uuid()},async args=>{try{return ok(getVideoAnalysisProject(args.project_id))}catch(error){return fail(error)}});
+ server.tool("get_video_analysis_project","Get source reference, content brief, prepared options metadata, selected script option, approved script, settings, versions and a one-time direct studio link.",{project_id:z.string().uuid()},async args=>{try{return ok(withStudioAccess(getVideoAnalysisProject(args.project_id)))}catch(error){return fail(error)}});
  server.tool(
   "attach_video_reference",
   "Import an HTTPS video reference through Lana's SSRF-protected downloader, store it as a managed local asset, and attach it to the project. Direct remote URLs are never passed to Remotion.",
   {project_id:z.string().uuid(),video_url:z.string().url(),filename:z.string().max(255).default("video.mp4"),mime_type:z.string().max(100).default("video/mp4"),duration:z.number().min(0).default(0)},
-  async args=>{try{return ok(await attachRemoteVideoSource({projectId:args.project_id,url:args.video_url,filename:args.filename,duration:args.duration}))}catch(error){return fail(error)}}
+  async args=>{try{return ok(withStudioAccess(await attachRemoteVideoSource({projectId:args.project_id,url:args.video_url,filename:args.filename,duration:args.duration})))}catch(error){return fail(error)}}
  );
 
  server.tool(
@@ -230,14 +287,14 @@ function registerVideoAnalysisTools(server){
       422
      );
     }
-    return ok(savePreparedVideoAnalysisScript({
+    return ok(withStudioAccess(savePreparedVideoAnalysisScript({
      projectId:args.project_id,
      preparedOptionsId:args.prepared_options_id,
      selectedOption:args.selected_option,
      approved:args.approved,
      note:args.version_note,
      settings:editableSettings
-    }));
+    })));
    }
    if(!hasLegacy){
     throw new AppError(
@@ -246,19 +303,19 @@ function registerVideoAnalysisTools(server){
      422
     );
    }
-   return ok(legacyDraftSave(args));
+   return ok(withStudioAccess(legacyDraftSave(args)));
   }catch(error){return fail(error)}}
  );
 
  server.tool("list_video_analysis_versions","List immutable script/settings versions.",{project_id:z.string().uuid()},async args=>{try{return ok({versions:getVideoAnalysisVersions(args.project_id)})}catch(error){return fail(error)}});
- server.tool("restore_video_analysis_version","Restore a version and create a new version recording that restore.",{project_id:z.string().uuid(),version_id:z.string().uuid()},async args=>{try{return ok(restoreVideoAnalysisVersion(args.project_id,args.version_id))}catch(error){return fail(error)}});
+ server.tool("restore_video_analysis_version","Restore a version and create a new version recording that restore.",{project_id:z.string().uuid(),version_id:z.string().uuid()},async args=>{try{return ok(withStudioAccess(restoreVideoAnalysisVersion(args.project_id,args.version_id)))}catch(error){return fail(error)}});
  server.tool("start_video_analysis_render","Start optional subtitle + TTS render. Script must already be approved and the source must be a managed Lana asset.",{project_id:z.string().uuid()},async args=>{try{return ok(startVideoAnalysisJob(args.project_id))}catch(error){return fail(error)}});
  server.tool("get_video_analysis_job","Get render job progress and download URL.",{job_id:z.string().uuid()},async args=>{try{return ok(getVideoAnalysisJob(args.job_id))}catch(error){return fail(error)}});
  return server;
 }
 
-export function createMcpServer(){
- const server=new McpServer({name:"lana-carousel-standalone",version:"1.5.0"});
+export function createMcpServer({quotaClientId=currentQuotaClientId()}={}){
+ const server=installToolQuota(new McpServer({name:"lana-carousel-standalone",version:"1.7.0"}),quotaClientId);
  registerCarouselTools(server);
  registerVideoAnalysisTools(server);
  return server;
