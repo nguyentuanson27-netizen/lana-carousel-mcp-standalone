@@ -13,6 +13,10 @@ import {
 } from "./video-analysis-brief.js";
 import {videoAnalysisJobRegistry} from "./video-analysis-job-registry.js";
 import {
+ isVideoSourceMutationPending,
+ withVideoSourceMutationLock
+} from "./video-analysis-project-locks.js";
+import {
  assertManagedVideoSourceUrl,
  deleteManagedVideoSource,
  importRemoteVideoSource
@@ -44,6 +48,7 @@ CREATE INDEX IF NOT EXISTS idx_va_versions ON video_analysis_versions(project_id
 CREATE INDEX IF NOT EXISTS idx_va_jobs ON video_analysis_jobs(project_id,created_at DESC);
 `);
 
+const ACTIVE_JOB_STATUSES=new Set(["QUEUED","RENDERING"]);
 const q={
  create:db.prepare(`INSERT INTO video_analysis_projects(id,title,status,source_url,source_filename,source_mime,source_size,duration,script_json,settings_json,current_version,created_at,updated_at,expires_at) VALUES(@id,@title,@status,@source_url,@source_filename,@source_mime,@source_size,@duration,@script_json,@settings_json,0,@created_at,@updated_at,@expires_at)`),
  get:db.prepare(`SELECT * FROM video_analysis_projects WHERE id=?`),
@@ -101,6 +106,35 @@ function view(row){
   expiresAt:row.expires_at,
   studioUrl:`${config.publicBaseUrl}/video-studio?projectId=${row.id}`
  };
+}
+
+function sourceLockedError(){
+ return new AppError(
+  "VIDEO_ANALYSIS_SOURCE_LOCKED",
+  "Không thể thay video nguồn khi project đang chờ render, đang render hoặc đang có yêu cầu thay nguồn khác.",
+  409
+ );
+}
+
+function persistedActiveJobRows(projectId){
+ return q.jobsByProject.all(projectId).filter(job=>ACTIVE_JOB_STATUSES.has(job.status));
+}
+
+function assertVideoSourceCanChange(projectId){
+ q.get.get(projectId)||view(null);
+ if(persistedActiveJobRows(projectId).length||videoAnalysisJobRegistry.hasActiveProject(projectId)){
+  throw sourceLockedError();
+ }
+}
+
+function commitVideoSourceReplacement({projectId,url,filename,mime,size,duration}){
+ return db.transaction(()=>{
+  const row=q.get.get(projectId);
+  if(!row)return view(null);
+  if(persistedActiveJobRows(projectId).length)throw sourceLockedError();
+  q.updateSource.run(url,filename,mime,size,duration,new Date().toISOString(),projectId);
+  return row.source_url||"";
+ })();
 }
 
 function normalizedStoredOption(option){
@@ -214,32 +248,54 @@ export function getVideoAnalysisProject(id){return view(q.get.get(id));}
 export function listVideoAnalysisProjects(){return q.list.all().map(view);}
 
 export function attachVideoSource({projectId,url,filename,mime="video/mp4",size=0,duration=0}){
- q.get.get(projectId)||view(null);
+ if(isVideoSourceMutationPending(projectId))throw sourceLockedError();
  assertManagedVideoSourceUrl(url);
- q.updateSource.run(url,filename,mime,size,duration,new Date().toISOString(),projectId);
+ assertVideoSourceCanChange(projectId);
+ commitVideoSourceReplacement({projectId,url,filename,mime,size,duration});
  return getVideoAnalysisProject(projectId);
 }
 
-export async function attachRemoteVideoSource({projectId,url,filename="video.mp4",duration=0}){
- const current=getVideoAnalysisProject(projectId);
- const imported=await importRemoteVideoSource({url,filename});
- try{
-  const updated=attachVideoSource({
-   projectId,
-   url:imported.url,
-   filename:imported.filename,
-   mime:imported.mime,
-   size:imported.size,
-   duration
-  });
-  if(current.source.url&&current.source.url!==imported.url){
-   await deleteManagedVideoSource(current.source.url);
+export async function replaceManagedVideoSource({projectId,url,filename,mime="video/mp4",size=0,duration=0}){
+ assertManagedVideoSourceUrl(url);
+ return withVideoSourceMutationLock(projectId,async()=>{
+  assertVideoSourceCanChange(projectId);
+  const previousSourceUrl=commitVideoSourceReplacement({projectId,url,filename,mime,size,duration});
+  if(previousSourceUrl&&previousSourceUrl!==url)await deleteManagedVideoSource(previousSourceUrl);
+  return getVideoAnalysisProject(projectId);
+ });
+}
+
+export async function attachRemoteVideoSource({
+ projectId,
+ url,
+ filename="video.mp4",
+ duration=0,
+ importer=importRemoteVideoSource
+}){
+ return withVideoSourceMutationLock(projectId,async()=>{
+  assertVideoSourceCanChange(projectId);
+  let imported;
+  try{
+   imported=await importer({url,filename});
+   assertManagedVideoSourceUrl(imported.url);
+   assertVideoSourceCanChange(projectId);
+   const previousSourceUrl=commitVideoSourceReplacement({
+    projectId,
+    url:imported.url,
+    filename:imported.filename,
+    mime:imported.mime,
+    size:imported.size,
+    duration
+   });
+   if(previousSourceUrl&&previousSourceUrl!==imported.url){
+    await deleteManagedVideoSource(previousSourceUrl);
+   }
+   return getVideoAnalysisProject(projectId);
+  }catch(error){
+   if(imported?.url)await deleteManagedVideoSource(imported.url);
+   throw error;
   }
-  return updated;
- }catch(error){
-  await deleteManagedVideoSource(imported.url);
-  throw error;
- }
+ });
 }
 
 export function prepareVideoAnalysisScriptOptions({projectId,summary="",options}){
@@ -374,8 +430,9 @@ function managedRenderPath(value){
 export async function deleteVideoAnalysisProject(id){
  const row=q.get.get(id);
  if(!row)return view(null);
+ if(isVideoSourceMutationPending(id))throw sourceLockedError();
  const jobRows=q.jobsByProject.all(id);
- const activeJobs=jobRows.filter(job=>["QUEUED","RENDERING"].includes(job.status));
+ const activeJobs=jobRows.filter(job=>ACTIVE_JOB_STATUSES.has(job.status));
  if(activeJobs.length||videoAnalysisJobRegistry.hasActiveProject(id)){
   throw new AppError(
    "VIDEO_ANALYSIS_JOBS_ACTIVE",
@@ -394,7 +451,7 @@ export async function deleteVideoAnalysisProject(id){
 export async function purgeExpiredVideoAnalysis(){
  for(const row of q.expired.all()){
   await deleteVideoAnalysisProject(row.id).catch(error=>{
-   if(error?.code!=="VIDEO_ANALYSIS_JOBS_ACTIVE")throw error;
+   if(!["VIDEO_ANALYSIS_JOBS_ACTIVE","VIDEO_ANALYSIS_SOURCE_LOCKED"].includes(error?.code))throw error;
   });
  }
 }
