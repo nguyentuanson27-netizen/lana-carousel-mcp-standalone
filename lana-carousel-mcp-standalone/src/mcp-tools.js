@@ -9,6 +9,7 @@ import {
  VIDEO_TONE_STYLES,
  VIDEO_TTS_SPEEDS
 } from "./video-analysis-brief.js";
+import {briefFromArgs as parseBriefFromArgs} from "./video-analysis-mcp-compat.js";
 import {
  attachRemoteVideoSource,
  createVideoAnalysisProject,
@@ -71,25 +72,7 @@ const legacyDraftSettingsSchema=editableVideoSettingsSchema.extend({
  selectedScriptOption:z.enum(VIDEO_SCRIPT_OPTION_IDS).optional()
 }).strict();
 
-function briefFromArgs(args){
- const required=[args.content_domain,args.tone_style,args.tts_speed];
- if(required.every(value=>value===undefined))return null;
- if(required.some(value=>value===undefined)){
-  throw new AppError(
-   "VIDEO_ANALYSIS_BRIEF_INCOMPLETE",
-   "Content brief phải có đủ content_domain, tone_style và tts_speed.",
-   422
-  );
- }
- return{
-  contentDomain:args.content_domain,
-  contentGoal:args.content_goal,
-  toneStyle:args.tone_style,
-  ttsSpeed:args.tts_speed,
-  customContentDomain:args.custom_content_domain,
-  customContentGoal:args.custom_content_goal
- };
-}
+function briefFromArgs(args){return parseBriefFromArgs(args)}
 
 function legacyDraftSave(args){
  if(args.approved!==false){
@@ -149,7 +132,7 @@ function legacyDraftSave(args){
 function registerVideoAnalysisTools(server){
  server.tool(
   "create_video_analysis_project",
-  "Create an independent video analysis project only after collecting a content brief. New clients must send content_domain, tone_style and tts_speed. For a temporary stale-schema compatibility window, a request with all three omitted creates an unconfigured draft; the legacy draft save path must then provide settings.analysisBrief. Partial briefs are rejected. Remote source_url values are downloaded by Lana through an SSRF-protected importer and converted to a managed local asset before render. Video playback speed never changes. After analysis, call prepare_video_script_options with exactly two genuinely different options, show both in chat, and wait for explicit user selection before saving.",
+  "Create an independent video analysis project only after collecting a content brief. New clients must send content_domain, tone_style and tts_speed. For a temporary stale-schema compatibility window, a request with every brief field omitted creates an unconfigured draft; the legacy draft save path must then provide settings.analysisBrief. Any partial brief, including optional-only brief fields, is rejected. Remote source_url values are downloaded by Lana through an SSRF-protected importer and converted to a managed local asset before render. Video playback speed never changes. After analysis, call prepare_video_script_options with exactly two genuinely different options, show both in chat, and wait for explicit user selection before saving.",
   {
    title:z.string().min(1).max(200),source_url:z.string().url().optional(),source_filename:z.string().max(255).optional(),
    content_domain:z.enum(VIDEO_CONTENT_DOMAINS).optional().describe("Required for current clients: fashion, beauty, entertainment, food, travel, technology, education, business, lifestyle, or other"),
