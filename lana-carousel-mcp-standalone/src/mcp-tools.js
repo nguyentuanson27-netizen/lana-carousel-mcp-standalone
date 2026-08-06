@@ -1,6 +1,6 @@
 import {McpServer} from "@modelcontextprotocol/sdk/server/mcp.js";
 import {z} from "zod";
-import {publicError} from "./errors.js";
+import {AppError,publicError} from "./errors.js";
 import {registerCarouselTools} from "./mcp-tools-carousel.js";
 import {
  VIDEO_CONTENT_DOMAINS,
@@ -17,7 +17,8 @@ import {
  getVideoAnalysisVersions,
  prepareVideoAnalysisScriptOptions,
  restoreVideoAnalysisVersion,
- savePreparedVideoAnalysisScript
+ savePreparedVideoAnalysisScript,
+ saveVideoAnalysisScript
 } from "./video-analysis-service.js";
 import {getVideoAnalysisJob,startVideoAnalysisJob} from "./video-analysis-jobs.js";
 
@@ -27,6 +28,11 @@ const ttsSpeedSchema=z.union(VIDEO_TTS_SPEEDS.map(value=>z.literal(value)));
 const colorSchema=z.string().regex(/^#[0-9A-F]{6}$/iu);
 const preparedSegmentSchema=z.object({
  id:z.string().min(1).max(100),start:z.number().min(0),end:z.number().positive(),
+ subtitle_text:z.string().min(1).max(2000),voice_over_text:z.string().min(1).max(4000),
+ speaker:z.enum(["speaker1","speaker2"]).default("speaker1"),enabled:z.boolean().default(true)
+}).strict();
+const legacyDraftSegmentSchema=z.object({
+ id:z.string().min(1).max(100).optional(),start:z.number().min(0),end:z.number().positive(),
  subtitle_text:z.string().min(1).max(2000),voice_over_text:z.string().min(1).max(4000),
  speaker:z.enum(["speaker1","speaker2"]).default("speaker1"),enabled:z.boolean().default(true)
 }).strict();
@@ -52,8 +58,29 @@ const editableVideoSettingsSchema=z.object({
  geminiMultiSpeaker:z.boolean().optional(),
  geminiModel:z.string().min(1).max(150).optional()
 }).strict();
+const analysisBriefSettingsSchema=z.object({
+ contentDomain:z.enum(VIDEO_CONTENT_DOMAINS),
+ contentGoal:z.enum(VIDEO_CONTENT_GOALS).optional(),
+ toneStyle:z.enum(VIDEO_TONE_STYLES),
+ ttsSpeed:ttsSpeedSchema,
+ customContentDomain:z.string().max(200).optional(),
+ customContentGoal:z.string().max(200).optional()
+}).strict();
+const legacyDraftSettingsSchema=editableVideoSettingsSchema.extend({
+ analysisBrief:analysisBriefSettingsSchema.optional(),
+ selectedScriptOption:z.enum(VIDEO_SCRIPT_OPTION_IDS).optional()
+}).strict();
 
 function briefFromArgs(args){
+ const required=[args.content_domain,args.tone_style,args.tts_speed];
+ if(required.every(value=>value===undefined))return null;
+ if(required.some(value=>value===undefined)){
+  throw new AppError(
+   "VIDEO_ANALYSIS_BRIEF_INCOMPLETE",
+   "Content brief phải có đủ content_domain, tone_style và tts_speed.",
+   422
+  );
+ }
  return{
   contentDomain:args.content_domain,
   contentGoal:args.content_goal,
@@ -64,16 +91,71 @@ function briefFromArgs(args){
  };
 }
 
+function legacyDraftSave(args){
+ if(args.approved!==false){
+  throw new AppError(
+   "VIDEO_LEGACY_DRAFT_ONLY",
+   "Payload segments kiểu cũ chỉ được lưu dưới dạng bản nháp. Hãy dùng prepared_options_id để duyệt script.",
+   422
+  );
+ }
+ const project=getVideoAnalysisProject(args.project_id);
+ const legacySettings=args.settings||{};
+ const analysisBrief=legacySettings.analysisBrief||project.analysisBrief;
+ if(!analysisBrief){
+  throw new AppError(
+   "VIDEO_ANALYSIS_BRIEF_REQUIRED",
+   "Payload schema cũ phải gửi settings.analysisBrief trước khi lưu bản nháp.",
+   422
+  );
+ }
+ if(!legacySettings.selectedScriptOption){
+  throw new AppError(
+   "VIDEO_SCRIPT_OPTION_REQUIRED",
+   "Payload schema cũ phải gửi settings.selectedScriptOption.",
+   422
+  );
+ }
+ const{
+  analysisBrief:_analysisBrief,
+  selectedScriptOption,
+  ...editableSettings
+ }=legacySettings;
+ return saveVideoAnalysisScript({
+  projectId:args.project_id,
+  script:{
+   summary:args.summary||"",
+   segments:args.segments.map(segment=>({
+    id:segment.id,
+    start:segment.start,
+    end:segment.end,
+    subtitleText:segment.subtitle_text,
+    voiceOverText:segment.voice_over_text,
+    speaker:segment.speaker,
+    enabled:segment.enabled
+   }))
+  },
+  settings:editableSettings,
+  managedSettings:{
+   analysisBrief,
+   selectedScriptOption,
+   preparedScriptOptions:null
+  },
+  approved:false,
+  note:args.version_note
+ });
+}
+
 function registerVideoAnalysisTools(server){
  server.tool(
   "create_video_analysis_project",
-  "Create an independent video analysis project only after collecting a content brief. If content_domain, tone_style, or tts_speed is missing from the conversation, ask the user one consolidated question and do not call this tool yet. Do not infer missing values. Remote source_url values are downloaded by Lana through an SSRF-protected importer and converted to a managed local asset before render. Video playback speed never changes. After analysis, call prepare_video_script_options with exactly two genuinely different options, show both in chat, and wait for explicit user selection before saving.",
+  "Create an independent video analysis project only after collecting a content brief. New clients must send content_domain, tone_style and tts_speed. For a temporary stale-schema compatibility window, a request with all three omitted creates an unconfigured draft; the legacy draft save path must then provide settings.analysisBrief. Partial briefs are rejected. Remote source_url values are downloaded by Lana through an SSRF-protected importer and converted to a managed local asset before render. Video playback speed never changes. After analysis, call prepare_video_script_options with exactly two genuinely different options, show both in chat, and wait for explicit user selection before saving.",
   {
    title:z.string().min(1).max(200),source_url:z.string().url().optional(),source_filename:z.string().max(255).optional(),
-   content_domain:z.enum(VIDEO_CONTENT_DOMAINS).describe("fashion, beauty, entertainment, food, travel, technology, education, business, lifestyle, or other"),
+   content_domain:z.enum(VIDEO_CONTENT_DOMAINS).optional().describe("Required for current clients: fashion, beauty, entertainment, food, travel, technology, education, business, lifestyle, or other"),
    content_goal:z.enum(VIDEO_CONTENT_GOALS).optional().describe("Optional: product_showcase, sales, review, tutorial, storytelling, entertainment, brand_awareness, engagement, or other"),
-   tone_style:z.enum(VIDEO_TONE_STYLES).describe("humorous, witty, friendly, energetic, trendy, luxurious, serious, expert, emotional, storytelling, persuasive_sales, or minimal"),
-   tts_speed:ttsSpeedSchema.describe("Voice speed only: 0.8, 1, 1.2, 1.5, 1.8, or 2. Video playback is unchanged."),
+   tone_style:z.enum(VIDEO_TONE_STYLES).optional().describe("Required for current clients: humorous, witty, friendly, energetic, trendy, luxurious, serious, expert, emotional, storytelling, persuasive_sales, or minimal"),
+   tts_speed:ttsSpeedSchema.optional().describe("Required for current clients. Voice speed only: 0.8, 1, 1.2, 1.5, 1.8, or 2. Video playback is unchanged."),
    custom_content_domain:z.string().max(200).optional(),custom_content_goal:z.string().max(200).optional()
   },
   async args=>{try{
@@ -124,23 +206,65 @@ function registerVideoAnalysisTools(server){
 
  server.tool(
   "save_approved_video_script",
-  "Save only the option explicitly selected by the user from a previously persisted prepared_options_id. Do not send segments again: the server loads the exact validated option, verifies its hash and freshness, and records the selected option. Server-managed analysisBrief, TTS speed and selectedScriptOption cannot be overridden.",
+  "Current clients must save the explicitly selected persisted option with prepared_options_id and selected_option. During the stale-schema compatibility window, legacy segments are accepted only when approved=false and settings contains both analysisBrief and selectedScriptOption; this path can never approve or render content.",
   {
    project_id:z.string().uuid(),
-   prepared_options_id:z.string().uuid(),
-   selected_option:z.enum(VIDEO_SCRIPT_OPTION_IDS),
+   prepared_options_id:z.string().uuid().optional(),
+   selected_option:z.enum(VIDEO_SCRIPT_OPTION_IDS).optional(),
+   summary:z.string().max(5000).default(""),
+   segments:z.array(legacyDraftSegmentSchema).min(1).max(500).optional(),
    approved:z.boolean().default(true),
    version_note:z.string().max(200).optional(),
-   settings:editableVideoSettingsSchema.optional()
+   settings:legacyDraftSettingsSchema.optional()
   },
-  async args=>{try{return ok(savePreparedVideoAnalysisScript({
-   projectId:args.project_id,
-   preparedOptionsId:args.prepared_options_id,
-   selectedOption:args.selected_option,
-   approved:args.approved,
-   note:args.version_note,
-   settings:args.settings||{}
-  }))}catch(error){return fail(error)}}
+  async args=>{try{
+   const hasPrepared=Boolean(args.prepared_options_id||args.selected_option);
+   const hasLegacy=Array.isArray(args.segments);
+   if(hasPrepared&&hasLegacy){
+    throw new AppError(
+     "VIDEO_SCRIPT_SAVE_MODE_CONFLICT",
+     "Không được gửi đồng thời prepared option và legacy segments.",
+     422
+    );
+   }
+   if(hasPrepared){
+    if(!args.prepared_options_id||!args.selected_option){
+     throw new AppError(
+      "VIDEO_SCRIPT_SELECTION_INCOMPLETE",
+      "prepared_options_id và selected_option phải được gửi cùng nhau.",
+      422
+     );
+    }
+    const{
+     analysisBrief,
+     selectedScriptOption,
+     ...editableSettings
+    }=args.settings||{};
+    if(analysisBrief||selectedScriptOption){
+     throw new AppError(
+      "VIDEO_MANAGED_SETTINGS_OVERRIDE",
+      "Không thể ghi đè analysisBrief hoặc selectedScriptOption trong prepared option flow.",
+      422
+     );
+    }
+    return ok(savePreparedVideoAnalysisScript({
+     projectId:args.project_id,
+     preparedOptionsId:args.prepared_options_id,
+     selectedOption:args.selected_option,
+     approved:args.approved,
+     note:args.version_note,
+     settings:editableSettings
+    }));
+   }
+   if(!hasLegacy){
+    throw new AppError(
+     "VIDEO_SCRIPT_SAVE_MODE_REQUIRED",
+     "Hãy gửi prepared_options_id + selected_option, hoặc legacy segments cho bản nháp.",
+     422
+    );
+   }
+   return ok(legacyDraftSave(args));
+  }catch(error){return fail(error)}}
  );
 
  server.tool("list_video_analysis_versions","List immutable script/settings versions.",{project_id:z.string().uuid()},async args=>{try{return ok({versions:getVideoAnalysisVersions(args.project_id)})}catch(error){return fail(error)}});
@@ -151,7 +275,7 @@ function registerVideoAnalysisTools(server){
 }
 
 export function createMcpServer(){
- const server=new McpServer({name:"lana-carousel-standalone",version:"1.4.0"});
+ const server=new McpServer({name:"lana-carousel-standalone",version:"1.5.0"});
  registerCarouselTools(server);
  registerVideoAnalysisTools(server);
  return server;
