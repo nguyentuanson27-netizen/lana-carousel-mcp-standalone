@@ -76,7 +76,11 @@ test("legacy save MCP path persists a draft and rejects approval",async()=>{
   assert.equal(savedProject.status,"DRAFT");
   assert.equal(savedProject.currentVersion,1);
   assert.equal(savedProject.selectedScriptOption,"natural_full");
-  assert.deepEqual(savedProject.analysisBrief,legacyArguments.settings.analysisBrief);
+  assert.deepEqual(savedProject.analysisBrief,{
+   ...legacyArguments.settings.analysisBrief,
+   customContentDomain:null,
+   customContentGoal:null
+  });
   assert.equal(savedProject.settings.ttsEnabled,true);
   assert.equal(savedProject.settings.subtitleEnabled,true);
   assert.equal(savedProject.settings.preparedScriptOptions,null);
