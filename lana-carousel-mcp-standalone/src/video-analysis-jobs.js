@@ -8,6 +8,7 @@ import {db} from "./db.js";
 import {AppError} from "./errors.js";
 import {getVideoAnalysisProject,videoAnalysisAssetDir,videoAnalysisOutputDir} from "./video-analysis-service.js";
 import {videoAnalysisJobRegistry} from "./video-analysis-job-registry.js";
+import {isVideoSourceMutationPending} from "./video-analysis-project-locks.js";
 import {assertManagedVideoSourceUrl} from "./video-source-importer.js";
 import {generateVideoTtsTrack} from "./video-tts.js";
 
@@ -16,6 +17,8 @@ let bundlePromise;
 const insert=db.prepare(`INSERT INTO video_analysis_jobs(id,project_id,status,progress,created_at,updated_at,expires_at) VALUES(?,?,?,?,?,?,?)`);
 const update=db.prepare(`UPDATE video_analysis_jobs SET status=?,progress=?,error=?,output_path=?,updated_at=? WHERE id=?`);
 const get=db.prepare(`SELECT * FROM video_analysis_jobs WHERE id=?`);
+const interruptedRows=db.prepare(`SELECT id,project_id,status,output_path FROM video_analysis_jobs WHERE status IN ('QUEUED','RENDERING')`);
+const failInterrupted=db.prepare(`UPDATE video_analysis_jobs SET status='FAILED',error=?,output_path=NULL,updated_at=? WHERE id=? AND status IN ('QUEUED','RENDERING')`);
 
 const publish=job=>({
  id:job.id,
@@ -29,6 +32,32 @@ const publish=job=>({
 
 function persist(job){
  update.run(job.status,job.progress,job.error||null,job.output||null,new Date().toISOString(),job.id);
+}
+
+function managedInterruptedOutput(value,jobId){
+ const root=path.resolve(videoAnalysisOutputDir);
+ const candidates=[value,path.join(root,`${jobId}.mp4`)];
+ return [...new Set(candidates.filter(Boolean).map(candidate=>path.resolve(String(candidate))))]
+  .filter(candidate=>candidate.startsWith(`${root}${path.sep}`));
+}
+
+export async function recoverInterruptedVideoAnalysisJobs({
+ reason="Render bị gián đoạn vì server đã khởi động lại. Hãy tạo render job mới."
+}={}){
+ const rows=interruptedRows.all().filter(row=>!videoAnalysisJobRegistry.jobs.has(row.id));
+ if(!rows.length)return{recovered:0,jobIds:[]};
+ const now=new Date().toISOString();
+ db.transaction(()=>{
+  for(const row of rows)failInterrupted.run(reason,now,row.id);
+ })();
+ const paths=rows.flatMap(row=>managedInterruptedOutput(row.output_path,row.id));
+ await Promise.all(paths.map(file=>fs.unlink(file).catch(()=>{})));
+ return{recovered:rows.length,jobIds:rows.map(row=>row.id)};
+}
+
+const startupRecovery=await recoverInterruptedVideoAnalysisJobs();
+if(startupRecovery.recovered){
+ console.warn(`Recovered ${startupRecovery.recovered} interrupted video analysis job(s) after restart.`);
 }
 
 function decodeAudioDataUrl(dataUrl){
@@ -133,6 +162,13 @@ async function drain(){
 }
 
 export function startVideoAnalysisJob(projectId){
+ if(isVideoSourceMutationPending(projectId)){
+  throw new AppError(
+   "VIDEO_ANALYSIS_SOURCE_LOCKED",
+   "Không thể bắt đầu render khi video nguồn đang được thay thế.",
+   409
+  );
+ }
  getVideoAnalysisProject(projectId);
  const job={id:randomUUID(),projectId,status:"QUEUED",progress:0,createdAt:new Date().toISOString()};
  videoAnalysisJobRegistry.add(job);
