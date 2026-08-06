@@ -28,7 +28,7 @@ test("stale schema may create only an unconfigured draft",()=>{
   assert.match(createToolSource,/content_domain:z\.enum\(VIDEO_CONTENT_DOMAINS\)\.optional\(\)/u);
   assert.match(createToolSource,/tone_style:z\.enum\(VIDEO_TONE_STYLES\)\.optional\(\)/u);
   assert.match(createToolSource,/tts_speed:ttsSpeedSchema\.optional\(\)/u);
-  assert.match(source,/VIDEO_ANALYSIS_BRIEF_INCOMPLETE/u);
+  assert.match(source,/parseBriefFromArgs/u);
   assert.match(createToolSource,/analysisBrief:briefFromArgs\(args\)/u);
 });
 
