@@ -5,12 +5,22 @@ import {db} from "./db.js";
 import {config} from "./config.js";
 import {AppError} from "./errors.js";
 import {
-  evaluateVideoScriptOptions,
-  getVideoTonePrompt,
-  normalizeVideoAnalysisBrief,
-  sanitizeVideoAnalysisEditableSettings,
-  VIDEO_SCRIPT_OPTION_IDS
+ evaluateVideoScriptOptions,
+ getVideoTonePrompt,
+ normalizeVideoAnalysisBrief,
+ sanitizeVideoAnalysisEditableSettings,
+ VIDEO_SCRIPT_OPTION_IDS
 } from "./video-analysis-brief.js";
+import {videoAnalysisJobRegistry} from "./video-analysis-job-registry.js";
+import {
+ isVideoSourceMutationPending,
+ withVideoSourceMutationLock
+} from "./video-analysis-project-locks.js";
+import {
+ assertManagedVideoSourceUrl,
+ deleteManagedVideoSource,
+ importRemoteVideoSource
+} from "./video-source-importer.js";
 
 export const videoAnalysisAssetDir=path.resolve(path.dirname(config.databasePath),"video-analysis-assets");
 export const videoAnalysisOutputDir=path.resolve(path.dirname(config.databasePath),"video-analysis-renders");
@@ -38,6 +48,7 @@ CREATE INDEX IF NOT EXISTS idx_va_versions ON video_analysis_versions(project_id
 CREATE INDEX IF NOT EXISTS idx_va_jobs ON video_analysis_jobs(project_id,created_at DESC);
 `);
 
+const ACTIVE_JOB_STATUSES=new Set(["QUEUED","RENDERING"]);
 const q={
  create:db.prepare(`INSERT INTO video_analysis_projects(id,title,status,source_url,source_filename,source_mime,source_size,duration,script_json,settings_json,current_version,created_at,updated_at,expires_at) VALUES(@id,@title,@status,@source_url,@source_filename,@source_mime,@source_size,@duration,@script_json,@settings_json,0,@created_at,@updated_at,@expires_at)`),
  get:db.prepare(`SELECT * FROM video_analysis_projects WHERE id=?`),
@@ -48,6 +59,7 @@ const q={
  addVersion:db.prepare(`INSERT INTO video_analysis_versions(id,project_id,version,note,snapshot_json,created_at) VALUES(?,?,?,?,?,?)`),
  versions:db.prepare(`SELECT id,version,note,created_at FROM video_analysis_versions WHERE project_id=? ORDER BY version DESC`),
  version:db.prepare(`SELECT * FROM video_analysis_versions WHERE id=? AND project_id=?`),
+ jobsByProject:db.prepare(`SELECT id,status,output_path FROM video_analysis_jobs WHERE project_id=? ORDER BY created_at ASC`),
  del:db.prepare(`DELETE FROM video_analysis_projects WHERE id=?`),
  expired:db.prepare(`SELECT * FROM video_analysis_projects WHERE datetime(expires_at)<=datetime('now')`)
 };
@@ -96,6 +108,35 @@ function view(row){
  };
 }
 
+function sourceLockedError(){
+ return new AppError(
+  "VIDEO_ANALYSIS_SOURCE_LOCKED",
+  "Không thể thay video nguồn khi project đang chờ render, đang render hoặc đang có yêu cầu thay nguồn khác.",
+  409
+ );
+}
+
+function persistedActiveJobRows(projectId){
+ return q.jobsByProject.all(projectId).filter(job=>ACTIVE_JOB_STATUSES.has(job.status));
+}
+
+function assertVideoSourceCanChange(projectId){
+ q.get.get(projectId)||view(null);
+ if(persistedActiveJobRows(projectId).length||videoAnalysisJobRegistry.hasActiveProject(projectId)){
+  throw sourceLockedError();
+ }
+}
+
+function commitVideoSourceReplacement({projectId,url,filename,mime,size,duration}){
+ return db.transaction(()=>{
+  const row=q.get.get(projectId);
+  if(!row)return view(null);
+  if(persistedActiveJobRows(projectId).length)throw sourceLockedError();
+  q.updateSource.run(url,filename,mime,size,duration,new Date().toISOString(),projectId);
+  return row.source_url||"";
+ })();
+}
+
 function normalizedStoredOption(option){
  return{
   optionId:option.optionId,
@@ -135,11 +176,11 @@ function resolveManagedSettings(currentSettings,editableSettings,managedSettings
  const hasManagedSelection=Object.prototype.hasOwnProperty.call(managedSettings,"selectedScriptOption");
  const hasManagedPrepared=Object.prototype.hasOwnProperty.call(managedSettings,"preparedScriptOptions");
  const analysisBrief=hasManagedBrief
-  ? normalizeVideoAnalysisBrief(managedSettings.analysisBrief,{required:false})
-  : currentSettings.analysisBrief;
+  ?normalizeVideoAnalysisBrief(managedSettings.analysisBrief,{required:false})
+  :currentSettings.analysisBrief;
  const selectedScriptOption=hasManagedSelection
-  ? managedSettings.selectedScriptOption
-  : currentSettings.selectedScriptOption;
+  ?managedSettings.selectedScriptOption
+  :currentSettings.selectedScriptOption;
  if(selectedScriptOption&&!VIDEO_SCRIPT_OPTION_IDS.includes(selectedScriptOption)){
   throw new AppError("INVALID_VIDEO_SCRIPT_OPTION","Phương án script được chọn không hợp lệ.",422);
  }
@@ -158,7 +199,8 @@ function resolveManagedSettings(currentSettings,editableSettings,managedSettings
  return nextSettings;
 }
 
-export function createVideoAnalysisProject({title,sourceUrl="",sourceFilename="",analysisBrief=null}){
+export function createVideoAnalysisProject({title,sourceUrl="",sourceFilename="",sourceMime="",sourceSize=0,duration=0,analysisBrief=null}){
+ if(sourceUrl)assertManagedVideoSourceUrl(sourceUrl);
  const createdAt=new Date(),id=randomUUID(),iso=createdAt.toISOString();
  const normalizedBrief=normalizeVideoAnalysisBrief(analysisBrief,{required:false});
  const initialSettings={
@@ -173,9 +215,9 @@ export function createVideoAnalysisProject({title,sourceUrl="",sourceFilename=""
   status:"DRAFT",
   source_url:sourceUrl,
   source_filename:sourceFilename,
-  source_mime:"",
-  source_size:0,
-  duration:0,
+  source_mime:sourceMime,
+  source_size:sourceSize,
+  duration,
   script_json:JSON.stringify({summary:"",segments:[]}),
   settings_json:JSON.stringify(initialSettings),
   created_at:iso,
@@ -185,13 +227,75 @@ export function createVideoAnalysisProject({title,sourceUrl="",sourceFilename=""
  return getVideoAnalysisProject(id);
 }
 
+export async function createVideoAnalysisProjectFromRemoteSource({sourceUrl,sourceFilename="video.mp4",...input}){
+ if(!sourceUrl)return createVideoAnalysisProject(input);
+ const imported=await importRemoteVideoSource({url:sourceUrl,filename:sourceFilename});
+ try{
+  return createVideoAnalysisProject({
+   ...input,
+   sourceUrl:imported.url,
+   sourceFilename:imported.filename,
+   sourceMime:imported.mime,
+   sourceSize:imported.size
+  });
+ }catch(error){
+  await deleteManagedVideoSource(imported.url);
+  throw error;
+ }
+}
+
 export function getVideoAnalysisProject(id){return view(q.get.get(id));}
 export function listVideoAnalysisProjects(){return q.list.all().map(view);}
 
 export function attachVideoSource({projectId,url,filename,mime="video/mp4",size=0,duration=0}){
- q.get.get(projectId)||view(null);
- q.updateSource.run(url,filename,mime,size,duration,new Date().toISOString(),projectId);
+ if(isVideoSourceMutationPending(projectId))throw sourceLockedError();
+ assertManagedVideoSourceUrl(url);
+ assertVideoSourceCanChange(projectId);
+ commitVideoSourceReplacement({projectId,url,filename,mime,size,duration});
  return getVideoAnalysisProject(projectId);
+}
+
+export async function replaceManagedVideoSource({projectId,url,filename,mime="video/mp4",size=0,duration=0}){
+ assertManagedVideoSourceUrl(url);
+ return withVideoSourceMutationLock(projectId,async()=>{
+  assertVideoSourceCanChange(projectId);
+  const previousSourceUrl=commitVideoSourceReplacement({projectId,url,filename,mime,size,duration});
+  if(previousSourceUrl&&previousSourceUrl!==url)await deleteManagedVideoSource(previousSourceUrl);
+  return getVideoAnalysisProject(projectId);
+ });
+}
+
+export async function attachRemoteVideoSource({
+ projectId,
+ url,
+ filename="video.mp4",
+ duration=0,
+ importer=importRemoteVideoSource
+}){
+ return withVideoSourceMutationLock(projectId,async()=>{
+  assertVideoSourceCanChange(projectId);
+  let imported;
+  try{
+   imported=await importer({url,filename});
+   assertManagedVideoSourceUrl(imported.url);
+   assertVideoSourceCanChange(projectId);
+   const previousSourceUrl=commitVideoSourceReplacement({
+    projectId,
+    url:imported.url,
+    filename:imported.filename,
+    mime:imported.mime,
+    size:imported.size,
+    duration
+   });
+   if(previousSourceUrl&&previousSourceUrl!==imported.url){
+    await deleteManagedVideoSource(previousSourceUrl);
+   }
+   return getVideoAnalysisProject(projectId);
+  }catch(error){
+   if(imported?.url)await deleteManagedVideoSource(imported.url);
+   throw error;
+  }
+ });
 }
 
 export function prepareVideoAnalysisScriptOptions({projectId,summary="",options}){
@@ -316,16 +420,38 @@ export function restoreVideoAnalysisVersion(projectId,versionId){
  });
 }
 
+function managedRenderPath(value){
+ if(!value)return null;
+ const resolved=path.resolve(String(value));
+ const root=`${path.resolve(videoAnalysisOutputDir)}${path.sep}`;
+ return resolved.startsWith(root)?resolved:null;
+}
+
 export async function deleteVideoAnalysisProject(id){
  const row=q.get.get(id);
  if(!row)return view(null);
- q.del.run(id);
- if(row.source_url?.startsWith(`${config.publicBaseUrl}/video-analysis-assets/`)){
-  await fs.unlink(path.join(videoAnalysisAssetDir,path.basename(row.source_url))).catch(()=>{});
+ if(isVideoSourceMutationPending(id))throw sourceLockedError();
+ const jobRows=q.jobsByProject.all(id);
+ const activeJobs=jobRows.filter(job=>ACTIVE_JOB_STATUSES.has(job.status));
+ if(activeJobs.length||videoAnalysisJobRegistry.hasActiveProject(id)){
+  throw new AppError(
+   "VIDEO_ANALYSIS_JOBS_ACTIVE",
+   "Không thể xóa dự án khi video đang chờ hoặc đang render. Hãy đợi job hoàn tất rồi thử lại.",
+   409
+  );
  }
- return{deleted:true,id};
+ const outputPaths=jobRows.map(job=>managedRenderPath(job.output_path)).filter(Boolean);
+ db.transaction(()=>q.del.run(id))();
+ videoAnalysisJobRegistry.forgetProject(id);
+ await Promise.all(outputPaths.map(file=>fs.unlink(file).catch(()=>{})));
+ await deleteManagedVideoSource(row.source_url);
+ return{deleted:true,id,deletedJobs:jobRows.length,deletedOutputs:outputPaths.length};
 }
 
 export async function purgeExpiredVideoAnalysis(){
- for(const row of q.expired.all())await deleteVideoAnalysisProject(row.id).catch(()=>{});
+ for(const row of q.expired.all()){
+  await deleteVideoAnalysisProject(row.id).catch(error=>{
+   if(!["VIDEO_ANALYSIS_JOBS_ACTIVE","VIDEO_ANALYSIS_SOURCE_LOCKED"].includes(error?.code))throw error;
+  });
+ }
 }

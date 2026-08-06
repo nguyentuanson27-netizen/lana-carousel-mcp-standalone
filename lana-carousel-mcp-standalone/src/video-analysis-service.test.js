@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import {randomUUID} from "node:crypto";
 import test,{after} from "node:test";
 
 const tempRoot=await fs.mkdtemp(path.join(os.tmpdir(),"lana-video-analysis-test-"));
@@ -11,166 +12,204 @@ process.env.PUBLIC_BASE_URL="https://video-analysis.test";
 
 const service=await import("./video-analysis-service.js");
 const {db}=await import("./db.js");
+const {videoAnalysisJobRegistry}=await import("./video-analysis-job-registry.js");
 
 const brief={contentDomain:"fashion",contentGoal:"product_showcase",toneStyle:"humorous",ttsSpeed:1.2};
 const validOptions=()=>[
-  {optionId:"natural_full",label:"Tự nhiên",segments:[
-    {id:"scene-1",start:0,end:4,subtitleText:"Mẫu váy này rất xinh",voiceOverText:"Mẫu váy này rất xinh và giúp vóc dáng trông cân đối hơn",enabled:true},
-    {id:"scene-2",start:4,end:8,subtitleText:"Phần eo ôm vừa vặn",voiceOverText:"Phần eo được xử lý vừa vặn nên mặc lên rất gọn gàng",enabled:true}
-  ]},
-  {optionId:"punchy_short",label:"Bắt nhịp",segments:[
-    {id:"scene-1",start:0,end:4,subtitleText:"Mặc là xinh",voiceOverText:"Mặc lên là xinh, dáng gọn ngay",enabled:true},
-    {id:"scene-2",start:4,end:8,subtitleText:"Eo gọn tức thì",voiceOverText:"Eo gọn, dáng xinh",enabled:true}
-  ]}
+ {optionId:"natural_full",label:"Tự nhiên",segments:[
+  {id:"scene-1",start:0,end:4,subtitleText:"Mẫu váy này rất xinh",voiceOverText:"Mẫu váy này rất xinh và giúp vóc dáng trông cân đối hơn",enabled:true},
+  {id:"scene-2",start:4,end:8,subtitleText:"Phần eo ôm vừa vặn",voiceOverText:"Phần eo được xử lý vừa vặn nên mặc lên rất gọn gàng",enabled:true}
+ ]},
+ {optionId:"punchy_short",label:"Bắt nhịp",segments:[
+  {id:"scene-1",start:0,end:4,subtitleText:"Mặc là xinh",voiceOverText:"Mặc lên là xinh, dáng gọn ngay",enabled:true},
+  {id:"scene-2",start:4,end:8,subtitleText:"Eo gọn tức thì",voiceOverText:"Eo gọn, dáng xinh",enabled:true}
+ ]}
 ];
 
 const settingsRow=db.prepare("SELECT settings_json FROM video_analysis_projects WHERE id=?");
 const updateSettings=db.prepare("UPDATE video_analysis_projects SET settings_json=? WHERE id=?");
+const insertJob=db.prepare(`INSERT INTO video_analysis_jobs(
+ id,project_id,status,progress,error,output_path,created_at,updated_at,expires_at
+) VALUES(?,?,?,?,?,?,?,?,?)`);
+const getProjectRow=db.prepare("SELECT id FROM video_analysis_projects WHERE id=?");
+const getJobRow=db.prepare("SELECT id FROM video_analysis_jobs WHERE id=?");
+
+const managedUrl=name=>`https://video-analysis.test/video-analysis-assets/${encodeURIComponent(name)}`;
 
 function createProject(){
-  const project=service.createVideoAnalysisProject({title:"Integration test",analysisBrief:brief});
-  return service.attachVideoSource({
-    projectId:project.id,
-    url:"https://cdn.test/source.mp4",
-    filename:"source.mp4",
-    duration:8
-  });
+ const project=service.createVideoAnalysisProject({title:"Integration test",analysisBrief:brief});
+ return service.attachVideoSource({
+  projectId:project.id,
+  url:managedUrl(`${project.id}-source.mp4`),
+  filename:"source.mp4",
+  duration:8
+ });
 }
 
 function prepareProject(){
-  const project=createProject();
-  const prepared=service.prepareVideoAnalysisScriptOptions({
-    projectId:project.id,
-    summary:"Video giới thiệu một mẫu váy.",
-    options:validOptions()
-  });
-  return{project,prepared};
+ const project=createProject();
+ const prepared=service.prepareVideoAnalysisScriptOptions({
+  projectId:project.id,
+  summary:"Video giới thiệu một mẫu váy.",
+  options:validOptions()
+ });
+ return{project,prepared};
 }
 
-function readSettings(projectId){
-  return JSON.parse(settingsRow.get(projectId).settings_json);
+function readSettings(projectId){return JSON.parse(settingsRow.get(projectId).settings_json);}
+function writeSettings(projectId,settings){updateSettings.run(JSON.stringify(settings),projectId);}
+function addJob({id=randomUUID(),projectId,status,outputPath=null}){
+ const now=new Date().toISOString();
+ insertJob.run(id,projectId,status,status==="READY"?100:0,null,outputPath,now,now,new Date(Date.now()+864e5).toISOString());
+ return id;
 }
 
-function writeSettings(projectId,settings){
-  updateSettings.run(JSON.stringify(settings),projectId);
+async function assertMissing(file){
+ await assert.rejects(fs.stat(file),error=>error.code==="ENOENT");
 }
 
 after(async()=>{
-  db.close();
-  await fs.rm(tempRoot,{recursive:true,force:true});
+ db.close();
+ await fs.rm(tempRoot,{recursive:true,force:true});
 });
 
 test("prepare persists options and select saves only the chosen validated script",()=>{
-  const {project,prepared}=prepareProject();
-  const persisted=service.getVideoAnalysisProject(project.id);
-  assert.equal(persisted.preparedScriptOptions.id,prepared.preparedOptionsId);
-  assert.equal(persisted.preparedScriptOptions.contentHash,prepared.contentHash);
+ const {project,prepared}=prepareProject();
+ const persisted=service.getVideoAnalysisProject(project.id);
+ assert.equal(persisted.preparedScriptOptions.id,prepared.preparedOptionsId);
+ assert.equal(persisted.preparedScriptOptions.contentHash,prepared.contentHash);
 
-  const saved=service.savePreparedVideoAnalysisScript({
-    projectId:project.id,
-    preparedOptionsId:prepared.preparedOptionsId,
-    selectedOption:"punchy_short",
-    settings:{
-      ttsEnabled:true,
-      ttsSpeed:0.8,
-      analysisBrief:{contentDomain:"technology",toneStyle:"serious",ttsSpeed:2},
-      selectedScriptOption:"natural_full",
-      preparedScriptOptions:{id:"attacker-value"},
-      geminiStylePrompt:"Do not use this",
-      unknownSetting:true
-    }
-  });
+ const saved=service.savePreparedVideoAnalysisScript({
+  projectId:project.id,
+  preparedOptionsId:prepared.preparedOptionsId,
+  selectedOption:"punchy_short",
+  settings:{
+   ttsEnabled:true,
+   ttsSpeed:0.8,
+   analysisBrief:{contentDomain:"technology",toneStyle:"serious",ttsSpeed:2},
+   selectedScriptOption:"natural_full",
+   preparedScriptOptions:{id:"attacker-value"},
+   geminiStylePrompt:"Do not use this",
+   unknownSetting:true
+  }
+ });
 
-  const expected=validOptions()[1].segments;
-  assert.equal(saved.currentVersion,1);
-  assert.equal(saved.selectedScriptOption,"punchy_short");
-  assert.equal(saved.preparedScriptOptions,null);
-  assert.deepEqual(
-    saved.script.segments.map(segment=>({
-      id:segment.id,start:segment.start,end:segment.end,
-      subtitleText:segment.subtitleText,voiceOverText:segment.voiceOverText,enabled:segment.enabled
-    })),
-    expected.map(segment=>({
-      id:segment.id,start:segment.start,end:segment.end,
-      subtitleText:segment.subtitleText,voiceOverText:segment.voiceOverText,enabled:segment.enabled
-    }))
-  );
-  assert.equal(saved.settings.ttsEnabled,true);
-  assert.equal(saved.settings.ttsSpeed,brief.ttsSpeed);
-  assert.equal(saved.settings.analysisBrief.contentDomain,brief.contentDomain);
-  assert.equal(saved.settings.analysisBrief.contentGoal,brief.contentGoal);
-  assert.equal(saved.settings.analysisBrief.toneStyle,brief.toneStyle);
-  assert.equal(saved.settings.analysisBrief.ttsSpeed,brief.ttsSpeed);
-  assert.equal(saved.settings.analysisBrief.customContentDomain,null);
-  assert.equal(saved.settings.analysisBrief.customContentGoal,null);
-  assert.equal(saved.settings.geminiStylePrompt,"Đọc tiếng Việt tự nhiên, hài hước, có nhịp và nhấn đúng punchline.");
-  assert.equal(saved.settings.unknownSetting,undefined);
+ const expected=validOptions()[1].segments;
+ assert.equal(saved.currentVersion,1);
+ assert.equal(saved.selectedScriptOption,"punchy_short");
+ assert.equal(saved.preparedScriptOptions,null);
+ assert.deepEqual(
+  saved.script.segments.map(segment=>({
+   id:segment.id,start:segment.start,end:segment.end,
+   subtitleText:segment.subtitleText,voiceOverText:segment.voiceOverText,enabled:segment.enabled
+  })),
+  expected.map(segment=>({
+   id:segment.id,start:segment.start,end:segment.end,
+   subtitleText:segment.subtitleText,voiceOverText:segment.voiceOverText,enabled:segment.enabled
+  }))
+ );
+ assert.equal(saved.settings.ttsEnabled,true);
+ assert.equal(saved.settings.ttsSpeed,brief.ttsSpeed);
+ assert.equal(saved.settings.analysisBrief.contentDomain,brief.contentDomain);
+ assert.equal(saved.settings.analysisBrief.contentGoal,brief.contentGoal);
+ assert.equal(saved.settings.analysisBrief.toneStyle,brief.toneStyle);
+ assert.equal(saved.settings.analysisBrief.ttsSpeed,brief.ttsSpeed);
+ assert.equal(saved.settings.analysisBrief.customContentDomain,null);
+ assert.equal(saved.settings.analysisBrief.customContentGoal,null);
+ assert.equal(saved.settings.geminiStylePrompt,"Đọc tiếng Việt tự nhiên, hài hước, có nhịp và nhấn đúng punchline.");
+ assert.equal(saved.settings.unknownSetting,undefined);
 });
 
 test("rejects tampered prepared option content hash",()=>{
-  const {project,prepared}=prepareProject();
-  const settings=readSettings(project.id);
-  settings.preparedScriptOptions.options[0].segments[0].voiceOverText="Nội dung đã bị sửa sau khi prepare";
-  writeSettings(project.id,settings);
-
-  assert.throws(
-    ()=>service.savePreparedVideoAnalysisScript({
-      projectId:project.id,
-      preparedOptionsId:prepared.preparedOptionsId,
-      selectedOption:"natural_full"
-    }),
-    error=>error.code==="VIDEO_SCRIPT_OPTIONS_INTEGRITY_ERROR"
-  );
+ const {project,prepared}=prepareProject();
+ const settings=readSettings(project.id);
+ settings.preparedScriptOptions.options[0].segments[0].voiceOverText="Nội dung đã bị sửa sau khi prepare";
+ writeSettings(project.id,settings);
+ assert.throws(
+  ()=>service.savePreparedVideoAnalysisScript({projectId:project.id,preparedOptionsId:prepared.preparedOptionsId,selectedOption:"natural_full"}),
+  error=>error.code==="VIDEO_SCRIPT_OPTIONS_INTEGRITY_ERROR"
+ );
 });
 
 test("rejects prepared options after project version, brief, or source changes",()=>{
-  {
-    const {project,prepared}=prepareProject();
-    db.prepare("UPDATE video_analysis_projects SET current_version=current_version+1 WHERE id=?").run(project.id);
-    assert.throws(
-      ()=>service.savePreparedVideoAnalysisScript({projectId:project.id,preparedOptionsId:prepared.preparedOptionsId,selectedOption:"natural_full"}),
-      error=>error.code==="VIDEO_SCRIPT_OPTIONS_STALE"
-    );
-  }
-
-  {
-    const {project,prepared}=prepareProject();
-    const settings=readSettings(project.id);
-    settings.analysisBrief={...settings.analysisBrief,toneStyle:"serious"};
-    writeSettings(project.id,settings);
-    assert.throws(
-      ()=>service.savePreparedVideoAnalysisScript({projectId:project.id,preparedOptionsId:prepared.preparedOptionsId,selectedOption:"natural_full"}),
-      error=>error.code==="VIDEO_SCRIPT_OPTIONS_STALE"
-    );
-  }
-
-  {
-    const {project,prepared}=prepareProject();
-    service.attachVideoSource({
-      projectId:project.id,
-      url:"https://cdn.test/replacement.mp4",
-      filename:"replacement.mp4",
-      duration:9
-    });
-    assert.throws(
-      ()=>service.savePreparedVideoAnalysisScript({projectId:project.id,preparedOptionsId:prepared.preparedOptionsId,selectedOption:"natural_full"}),
-      error=>error.code==="VIDEO_SCRIPT_OPTIONS_STALE"
-    );
-  }
+ {
+  const {project,prepared}=prepareProject();
+  db.prepare("UPDATE video_analysis_projects SET current_version=current_version+1 WHERE id=?").run(project.id);
+  assert.throws(
+   ()=>service.savePreparedVideoAnalysisScript({projectId:project.id,preparedOptionsId:prepared.preparedOptionsId,selectedOption:"natural_full"}),
+   error=>error.code==="VIDEO_SCRIPT_OPTIONS_STALE"
+  );
+ }
+ {
+  const {project,prepared}=prepareProject();
+  const settings=readSettings(project.id);
+  settings.analysisBrief={...settings.analysisBrief,toneStyle:"serious"};
+  writeSettings(project.id,settings);
+  assert.throws(
+   ()=>service.savePreparedVideoAnalysisScript({projectId:project.id,preparedOptionsId:prepared.preparedOptionsId,selectedOption:"natural_full"}),
+   error=>error.code==="VIDEO_SCRIPT_OPTIONS_STALE"
+  );
+ }
+ {
+  const {project,prepared}=prepareProject();
+  service.attachVideoSource({
+   projectId:project.id,
+   url:managedUrl(`${project.id}-replacement.mp4`),
+   filename:"replacement.mp4",
+   duration:9
+  });
+  assert.throws(
+   ()=>service.savePreparedVideoAnalysisScript({projectId:project.id,preparedOptionsId:prepared.preparedOptionsId,selectedOption:"natural_full"}),
+   error=>error.code==="VIDEO_SCRIPT_OPTIONS_STALE"
+  );
+ }
 });
 
 test("does not persist options whose only differences are in disabled segments",()=>{
-  const project=createProject();
-  const options=validOptions();
-  options[1].segments[0]=structuredClone(options[0].segments[0]);
-  options[0].segments[1].enabled=false;
-  options[1].segments[1].enabled=false;
-  options[0].segments[1].voiceOverText="Nội dung dài khác biệt nhưng segment đã tắt";
-  options[1].segments[1].voiceOverText="Ngắn";
+ const project=createProject();
+ const options=validOptions();
+ options[1].segments[0]=structuredClone(options[0].segments[0]);
+ options[0].segments[1].enabled=false;
+ options[1].segments[1].enabled=false;
+ options[0].segments[1].voiceOverText="Nội dung dài khác biệt nhưng segment đã tắt";
+ options[1].segments[1].voiceOverText="Ngắn";
+ assert.throws(
+  ()=>service.prepareVideoAnalysisScriptOptions({projectId:project.id,summary:"Invalid",options}),
+  error=>error.code==="VIDEO_SCRIPT_OPTIONS_TOO_SIMILAR"
+ );
+ assert.equal(service.getVideoAnalysisProject(project.id).preparedScriptOptions,null);
+});
 
-  assert.throws(
-    ()=>service.prepareVideoAnalysisScriptOptions({projectId:project.id,summary:"Invalid",options}),
-    error=>error.code==="VIDEO_SCRIPT_OPTIONS_TOO_SIMILAR"
-  );
-  assert.equal(service.getVideoAnalysisProject(project.id).preparedScriptOptions,null);
+test("refuses to delete a project while a persisted render job is active",async()=>{
+ const project=createProject();
+ addJob({projectId:project.id,status:"QUEUED"});
+ await assert.rejects(
+  service.deleteVideoAnalysisProject(project.id),
+  error=>error.code==="VIDEO_ANALYSIS_JOBS_ACTIVE"&&error.status===409
+ );
+ assert.equal(service.getVideoAnalysisProject(project.id).id,project.id);
+});
+
+test("deletes completed jobs, render files, managed source and in-memory records",async()=>{
+ const sourceName=`source-${randomUUID()}.mp4`;
+ const sourcePath=path.join(service.videoAnalysisAssetDir,sourceName);
+ await fs.writeFile(sourcePath,"source");
+ const project=service.createVideoAnalysisProject({
+  title:"Delete cleanup",
+  sourceUrl:managedUrl(sourceName),
+  sourceFilename:"source.mp4"
+ });
+ const jobId=randomUUID();
+ const outputPath=path.join(service.videoAnalysisOutputDir,`${jobId}.mp4`);
+ await fs.writeFile(outputPath,"rendered");
+ addJob({id:jobId,projectId:project.id,status:"READY",outputPath});
+ videoAnalysisJobRegistry.add({id:jobId,projectId:project.id,status:"READY",output:outputPath});
+
+ const deleted=await service.deleteVideoAnalysisProject(project.id);
+ assert.deepEqual(deleted,{deleted:true,id:project.id,deletedJobs:1,deletedOutputs:1});
+ assert.equal(getProjectRow.get(project.id),undefined);
+ assert.equal(getJobRow.get(jobId),undefined);
+ assert.equal(videoAnalysisJobRegistry.jobs.has(jobId),false);
+ await assertMissing(sourcePath);
+ await assertMissing(outputPath);
 });

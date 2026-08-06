@@ -10,7 +10,7 @@
     "start": "node src/http-server.js",
     "mcp": "node src/mcp-server.js",
     "test": "node --test src/*.test.js",
-    "check": "node --check src/config.js && node --check src/db.js && node --check src/ssrf.js && node --check src/image-importer.js && node --check src/service.js && node --check src/mcp-tools-carousel.js && node --check src/mcp-tools.js && node --check src/http-server.js && node --check src/mcp-server.js && node --check src/video-jobs.js && node --check src/video-analysis-brief.js && node --check src/video-analysis-service.js && node --check src/video-analysis-jobs.js && node --check src/video-analysis-routes.js && node --check src/video-tts.js && node --test src/*.test.js"
+    "check": "node --check public/projects-api.js && node --check public/projects.js && node --check src/config.js && node --check src/db.js && node --check src/ssrf.js && node --check src/image-importer.js && node --check src/service.js && node --check src/mcp-tools-carousel.js && node --check src/mcp-tools.js && node --check src/http-server.js && node --check src/mcp-server.js && node --check src/video-jobs.js && node --check src/video-analysis-brief.js && node --check src/video-analysis-job-registry.js && node --check src/video-analysis-project-locks.js && node --check src/video-analysis-service.js && node --check src/video-analysis-jobs.js && node --check src/video-analysis-routes.js && node --check src/video-source-importer.js && node --check src/video-tts.js && node --test src/*.test.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.0",
