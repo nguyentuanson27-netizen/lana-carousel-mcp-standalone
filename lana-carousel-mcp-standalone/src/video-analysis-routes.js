@@ -14,7 +14,6 @@ import {
 } from "./video-analysis-brief.js";
 import {
  attachRemoteVideoSource,
- attachVideoSource,
  createVideoAnalysisProject,
  createVideoAnalysisProjectFromRemoteSource,
  deleteVideoAnalysisProject,
@@ -22,6 +21,7 @@ import {
  getVideoAnalysisVersions,
  listVideoAnalysisProjects,
  prepareVideoAnalysisScriptOptions,
+ replaceManagedVideoSource,
  restoreVideoAnalysisVersion,
  savePreparedVideoAnalysisScript,
  saveVideoAnalysisScript,
@@ -115,14 +115,22 @@ videoAnalysisRouter.post(
   const mime=String(req.headers["content-type"]||"video/mp4").split(";")[0];
   const extension=mime.includes("webm")?"webm":mime.includes("quicktime")?"mov":"mp4";
   const name=`${req.params.id}-${randomUUID()}.${extension}`;
-  await fs.writeFile(path.join(videoAnalysisAssetDir,name),req.body,{flag:"wx"});
-  res.status(201).json(attachVideoSource({
-   projectId:req.params.id,
-   url:`${config.publicBaseUrl}/video-analysis-assets/${encodeURIComponent(name)}`,
-   filename:String(req.query.filename||name),
-   mime,
-   size:req.body.length
-  }));
+  const absolutePath=path.join(videoAnalysisAssetDir,name);
+  const url=`${config.publicBaseUrl}/video-analysis-assets/${encodeURIComponent(name)}`;
+  await fs.writeFile(absolutePath,req.body,{flag:"wx"});
+  try{
+   const project=await replaceManagedVideoSource({
+    projectId:req.params.id,
+    url,
+    filename:String(req.query.filename||name),
+    mime,
+    size:req.body.length
+   });
+   res.status(201).json(project);
+  }catch(error){
+   await fs.unlink(absolutePath).catch(()=>{});
+   throw error;
+  }
  })
 );
 
