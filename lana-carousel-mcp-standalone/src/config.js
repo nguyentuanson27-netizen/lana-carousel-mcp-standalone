@@ -25,5 +25,7 @@ export const config = Object.freeze({
   assetDirectory: resolveFromRoot(process.env.ASSET_DIRECTORY, "./data/assets"),
   maxImageBytes: integerEnv("MAX_IMAGE_BYTES", 10 * 1024 * 1024),
   imageTimeoutMs: integerEnv("IMAGE_TIMEOUT_MS", 15_000),
+  maxRemoteVideoBytes: integerEnv("MAX_REMOTE_VIDEO_BYTES", 500 * 1024 * 1024),
+  videoSourceTimeoutMs: integerEnv("VIDEO_SOURCE_TIMEOUT_MS", 120_000),
   maxRedirects: integerEnv("MAX_REDIRECTS", 3)
 });
