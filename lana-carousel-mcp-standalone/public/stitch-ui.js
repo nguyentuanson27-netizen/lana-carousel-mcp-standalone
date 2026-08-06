@@ -88,18 +88,18 @@
   function refreshRail(view, items) {
     const rail = q('#slideRail');
     const navigation = q('#slideNavigation');
-    if (!rail || !navigation) return;
+    if (!rail || !navigation) return null;
     const hasSlides = items.length > 0 && !['download', 'video'].includes(view);
     navigation.hidden = !hasSlides;
-    if (!hasSlides) return;
+    if (!hasSlides) return null;
 
-    const current = currentItem(view, items);
     const term = state.search.toLocaleLowerCase('vi');
     const filtered = items.filter(item => {
       const matchesSearch = !term || `${item.title} ${item.subtitle}`.toLocaleLowerCase('vi').includes(term);
       const matchesFilter = state.filter === 'all' || (state.filter === 'done' ? item.status === 'done' : item.status !== 'done');
       return matchesSearch && matchesFilter;
     });
+    const current = currentItem(view, filtered);
 
     q('#slideProgress').textContent = `${items.filter(item => item.status === 'done').length}/${items.length} hoàn tất`;
     rail.innerHTML = filtered.map((item, index) => `
@@ -112,8 +112,9 @@
         </span>
       </button>`).join('') || '<p class="muted" style="padding:10px">Không tìm thấy slide phù hợp.</p>';
 
-    items.forEach(item => item.card.classList.toggle('is-active', item.id === current?.id));
+    items.forEach(item => item.card.classList.toggle('is-active', Boolean(current) && item.id === current.id));
     q(`#${view}`)?.classList.toggle('focus-mode', true);
+    return current;
   }
 
   function escapeHtml(value = '') {
@@ -204,6 +205,35 @@
     });
   }
 
+  function setSaveState(kind, label) {
+    const element = q('#saveState');
+    if (!element) return;
+    element.classList.remove('dirty', 'error');
+    if (kind === 'dirty' || kind === 'error') element.classList.add(kind);
+    element.innerHTML = `<i></i> ${label}`;
+  }
+
+  function installMutationStatusTracking() {
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = async (input, options = {}) => {
+      const url = typeof input === 'string' ? input : input?.url || '';
+      const method = String(options.method || (typeof input !== 'string' ? input?.method : '') || 'GET').toUpperCase();
+      const tracked = url.includes('/api/') && !['GET', 'HEAD', 'OPTIONS'].includes(method);
+      if (!tracked) return originalFetch(input, options);
+
+      setSaveState('processing', 'Đang xử lý…');
+      try {
+        const response = await originalFetch(input, options);
+        if (response.ok) setSaveState('success', 'Đã cập nhật');
+        else setSaveState('error', 'Cập nhật thất bại');
+        return response;
+      } catch (error) {
+        setSaveState('error', 'Cập nhật thất bại');
+        throw error;
+      }
+    };
+  }
+
   function enhance() {
     if (state.enhancing || q('#app')?.classList.contains('hidden')) return;
     state.enhancing = true;
@@ -213,8 +243,7 @@
       markProjectActionCards();
       const items = getCards(view);
       items.forEach(enhanceContentCard);
-      const selected = currentItem(view, items);
-      refreshRail(view, items);
+      const selected = refreshRail(view, items);
       updateHeader(view, items);
       buildInspector(view, selected, items);
       bindLiveContentPreview(selected);
@@ -254,18 +283,12 @@
     const index = steps.indexOf(current);
     const target = steps[Math.min(index + 1, steps.length - 1)];
     if (target && target !== current) target.click();
-    else if (activeView() === 'video') q('#saveVideoSettings')?.click();
+    else if (activeView() === 'video') q('#saveVideo')?.click();
   });
 
   q('#workflow')?.addEventListener('click', () => requestAnimationFrame(enhance));
-  document.addEventListener('click', event => {
-    if (event.target.closest('.save-content,.save-design,#approveContent,#startRender,#startVideoRender,#saveVideoSettings')) {
-      q('#saveState').classList.remove('dirty','error');
-      q('#saveState').innerHTML = '<i></i> Đang xử lý…';
-      setTimeout(() => { q('#saveState').innerHTML = '<i></i> Đã cập nhật'; enhance(); }, 900);
-    }
-  });
 
+  installMutationStatusTracking();
   observer = new MutationObserver(() => requestAnimationFrame(enhance));
   observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
   window.addEventListener('load', () => setTimeout(enhance, 80));
