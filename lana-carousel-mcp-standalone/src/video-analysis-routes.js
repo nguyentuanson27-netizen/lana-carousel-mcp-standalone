@@ -6,24 +6,26 @@ import {z} from "zod";
 import {config} from "./config.js";
 import {publicError} from "./errors.js";
 import {
-  VIDEO_CONTENT_DOMAINS,
-  VIDEO_CONTENT_GOALS,
-  VIDEO_SCRIPT_OPTION_IDS,
-  VIDEO_TONE_STYLES,
-  VIDEO_TTS_SPEEDS
+ VIDEO_CONTENT_DOMAINS,
+ VIDEO_CONTENT_GOALS,
+ VIDEO_SCRIPT_OPTION_IDS,
+ VIDEO_TONE_STYLES,
+ VIDEO_TTS_SPEEDS
 } from "./video-analysis-brief.js";
 import {
-  attachVideoSource,
-  createVideoAnalysisProject,
-  deleteVideoAnalysisProject,
-  getVideoAnalysisProject,
-  getVideoAnalysisVersions,
-  listVideoAnalysisProjects,
-  prepareVideoAnalysisScriptOptions,
-  restoreVideoAnalysisVersion,
-  savePreparedVideoAnalysisScript,
-  saveVideoAnalysisScript,
-  videoAnalysisAssetDir
+ attachRemoteVideoSource,
+ attachVideoSource,
+ createVideoAnalysisProject,
+ createVideoAnalysisProjectFromRemoteSource,
+ deleteVideoAnalysisProject,
+ getVideoAnalysisProject,
+ getVideoAnalysisVersions,
+ listVideoAnalysisProjects,
+ prepareVideoAnalysisScriptOptions,
+ restoreVideoAnalysisVersion,
+ savePreparedVideoAnalysisScript,
+ saveVideoAnalysisScript,
+ videoAnalysisAssetDir
 } from "./video-analysis-service.js";
 import {getVideoAnalysisFile,getVideoAnalysisJob,startVideoAnalysisJob} from "./video-analysis-jobs.js";
 
@@ -77,29 +79,31 @@ const editableVideoSettingsSchema=z.object({
  geminiModel:z.string().min(1).max(150).optional()
 }).strict();
 
-videoAnalysisRouter.post("/projects",safe((req,res)=>{
+videoAnalysisRouter.post("/projects",safe(async(req,res)=>{
  const body=z.object({
   title:z.string().min(1).max(200),
   sourceUrl:z.string().url().optional(),
   sourceFilename:z.string().max(255).optional(),
   analysisBrief:analysisBriefSchema.nullable().optional()
  }).strict().parse(req.body);
- res.status(201).json(createVideoAnalysisProject(body));
+ const project=body.sourceUrl
+  ?await createVideoAnalysisProjectFromRemoteSource(body)
+  :createVideoAnalysisProject(body);
+ res.status(201).json(project);
 }));
 
 videoAnalysisRouter.get("/projects",safe((_req,res)=>res.json({projects:listVideoAnalysisProjects()})));
 videoAnalysisRouter.get("/projects/:id",safe((req,res)=>res.json(getVideoAnalysisProject(req.params.id))));
 videoAnalysisRouter.delete("/projects/:id",safe(async(req,res)=>res.json(await deleteVideoAnalysisProject(req.params.id))));
 
-videoAnalysisRouter.put("/projects/:id/source-reference",safe((req,res)=>{
+videoAnalysisRouter.put("/projects/:id/source-reference",safe(async(req,res)=>{
  const body=z.object({
   url:z.string().url(),
   filename:z.string().max(255).default("video.mp4"),
-  mime:z.string().max(100).default("video/mp4"),
+  mime:z.string().max(100).optional(),
   duration:z.number().min(0).default(0)
  }).strict().parse(req.body);
- if(!body.url.startsWith("https://")&&!body.url.startsWith(config.publicBaseUrl))throw new Error("Video reference phải dùng HTTPS.");
- res.json(attachVideoSource({projectId:req.params.id,...body}));
+ res.json(await attachRemoteVideoSource({projectId:req.params.id,...body}));
 }));
 
 videoAnalysisRouter.post(
@@ -114,7 +118,7 @@ videoAnalysisRouter.post(
   await fs.writeFile(path.join(videoAnalysisAssetDir,name),req.body,{flag:"wx"});
   res.status(201).json(attachVideoSource({
    projectId:req.params.id,
-   url:`${config.publicBaseUrl}/video-analysis-assets/${name}`,
+   url:`${config.publicBaseUrl}/video-analysis-assets/${encodeURIComponent(name)}`,
    filename:String(req.query.filename||name),
    mime,
    size:req.body.length
