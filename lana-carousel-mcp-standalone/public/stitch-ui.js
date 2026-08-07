@@ -70,7 +70,7 @@
       card,
       title: q('h2', card)?.textContent || 'Slide thiết kế',
       subtitle: q('.status', card)?.textContent || 'Thiết kế',
-      status: 'pending',
+      status: card.dataset.designSaved === 'true' ? 'done' : 'pending',
       image: q('.canvas-bg img', card)?.src || ''
     }));
     return [];
@@ -85,7 +85,7 @@
   }
 
   function statusLabel(status, view) {
-    if (status === 'done') return view === 'images' ? 'Đã duyệt ảnh' : view === 'content' ? 'Đã duyệt nội dung' : 'Hoàn tất';
+    if (status === 'done') return view === 'images' ? 'Đã duyệt ảnh' : view === 'content' ? 'Đã duyệt nội dung' : view === 'edit' ? 'Đã lưu thiết kế' : 'Hoàn tất';
     if (view === 'content') return 'Cần kiểm tra';
     if (view === 'images') return 'Chờ duyệt ảnh';
     if (view === 'edit') return 'Chưa lưu thiết kế';
