@@ -120,7 +120,7 @@ export async function completeTikTokOAuth({ code, state }) {
   requireReady("tiktok");
   const verified = verifyOAuthState(state, "tiktok");
   const token = await exchangeTikTokCode(code);
-  const profile = await socialFetchJson("https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,avatar_url,display_name,username", {
+  const profile = await socialFetchJson("https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,avatar_url,display_name", {
     headers: { Authorization: `Bearer ${token.access_token}` }
   });
   if (profile?.error?.code && profile.error.code !== "ok") throw new AppError("TIKTOK_PROFILE_FAILED", `TikTok: ${profile.error.message || profile.error.code}`, 400);
@@ -128,7 +128,7 @@ export async function completeTikTokOAuth({ code, state }) {
   const account = upsertSocialAccount({
     platform: "tiktok",
     externalAccountId: String(token.open_id),
-    accountName: user.username ? `@${user.username}` : (user.display_name || `TikTok ${token.open_id}`),
+    accountName: user.display_name || `TikTok ${token.open_id}`,
     accessToken: token.access_token,
     refreshToken: token.refresh_token || "",
     tokenExpiresAt: token.expires_in ? new Date(Date.now() + Number(token.expires_in) * 1000).toISOString() : null,
