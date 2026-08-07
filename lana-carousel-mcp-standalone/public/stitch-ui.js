@@ -92,6 +92,15 @@
     return 'Đang xử lý';
   }
 
+  function filterItems(items) {
+  const term = state.search.toLocaleLowerCase('vi');
+  return items.filter(item => {
+    const matchesSearch = !term || `${item.title} ${item.subtitle}`.toLocaleLowerCase('vi').includes(term);
+    const matchesFilter = state.filter === 'all' || (state.filter === 'done' ? item.status === 'done' : item.status !== 'done');
+    return matchesSearch && matchesFilter;
+  });
+}
+
   function applySlideNavigationState() {
     const button = q('#slideNavCollapse');
     ['#slideSearch', '#slideFilters', '#slideRail'].forEach(selector => {
@@ -115,12 +124,7 @@
     if (!hasSlides) return null;
     applySlideNavigationState();
 
-    const term = state.search.toLocaleLowerCase('vi');
-    const filtered = items.filter(item => {
-      const matchesSearch = !term || `${item.title} ${item.subtitle}`.toLocaleLowerCase('vi').includes(term);
-      const matchesFilter = state.filter === 'all' || (state.filter === 'done' ? item.status === 'done' : item.status !== 'done');
-      return matchesSearch && matchesFilter;
-    });
+    const filtered = filterItems(items);
     const current = currentItem(view, filtered);
 
     q('#slideProgress').textContent = `${items.filter(item => item.status === 'done').length}/${items.length} hoàn tất`;
@@ -343,7 +347,7 @@
   const workspaceShell = q('.workspace-shell');
   let wheelLockAt = 0;
   function stepSlide(view, direction) {
-    const items = getCards(view);
+    const items = filterItems(getCards(view));
     if (items.length < 2) return false;
     const currentId = state.selectedByView.get(view);
     let index = items.findIndex(item => item.id === currentId);
