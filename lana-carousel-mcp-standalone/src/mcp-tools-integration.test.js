@@ -85,6 +85,7 @@ test("legacy save MCP path persists a draft and rejects approval",async()=>{
   assert.equal(savedProject.settings.subtitleEnabled,true);
   assert.equal(savedProject.settings.preparedScriptOptions,null);
   assert.equal(savedProject.script.segments[0].voiceOverText,"Quay lưng, spotlight tới ngay.");
+  assert.match(savedProject.studioUrl,/^https:\/\/mcp-integration\.test\/resource-auth\.html\?.*#access_token=/u);
 
   const rejected=await client.callTool({
    name:"save_approved_video_script",
@@ -100,6 +101,7 @@ test("legacy save MCP path persists a draft and rejects approval",async()=>{
   assert.notEqual(reloaded.isError,true);
   assert.equal(reloaded.structuredContent.status,"DRAFT");
   assert.equal(reloaded.structuredContent.currentVersion,1);
+  assert.match(reloaded.structuredContent.studioUrl,/^https:\/\/mcp-integration\.test\/resource-auth\.html\?.*#access_token=/u);
  }finally{
   await Promise.allSettled([client.close(),server.close()]);
  }

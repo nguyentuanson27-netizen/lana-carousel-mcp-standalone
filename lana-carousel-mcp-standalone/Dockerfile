@@ -6,4 +6,4 @@ RUN npm install --omit=dev
 COPY . .
 RUN mkdir -p /app/data/assets
 EXPOSE 8787
-CMD ["node", "src/http-server.js"]
+CMD ["node", "--env-file-if-exists=.env", "src/http-server.js"]
