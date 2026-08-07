@@ -178,6 +178,7 @@ export const sql = {
   getProjectAssetFiles: db.prepare(`SELECT storage_key FROM assets WHERE project_id = ?`),
   deleteProject: db.prepare(`DELETE FROM projects WHERE id = ?`),
   listProjects: db.prepare(`SELECT id,title,topic,content_status,image_status,created_at,updated_at,expires_at FROM projects ORDER BY created_at DESC`),
+  getProjectThumbnail: db.prepare(`SELECT public_url FROM assets a WHERE a.project_id = ? ORDER BY (SELECT MIN(s.position) FROM slides s WHERE s.selected_asset_id = a.id) IS NULL, (SELECT MIN(s.position) FROM slides s WHERE s.selected_asset_id = a.id) ASC, a.created_at ASC LIMIT 1`),
   extendProject: db.prepare(`UPDATE projects SET expires_at=datetime(CASE WHEN datetime(expires_at)>datetime('now') THEN expires_at ELSE 'now' END,'+'||?||' days'),updated_at=? WHERE id=?`),
   updateBrandKit: db.prepare(`UPDATE projects SET brand_font=?,brand_color=?,updated_at=? WHERE id=?`),
   createSlide: db.prepare(`INSERT INTO slides (id,project_id,position,subject,headline,body,selected_asset_id,is_locked,render_status,created_at,updated_at) VALUES (@id,@project_id,@position,@subject,@headline,@body,NULL,0,'DIRTY',@created_at,@updated_at)`),

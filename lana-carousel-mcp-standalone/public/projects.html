@@ -83,7 +83,9 @@
     .project-card:hover{transform:translateY(-2px);border-color:#cdbfb3;box-shadow:0 13px 30px rgba(63,42,28,.08)}
     .project-thumb{position:relative;width:78px;height:94px;display:grid;place-items:center;overflow:hidden;border-radius:16px;color:var(--thumb-color);background:var(--thumb-bg)}
     .project-thumb.image{--thumb-color:#94633b;--thumb-bg:linear-gradient(145deg,#f5e2cf,#fff7ef)}.project-thumb.video{--thumb-color:var(--accent);--thumb-bg:linear-gradient(145deg,#f3d9d5,#fff5f3)}
+    .project-thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
     .project-thumb:after{content:"";position:absolute;width:52px;height:52px;right:-24px;bottom:-24px;border:1px solid currentColor;border-radius:50%;opacity:.22}
+    .project-thumb.has-image:after{display:none}
     .project-main{min-width:0}.project-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.project-title{margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:600 20px Georgia,serif}.type-badge{flex:0 0 auto;padding:5px 8px;border-radius:999px;color:var(--type-color);background:var(--type-bg);font-size:11px;font-weight:850;text-transform:uppercase;letter-spacing:.04em}.type-badge.image{--type-color:#835a37;--type-bg:var(--gold-soft)}.type-badge.video{--type-color:var(--accent);--type-bg:var(--accent-soft)}
     .project-description{min-height:23px;margin:6px 0 9px;overflow:hidden;color:var(--muted);text-overflow:ellipsis;white-space:nowrap}
     .project-meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px;color:var(--muted);font-size:12px}.status-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 8px;border-radius:999px;font-weight:750}.status-chip:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}.status-chip.draft{color:#8c663f;background:var(--gold-soft)}.status-chip.ready{color:var(--green);background:var(--green-soft)}.status-chip.editing{color:var(--blue);background:var(--blue-soft)}
@@ -199,6 +201,6 @@
   </dialog>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="/projects.js?v=1.0.0"></script>
+  <script src="/projects.js?v=1.1.0"></script>
 </body>
 </html>

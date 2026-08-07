@@ -332,7 +332,6 @@ $("edit").ondblclick = event => {
 $("edit").onclick = async event => {
   try {
     const editor = event.target.closest("[data-editor]");
-    if (event.target.id === "saveBrand") { project = await json(`/api/projects/${projectId}/brand-kit`, { method:"PATCH", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ font:$("brandFont").value, color:$("brandColor").value.toUpperCase(), applyToAll:true }) }); drafts.clear(); render(); return; }
     if (!editor) return; const slideId = editor.dataset.editor, slide = project.slides.find(item=>item.id===slideId), data = drafts.get(slideId), index = selectedLayers.get(slideId)||0;
     if (event.target.closest(".direct-start")) { startDirectEditing(slideId,index); return; }
     if (event.target.closest(".direct-finish")) { directEditing.delete(`${slideId}:${index}`); textSelections.delete(`${slideId}:${index}`); render(); return; }
@@ -396,6 +395,13 @@ function bindDrag() { document.querySelectorAll(".canvas").forEach(canvas => can
 $("download").onclick = async event => { if (event.target.id !== "startRender") return; try { const job=await json(`/api/projects/${projectId}/render-jobs`,{method:"POST"});$("jobBox").classList.remove("hidden");pollJob(job.id); } catch(error){alert(error.message);} };
 async function pollJob(id){clearTimeout(renderTimer);try{const job=await json(`/api/render-jobs/${id}`);$("jobText").textContent=`${job.status} · ${job.progress}%`;$("jobProgress").style.width=`${job.progress}%`;if(job.status==="READY"){$("jobDownload").href=job.downloadUrl;$("jobDownload").classList.remove("hidden");return;}if(job.status==="FAILED")throw Error(job.error);renderTimer=setTimeout(()=>pollJob(id),1000);}catch(error){alert(error.message);}}
 
+document.addEventListener("click", async event => {
+  if (event.target.id !== "saveBrand") return;
+  try {
+    project = await json(`/api/projects/${projectId}/brand-kit`, { method:"PATCH", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ font:$("brandFont").value, color:$("brandColor").value.toUpperCase(), applyToAll:true }) });
+    drafts.clear(); render();
+  } catch (error) { alert(error.message); }
+});
 document.addEventListener("selectionchange", () => {
   const selection = window.getSelection(), layer = selection?.anchorNode?.parentElement?.closest?.(".layer[contenteditable=true]");
   if (!layer) return;
