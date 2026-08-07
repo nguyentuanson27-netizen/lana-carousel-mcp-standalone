@@ -28,6 +28,12 @@ test("wide layout removes inspector, supports sidebar collapse, and keeps edit t
   assert.match(css, /#video \.video-stage\s*\{[^}]*100dvh/su);
 });
 
+test("edit workspace falls back to one column before expanded sidebar can overflow", async () => {
+  const css = await read("stitch-layout.css");
+  assert.match(css, /@media\(max-width:1360px\) and \(min-width:1201px\)/u);
+  assert.match(css, /@media\(max-width:1200px\)\{\s*#edit \.visual\{\s*grid-template-columns:1fr;/su);
+});
+
 test("desktop sidebar collapse is persisted and active view controls compact header visibility", async () => {
   const source = await read("studio-layout.js");
   assert.doesNotThrow(() => new Function(source));
