@@ -102,6 +102,7 @@
    id:project.id,type:"carousel",typeLabel:"Ảnh",title:project.title||"Dự án ảnh",
    description:project.topic||"Carousel và thiết kế hình ảnh",status:imageStatus(project),
    updatedAt:project.updatedAt||project.createdAt,createdAt:project.createdAt,expiresAt:project.expiresAt,
+   thumbnailUrl:project.thumbnailUrl||null,
    openUrl:project.widgetUrl||`/widget?projectId=${encodeURIComponent(project.id)}`
   }));
   const videos=videoProjects.map(project=>({
@@ -140,8 +141,11 @@
   const extraActions=image?`
    <button class="icon-btn" type="button" data-action="clone" data-id="${project.id}" aria-label="Nhân bản" title="Nhân bản">${icons.copy}</button>
    <button class="icon-btn" type="button" data-action="extend" data-id="${project.id}" aria-label="Gia hạn" title="Gia hạn 14 ngày">${icons.clock}</button>`:"";
+  const thumb=project.thumbnailUrl
+   ? `<img src="${escapeHtml(project.thumbnailUrl)}" alt="" loading="lazy" decoding="async">`
+   : (image?icons.image:icons.video);
   return `<article class="project-card">
-   <div class="project-thumb ${image?"image":"video"}" aria-hidden="true">${image?icons.image:icons.video}</div>
+   <div class="project-thumb ${image?"image":"video"}${project.thumbnailUrl?" has-image":""}" aria-hidden="true">${thumb}</div>
    <div class="project-main">
     <div class="project-top"><h3 class="project-title">${escapeHtml(project.title)}</h3><span class="type-badge ${image?"image":"video"}">${project.typeLabel}</span></div>
     <p class="project-description">${escapeHtml(project.description)}</p>

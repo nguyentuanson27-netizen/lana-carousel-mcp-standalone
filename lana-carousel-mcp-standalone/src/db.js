@@ -178,6 +178,34 @@ export const sql = {
   getProjectAssetFiles: db.prepare(`SELECT storage_key FROM assets WHERE project_id = ?`),
   deleteProject: db.prepare(`DELETE FROM projects WHERE id = ?`),
   listProjects: db.prepare(`SELECT id,title,topic,content_status,image_status,created_at,updated_at,expires_at FROM projects ORDER BY created_at DESC`),
+  getProjectThumbnail: db.prepare(`
+  SELECT a.public_url
+  FROM slides s
+  JOIN assets a
+    ON a.project_id = s.project_id
+   AND (
+     a.id = s.selected_asset_id
+     OR EXISTS (
+       SELECT 1
+       FROM slide_asset_selections sas
+       WHERE sas.slide_id = s.id
+         AND sas.asset_id = a.id
+     )
+   )
+  WHERE s.project_id = ?
+    AND s.image_approved = 1
+  ORDER BY
+    s.position ASC,
+    CASE WHEN a.id = s.selected_asset_id THEN 0 ELSE 1 END,
+    COALESCE((
+      SELECT MIN(sas.position)
+      FROM slide_asset_selections sas
+      WHERE sas.slide_id = s.id
+        AND sas.asset_id = a.id
+    ), 0) ASC,
+    a.created_at ASC
+  LIMIT 1
+`),
   extendProject: db.prepare(`UPDATE projects SET expires_at=datetime(CASE WHEN datetime(expires_at)>datetime('now') THEN expires_at ELSE 'now' END,'+'||?||' days'),updated_at=? WHERE id=?`),
   updateBrandKit: db.prepare(`UPDATE projects SET brand_font=?,brand_color=?,updated_at=? WHERE id=?`),
   createSlide: db.prepare(`INSERT INTO slides (id,project_id,position,subject,headline,body,selected_asset_id,is_locked,render_status,created_at,updated_at) VALUES (@id,@project_id,@position,@subject,@headline,@body,NULL,0,'DIRTY',@created_at,@updated_at)`),

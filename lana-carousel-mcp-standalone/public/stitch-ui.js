@@ -92,6 +92,15 @@
     return 'Đang xử lý';
   }
 
+  function filterItems(items) {
+  const term = state.search.toLocaleLowerCase('vi');
+  return items.filter(item => {
+    const matchesSearch = !term || `${item.title} ${item.subtitle}`.toLocaleLowerCase('vi').includes(term);
+    const matchesFilter = state.filter === 'all' || (state.filter === 'done' ? item.status === 'done' : item.status !== 'done');
+    return matchesSearch && matchesFilter;
+  });
+}
+
   function applySlideNavigationState() {
     const button = q('#slideNavCollapse');
     ['#slideSearch', '#slideFilters', '#slideRail'].forEach(selector => {
@@ -115,12 +124,7 @@
     if (!hasSlides) return null;
     applySlideNavigationState();
 
-    const term = state.search.toLocaleLowerCase('vi');
-    const filtered = items.filter(item => {
-      const matchesSearch = !term || `${item.title} ${item.subtitle}`.toLocaleLowerCase('vi').includes(term);
-      const matchesFilter = state.filter === 'all' || (state.filter === 'done' ? item.status === 'done' : item.status !== 'done');
-      return matchesSearch && matchesFilter;
-    });
+    const filtered = filterItems(items);
     const current = currentItem(view, filtered);
 
     q('#slideProgress').textContent = `${items.filter(item => item.status === 'done').length}/${items.length} hoàn tất`;
@@ -197,12 +201,29 @@
     action.textContent = 'Chưa thể tiếp tục';
   }
 
+  function syncBrandKitPlacement(view) {
+    const header = q('.workspace-header');
+    if (!header) return;
+    const headerKit = q('.workspace-header > .brand-kit');
+    if (view === 'edit') {
+      const liveKit = q('#edit .brand-kit');
+      if (liveKit) {
+        if (headerKit && headerKit !== liveKit) headerKit.remove();
+        liveKit.classList.add('brand-kit-in-header');
+        if (liveKit.parentElement !== header) header.insertBefore(liveKit, q('#workspaceStats') || null);
+      }
+    } else if (headerKit) {
+      headerKit.remove();
+    }
+  }
+
   function updateHeader(view, items) {
     const meta = viewMeta[view];
     q('#workspaceEyebrow').textContent = meta.step;
     q('#workspaceTitle').textContent = meta.title;
     q('#workspaceDescription').textContent = meta.description;
     configureWorkflowAction(view);
+    syncBrandKitPlacement(view);
     const done = items.filter(item => item.status === 'done').length;
     q('#workspaceStats').innerHTML = items.length
       ? `<span>${items.length} slide</span><span>${done} hoàn tất</span><span>${items.length - done} cần xử lý</span>`
@@ -302,7 +323,7 @@
       const view = activeView();
       markProjectActionCards();
       const items = getCards(view);
-      items.forEach(enhanceContentCard);
+      if (view === 'content') items.forEach(enhanceContentCard);
       const selected = refreshRail(view, items);
       updateHeader(view, items);
       buildInspector(view, selected, items);
@@ -321,6 +342,32 @@
     enhance();
     if (innerWidth <= 850) closeSidebar();
   });
+
+  // Lăn chuột để chuyển slide (cuộn vô tận) trong bước Duyệt ảnh
+  const workspaceShell = q('.workspace-shell');
+  let wheelLockAt = 0;
+  function stepSlide(view, direction) {
+    const items = filterItems(getCards(view));
+    if (items.length < 2) return false;
+    const currentId = state.selectedByView.get(view);
+    let index = items.findIndex(item => item.id === currentId);
+    if (index < 0) index = 0;
+    const nextIndex = (index + direction + items.length) % items.length;
+    state.selectedByView.set(view, items[nextIndex].id);
+    enhance();
+    if (workspaceShell) workspaceShell.scrollTop = 0;
+    return true;
+  }
+  workspaceShell?.addEventListener('wheel', event => {
+    if (activeView() !== 'images' || Math.abs(event.deltaY) < 6) return;
+    const direction = event.deltaY > 0 ? 1 : -1;
+    const atTop = workspaceShell.scrollTop <= 0;
+    const atBottom = workspaceShell.scrollTop + workspaceShell.clientHeight >= workspaceShell.scrollHeight - 1;
+    if ((direction > 0 && !atBottom) || (direction < 0 && !atTop)) return; // cho cuộn hết nội dung trước
+    const now = Date.now();
+    if (now - wheelLockAt < 320) { event.preventDefault(); return; }
+    if (stepSlide('images', direction)) { wheelLockAt = now; event.preventDefault(); }
+  }, { passive: false });
 
   q('#slideSearch')?.addEventListener('input', event => { state.search = event.target.value; enhance(); });
   q('#slideFilters')?.addEventListener('click', event => {
