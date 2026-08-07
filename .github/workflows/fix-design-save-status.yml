@@ -1,0 +1,42 @@
+name: Fix design save status
+
+on:
+  push:
+    branches:
+      - fix/compact-workspace-step-header
+    paths:
+      - .github/workflows/fix-design-save-status.yml
+      - .github/scripts/fix-design-save-status.py
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/compact-workspace-step-header
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: lana-carousel-mcp-standalone/package-lock.json
+      - name: Apply fix
+        run: python .github/scripts/fix-design-save-status.py
+      - name: Validate
+        working-directory: lana-carousel-mcp-standalone
+        run: |
+          npm ci
+          npm run check
+          npm run test:remotion
+      - name: Commit application changes
+        run: |
+          rm -f .github/workflows/fix-design-save-status.yml .github/scripts/fix-design-save-status.py
+          git config user.name "nguyentuanson27-netizen"
+          git config user.email "nguyentuanson27@gmail.com"
+          git add -A
+          git commit -m "fix(ui): persist Carousel design save status"
+          git push origin HEAD:fix/compact-workspace-step-header
