@@ -1,0 +1,77 @@
+name: Fix review 4880287829
+
+on:
+  push:
+    branches:
+      - fix/compact-workspace-step-header
+    paths:
+      - .github/workflows/fix-review-4880287829.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/compact-workspace-step-header
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: lana-carousel-mcp-standalone/package-lock.json
+      - name: Apply responsive header fix
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path('lana-carousel-mcp-standalone/public/video-studio.html')
+          source = path.read_text()
+
+          old_brand = ".brand-copy strong{font:600 18px Georgia,serif;white-space:nowrap}"
+          new_brand = ".brand-copy strong{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:600 18px Georgia,serif}"
+          if source.count(old_brand) != 1:
+              raise SystemExit('Expected brand title rule exactly once')
+          source = source.replace(old_brand, new_brand, 1)
+
+          old_tablet = """    @media(max-width:960px){
+      body{height:auto;min-height:100vh;overflow:auto}
+      .header-inner{grid-template-columns:minmax(0,1fr) minmax(180px,1fr) auto}
+      main{height:auto;padding:18px 0 48px;overflow:visible}"""
+          new_tablet = """    @media(max-width:1100px){
+      .header-inner{grid-template-columns:minmax(150px,.8fr) minmax(180px,1.2fr) auto}
+      .header-left{gap:10px}
+      .brand{min-width:0;overflow:hidden;gap:8px}
+      .brand-copy{min-width:0;overflow:hidden}
+      .brand-copy strong{font-size:16px}
+      .brand-copy span{display:none}
+    }
+    @media(max-width:960px){
+      body{height:auto;min-height:100vh;overflow:auto}
+      .header-inner{grid-template-columns:minmax(130px,.7fr) minmax(160px,1.3fr) auto}
+      main{height:auto;padding:18px 0 48px;overflow:visible}"""
+          if source.count(old_tablet) != 1:
+              raise SystemExit('Expected tablet media block exactly once')
+          source = source.replace(old_tablet, new_tablet, 1)
+
+          path.write_text(source)
+          PY
+      - name: Validate application
+        working-directory: lana-carousel-mcp-standalone
+        run: |
+          npm ci
+          npm run check
+          npm run test:remotion
+      - name: Commit fix
+        shell: bash
+        run: |
+          rm .github/workflows/fix-review-4880287829.yml
+          git config user.name "nguyentuanson27-netizen"
+          git config user.email "nguyentuanson27@gmail.com"
+          git add -A
+          git commit -m "fix(ui): prevent Video Studio header overlap"
+          git push origin HEAD:fix/compact-workspace-step-header
