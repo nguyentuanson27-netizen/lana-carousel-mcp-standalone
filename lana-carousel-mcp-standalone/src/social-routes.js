@@ -112,6 +112,6 @@ export function registerSocialRoutes(app) {
     }
   });
 
-  app.get("/social-media/carousel/:projectId/:slideId.webp", handle(serveSocialCarouselImage));
+  app.get("/social-media/carousel/:projectId/:slideId.jpg", handle(serveSocialCarouselImage));
   app.get("/social-media/video/:projectId/:jobId.mp4", handle(async (req, res) => serveSocialVideo(req, res)));
 }
