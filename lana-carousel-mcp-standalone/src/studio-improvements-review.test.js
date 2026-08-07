@@ -84,6 +84,8 @@ test("wheel navigation and slide rail share the active filter collection", async
   const stepStart = source.indexOf("function stepSlide");
   const stepEnd = source.indexOf("workspaceShell?.addEventListener", stepStart);
 
+  assert.ok(railStart >= 0 && railEnd > railStart, "refreshRail block must exist");
+  assert.ok(stepStart >= 0 && stepEnd > stepStart, "stepSlide block must exist");
   assert.ok(source.includes("function filterItems(items)"));
   assert.match(source.slice(railStart, railEnd), /const filtered = filterItems\(items\);/u);
   assert.match(source.slice(stepStart, stepEnd), /const items = filterItems\(getCards\(view\)\);/u);
