@@ -3,7 +3,7 @@ const projectId = params.get("projectId");
 const $ = id => document.getElementById(id);
 const fonts = ["TikTok Sans", "Montserrat", "Poppins", "Bebas Neue", "Roboto", "Playfair Display", "Courier New"];
 let project, assets, view = "content", renderTimer;
-const picks = new Map(), drafts = new Map(), selectedLayers = new Map(), histories = new Map(), redos = new Map(), sectionStates = new Map(), textSelections = new Map(), directEditing = new Set();
+const picks = new Map(), drafts = new Map(), selectedLayers = new Map(), histories = new Map(), redos = new Map(), sectionStates = new Map(), textSelections = new Map(), directEditing = new Set(), designDirty = new Set();
 const esc = (value = "") => String(value).replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" })[char]);
 
 function selectedIds(slide) { return slide.selectedAssetIds?.length ? slide.selectedAssetIds : [slide.selectedAssetId].filter(Boolean); }
@@ -59,12 +59,18 @@ function syncContentLayers(slide, headline, body) {
   data.layers = layers;
   return layers;
 }
-function remember(slideId) {
+function markDesignDirty(slideId) {
+  designDirty.add(slideId);
+  const editor = document.querySelector(`[data-editor="${slideId}"]`);
+  if (editor) editor.dataset.designSaved = "false";
+}
+function remember(slideId, markDirty = true) {
   const history = histories.get(slideId) || [];
   history.push(JSON.stringify(drafts.get(slideId)));
   if (history.length > 30) history.shift();
   histories.set(slideId, history);
   redos.set(slideId, []);
+  if (markDirty) markDesignDirty(slideId);
 }
 
 function contentCard(slide) { return `<article class="card" data-content="${slide.id}"><div class="number">Slide ${slide.position}</div><div class="fields"><label class="field wide">Tiêu đề<input data-f="headline" value="${esc(slide.headline)}"></label><label class="field wide">Nội dung<textarea data-f="body">${esc(slide.body)}</textarea></label></div><button class="action save-content" data-slide="${slide.id}">Lưu nội dung</button></article>`; }
@@ -204,7 +210,7 @@ function editCard(slide) {
   const data = draft(slide); let active = selectedLayers.get(slide.id) ?? 0; if (!data.layers[active]) active = 0; selectedLayers.set(slide.id, active);
   const layer = data.layers[active] || defaultLayer(slide);
   const canUndo = (histories.get(slide.id) || []).length > 0, canRedo = (redos.get(slide.id) || []).length > 0;
-  return `<article class="card" data-editor="${slide.id}"><div class="card-head"><div><div class="number">Slide ${slide.position}</div><h2>${esc(slide.headline)}</h2></div><span class="status">${data.layers.length} lớp chữ</span></div><div class="visual"><div class="preview-column"><div class="canvas" data-canvas="${slide.id}">${background(slide, data)}<div class="safe-zone"></div>${data.layers.map((item, index) => layerHtml(item, index, index === active, textSelections.get(`${slide.id}:${index}`), directEditing.has(`${slide.id}:${index}`))).join("")}</div>${directToolbarHtml(layer,slide.id,active)}</div><div><div class="tools"><button class="tool add-layer">+ Thêm chữ</button><button class="tool remove-layer">Xóa lớp</button><button class="tool undo" ${canUndo ? "" : "disabled"}>Hoàn tác</button><button class="tool redo" ${canRedo ? "" : "disabled"}>Làm lại</button><details class="apply-targets"><summary class="tool">Chọn slide để áp dụng kiểu</summary><div class="apply-target-menu"><div class="apply-target-actions"><button type="button" class="tool select-all-targets">Chọn tất cả</button><button type="button" class="tool clear-all-targets">Bỏ chọn</button></div>${project.slides.map(target=>`<label class="toggle"><input type="checkbox" class="style-target-slide" value="${target.id}" ${target.id===slide.id?"checked":""}> Slide ${target.position}: ${esc(target.headline.slice(0,34))}</label>`).join("")}<button type="button" class="action apply-selected-slides">Áp dụng kiểu</button></div></details></div><label class="field">Lớp chữ<select data-control="layer">${data.layers.map((item,index)=>`<option value="${index}" ${index===active?"selected":""}>${index+1}. ${esc(item.content.slice(0,30)||"Chữ mới")}</option>`).join("")}</select></label><div class="fields"><label class="field wide">Nội dung<textarea data-control="content">${esc(layer.content)}</textarea></label></div><button class="action save-design" data-slide="${slide.id}">Lưu thiết kế</button></div></div></article>`;
+  return `<article class="card" data-editor="${slide.id}" data-design-saved="${slide.designSaved && !designDirty.has(slide.id) ? "true" : "false"}"><div class="card-head"><div><div class="number">Slide ${slide.position}</div><h2>${esc(slide.headline)}</h2></div><span class="status">${data.layers.length} lớp chữ</span></div><div class="visual"><div class="preview-column"><div class="canvas" data-canvas="${slide.id}">${background(slide, data)}<div class="safe-zone"></div>${data.layers.map((item, index) => layerHtml(item, index, index === active, textSelections.get(`${slide.id}:${index}`), directEditing.has(`${slide.id}:${index}`))).join("")}</div>${directToolbarHtml(layer,slide.id,active)}</div><div><div class="tools"><button class="tool add-layer">+ Thêm chữ</button><button class="tool remove-layer">Xóa lớp</button><button class="tool undo" ${canUndo ? "" : "disabled"}>Hoàn tác</button><button class="tool redo" ${canRedo ? "" : "disabled"}>Làm lại</button><details class="apply-targets"><summary class="tool">Chọn slide để áp dụng kiểu</summary><div class="apply-target-menu"><div class="apply-target-actions"><button type="button" class="tool select-all-targets">Chọn tất cả</button><button type="button" class="tool clear-all-targets">Bỏ chọn</button></div>${project.slides.map(target=>`<label class="toggle"><input type="checkbox" class="style-target-slide" value="${target.id}" ${target.id===slide.id?"checked":""}> Slide ${target.position}: ${esc(target.headline.slice(0,34))}</label>`).join("")}<button type="button" class="action apply-selected-slides">Áp dụng kiểu</button></div></details></div><label class="field">Lớp chữ<select data-control="layer">${data.layers.map((item,index)=>`<option value="${index}" ${index===active?"selected":""}>${index+1}. ${esc(item.content.slice(0,30)||"Chữ mới")}</option>`).join("")}</select></label><div class="fields"><label class="field wide">Nội dung<textarea data-control="content">${esc(layer.content)}</textarea></label></div><button class="action save-design" data-slide="${slide.id}">Lưu thiết kế</button></div></div></article>`;
 }
 
 function videoPanelHtml(){
@@ -265,7 +271,7 @@ $("edit").addEventListener("toggle", event => {
   if (details) sectionStates.set(`${details.dataset.slide}:${details.dataset.editorSection}`, details.open);
 }, true);
 $("edit").onchange = event => { const editor = event.target.closest("[data-editor]"); if (!editor) return; if (event.target.dataset.control === "layer") { selectedLayers.set(editor.dataset.editor, Number(event.target.value)); render(); } };
-$("edit").onfocusin = event => { const editor = event.target.closest("[data-editor]"); if (editor && event.target.dataset.control && event.target.dataset.control !== "layer") remember(editor.dataset.editor); };
+$("edit").onfocusin = event => { const editor = event.target.closest("[data-editor]"); if (editor && event.target.dataset.control && event.target.dataset.control !== "layer") remember(editor.dataset.editor, false); };
 function captureTextSelection(event) {
   const input = event.target.closest('[data-control="content"]'), editor = event.target.closest("[data-editor]");
   if (!input || !editor) return;
@@ -284,7 +290,7 @@ $("edit").oninput = event => {
     const layerIndex = Number(editable.dataset.layer), target = data.layers[layerIndex], content = editable.innerText.replace(/\r/g,"");
     target.sizeRanges = remapSizeRanges(String(target.content||""),content,target.sizeRanges||[]);
     target.styleRanges = remapSizeRanges(String(target.content||""),content,target.styleRanges||[]);
-    target.content = content; return;
+    target.content = content; markDesignDirty(slideId); return;
   }
   const directControl = event.target.dataset.directStyle;
   if (directControl) {
@@ -294,6 +300,7 @@ $("edit").oninput = event => {
     applyDirectStyle(slideId,index,{[directControl]:value}); return;
   }
   const control = event.target.dataset.control; if (!control) return;
+  markDesignDirty(slideId);
   if (control === "boxEnabled") layer.boxEnabled = event.target.checked;
   else if (["boxBorderWidth","boxRadius","boxPaddingX","boxPaddingY","boxWidth"].includes(control)) layer[control] = Number(event.target.value);
   else if (["boxOpacity","boxBorderOpacity"].includes(control)) layer[control] = Number(event.target.value)/100;
@@ -384,8 +391,19 @@ $("edit").onclick = async event => {
       render(); return;
     }
     if (event.target.closest(".save-design")) {
-      project = await json(`/api/projects/${projectId}/slides/${slideId}/crop`, { method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({cropX:data.cropX,cropY:data.cropY,cropZoom:data.cropZoom,imageBrightness:data.imageBrightness,imageContrast:data.imageContrast,imageSaturation:data.imageSaturation,imageBlur:data.imageBlur,imageGrayscale:data.imageGrayscale,frameInset:data.frameInset,frameWidth:data.frameWidth,frameColor:data.frameColor,frameOpacity:data.frameOpacity,frameRadius:data.frameRadius}) });
-      const primary=data.layers[0]||defaultLayer(slide); project=await json(`/api/projects/${projectId}/slides/${slideId}/content`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({headline:slide.headline,body:slide.body,textEnabled:true,overlayText:primary.content,textFont:primary.font,textSize:primary.size,textPosition:"center",textColor:primary.color,textAlign:primary.align,textX:primary.x,textY:primary.y,textLayers:data.layers})}); drafts.delete(slideId); histories.delete(slideId); redos.delete(slideId); render();
+      const primary = data.layers[0] || defaultLayer(slide);
+      project = await json(`/api/projects/${projectId}/slides/${slideId}/design`, {
+        method:"PATCH", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          cropX:data.cropX,cropY:data.cropY,cropZoom:data.cropZoom,
+          imageBrightness:data.imageBrightness,imageContrast:data.imageContrast,imageSaturation:data.imageSaturation,
+          imageBlur:data.imageBlur,imageGrayscale:data.imageGrayscale,frameInset:data.frameInset,frameWidth:data.frameWidth,
+          frameColor:data.frameColor,frameOpacity:data.frameOpacity,frameRadius:data.frameRadius,
+          textEnabled:true,overlayText:primary.content,textFont:primary.font,textSize:primary.size,textPosition:"center",
+          textColor:primary.color,textAlign:primary.align,textX:primary.x,textY:primary.y,textLayers:data.layers
+        })
+      });
+      designDirty.delete(slideId); drafts.delete(slideId); histories.delete(slideId); redos.delete(slideId); render();
     }
   } catch(error){alert(error.message);}
 };
