@@ -1,8 +1,9 @@
+import { config } from "./config.js";
 import { AppError } from "./errors.js";
 import { normalizeQuotaClientId } from "./quota-principal.js";
 
-const defaultTtlMs = 2 * 60 * 60 * 1000;
-const defaultMaxSessionsPerPrincipal = 20;
+const defaultTtlMs = config.mcpSessionTtlSeconds * 1000;
+const defaultMaxSessionsPerPrincipal = config.mcpMaxSessionsPerPrincipal;
 
 export class McpPrincipalBindings {
   constructor({
