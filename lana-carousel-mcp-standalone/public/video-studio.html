@@ -55,10 +55,10 @@
     .back-link{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-weight:650;white-space:nowrap}
     .back-link:hover{color:var(--accent)}
     .header-divider{width:1px;height:26px;background:var(--line)}
-    .brand{display:flex;align-items:center;gap:12px;min-width:0}
+    .brand{display:flex;align-items:center;gap:12px;min-width:0;overflow:hidden}
     .brand-mark{flex:0 0 auto;width:40px;height:40px;display:grid;place-items:center;border-radius:14px;background:var(--accent);color:#fff;font:700 19px Georgia,serif;box-shadow:0 9px 24px rgba(141,63,61,.24)}
-    .brand-copy{display:grid;line-height:1.15;min-width:0}
-    .brand-copy strong{font:600 18px Georgia,serif;white-space:nowrap}
+    .brand-copy{display:grid;line-height:1.15;min-width:0;overflow:hidden}
+    .brand-copy strong{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:600 18px Georgia,serif}
     .brand-copy span{margin-top:3px;color:var(--muted);font-size:10px;letter-spacing:.14em;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .header-project-title{min-width:0;text-align:center}
     .header-project-title h1{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:500 22px/1.1 Georgia,serif;letter-spacing:-.02em}
@@ -160,9 +160,17 @@
     .versions button:hover{border-color:var(--accent);background:var(--accent-soft);transform:translateY(-1px)}
     .muted{color:var(--muted);font-size:13px}
 
+    @media(max-width:1100px){
+      .header-inner{grid-template-columns:minmax(150px,.8fr) minmax(180px,1.2fr) auto}
+      .header-left{gap:10px}
+      .brand{min-width:0;overflow:hidden;gap:8px}
+      .brand-copy{min-width:0;overflow:hidden}
+      .brand-copy strong{font-size:16px}
+      .brand-copy span{display:none}
+    }
     @media(max-width:960px){
       body{height:auto;min-height:100vh;overflow:auto}
-      .header-inner{grid-template-columns:minmax(0,1fr) minmax(180px,1fr) auto}
+      .header-inner{grid-template-columns:minmax(130px,.7fr) minmax(160px,1.3fr) auto}
       main{height:auto;padding:18px 0 48px;overflow:visible}
       .layout{height:auto;grid-template-columns:1fr}
       .preview{height:auto;overflow:visible}
