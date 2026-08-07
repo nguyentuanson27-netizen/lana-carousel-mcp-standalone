@@ -2,6 +2,7 @@ import { z } from "zod";
 import { AppError, publicError } from "./errors.js";
 import { completeMetaOAuth, completeTikTokOAuth, metaOAuthUrl, tiktokOAuthUrl } from "./social-oauth.js";
 import { serveSocialCarouselImage, serveSocialVideo } from "./social-media.js";
+import "./social-recovery.js";
 import {
   createPublishPost,
   disconnectSocialAccount,
