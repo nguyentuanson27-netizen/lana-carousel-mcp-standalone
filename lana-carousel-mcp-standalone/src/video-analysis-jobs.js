@@ -6,6 +6,7 @@ import {renderMedia,selectComposition} from "@remotion/renderer";
 import {config} from "./config.js";
 import {db} from "./db.js";
 import {AppError} from "./errors.js";
+import {createSignedMediaUrl} from "./media-access.js";
 import {getVideoAnalysisProject,videoAnalysisAssetDir,videoAnalysisOutputDir} from "./video-analysis-service.js";
 import {videoAnalysisJobRegistry} from "./video-analysis-job-registry.js";
 import {isVideoSourceMutationPending} from "./video-analysis-project-locks.js";
@@ -87,7 +88,8 @@ async function work(job){
   const project=getVideoAnalysisProject(job.projectId);
   if(project.status!=="APPROVED")throw new Error("Script cần được duyệt trước khi render.");
   if(!project.source.url)throw new Error("Chưa có video nguồn.");
-  const sourceVideoUrl=assertManagedVideoSourceUrl(project.source.url);
+  const mediaScope={resourceType:"video-analysis",resourceId:project.id};
+  const sourceVideoUrl=createSignedMediaUrl(assertManagedVideoSourceUrl(project.source.url),mediaScope);
 
   let voiceUrl="";
   let voiceDuration=0;
@@ -101,7 +103,7 @@ async function work(job){
    if(!track?.dataUrl)throw new Error("TTS đã bật nhưng script không có nội dung giọng đọc.");
    const asset=await materializeTtsTrack(job.id,track.dataUrl);
    temporaryVoicePath=asset.filePath;
-   voiceUrl=asset.url;
+   voiceUrl=createSignedMediaUrl(asset.url,mediaScope);
    voiceDuration=Number(track.durationSeconds||0)/Math.max(.5,Number(project.settings.ttsSpeed||1));
   }
 

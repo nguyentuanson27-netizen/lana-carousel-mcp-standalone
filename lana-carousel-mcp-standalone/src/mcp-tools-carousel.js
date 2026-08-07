@@ -1,5 +1,6 @@
 import {z} from "zod";
 import {publicError} from "./errors.js";
+import {createProjectAccessUrl} from "./project-access.js";
 import {
   addSlide,
   approveProjectContent,
@@ -21,25 +22,41 @@ import {getRenderJob,startRenderJob} from "./render-jobs.js";
 
 const ok=value=>({content:[{type:"text",text:JSON.stringify(value)}],structuredContent:value});
 const fail=error=>{const safe=publicError(error);return{isError:true,content:[{type:"text",text:JSON.stringify(safe)}]}};
+const withAccessLink=project=>({...project,widgetUrl:createProjectAccessUrl(project.id)});
+
+export function summarizeCandidateBatch(results,failures){
+  const addedResults=results.filter(result=>result.asset?.candidateAdded===true);
+  const duplicateResults=results.filter(result=>result.asset?.candidateAdded===false);
+  return{
+    success:failures.length===0,
+    partialSuccess:addedResults.length>0&&failures.length>0,
+    added:addedResults.length,
+    duplicates:duplicateResults.length,
+    failed:failures.length,
+    results,
+    duplicateResults,
+    failures
+  };
+}
 
 export function registerCarouselTools(server){
   server.tool("create_project","Create one carousel project that automatically expires and is permanently deleted after 14 days. Decide content slides first. Create exactly one slide per content subject; image alternatives are never slides and must use add_image_candidate.",{
     title:z.string().min(1).max(200),
     topic:z.string().max(500).optional(),
     slide_limit:z.number().int().min(1).max(20).default(10)
-  },async args=>{try{return ok(createProject({title:args.title,topic:args.topic,slideLimit:args.slide_limit}))}catch(error){return fail(error)}});
+  },async args=>{try{return ok(withAccessLink(createProject({title:args.title,topic:args.topic,slideLimit:args.slide_limit})))}catch(error){return fail(error)}});
 
   server.tool("add_slide","Add one CONTENT slide for one unique subject. NEVER create slides named Image/Ảnh 1/8, 2/8, etc. Attach multiple image choices by calling add_image_candidate with this same slide_id, maximum 10 candidates.",{
     project_id:z.string().uuid(),position:z.number().int().positive(),subject:z.string().min(1),headline:z.string().min(1),body:z.string().min(1)
   },async args=>{try{return ok(addSlide({projectId:args.project_id,position:args.position,subject:args.subject,headline:args.headline,body:args.body}))}catch(error){return fail(error)}});
 
-  server.tool("get_project","Get a project with slides, image assets, and widgetUrl. Always share widgetUrl as a clickable link in the chat so the user can open the project directly.",{
+  server.tool("get_project","Get a project with slides, image assets, and a one-time widgetUrl. Always share widgetUrl as a clickable link in the chat so the user can open the project directly.",{
     project_id:z.string().uuid()
-  },async args=>{try{return ok(getProject(args.project_id))}catch(error){return fail(error)}});
+  },async args=>{try{return ok(withAccessLink(getProject(args.project_id)))}catch(error){return fail(error)}});
 
-  server.tool("get_project_link","Get the direct clickable widget link for a project. After creating or updating a project, call this tool and send widgetUrl directly in the chat.",{
+  server.tool("get_project_link","Get a one-time direct clickable widget link for a project. After creating or updating a project, call this tool and send widgetUrl directly in the chat.",{
     project_id:z.string().uuid()
-  },async args=>{try{const project=getProject(args.project_id);return ok({projectId:project.id,title:project.title,widgetUrl:project.widgetUrl,expiresAt:project.expiresAt})}catch(error){return fail(error)}});
+  },async args=>{try{const project=getProject(args.project_id);return ok({projectId:project.id,title:project.title,widgetUrl:createProjectAccessUrl(project.id),expiresAt:project.expiresAt})}catch(error){return fail(error)}});
 
   server.tool("import_asset_from_url","Assign one final image directly to an existing content slide. Do not use this for image alternatives; use add_image_candidate or add_image_candidates instead. Never create another slide for another image.",{
     project_id:z.string().uuid(),slide_id:z.string().uuid(),image_url:z.string().url(),source_page_url:z.string().url().optional(),source_title:z.string().max(500).optional(),source_publisher:z.string().max(200).optional(),source_type:z.enum(["official_brand","official_social","news","magazine","unknown"]).optional(),alt_text:z.string().max(500).optional(),force_replace:z.boolean().optional()
@@ -63,7 +80,7 @@ export function registerCarouselTools(server){
       }
       if(lastError)failures.push({index,imageUrl:image.image_url,attempts:2,error:lastError.message});
     }
-    return ok({success:failures.length===0,partialSuccess:results.length>0&&failures.length>0,projectId:args.project_id,slideId:args.slide_id,requested:args.images.length,added:results.length,failed:failures.length,results,failures});
+    return ok({projectId:args.project_id,slideId:args.slide_id,requested:args.images.length,...summarizeCandidateBatch(results,failures)});
   });
 
   server.tool("list_projects","List active projects, optionally filtered by title/topic.",{
@@ -118,7 +135,7 @@ export function registerCarouselTools(server){
 
   server.tool("clone_project","Clone a project with its slides, assets, approvals and design into a new 14-day project.",{
     project_id:z.string().uuid()
-  },async args=>{try{return ok(await cloneProject(args.project_id))}catch(error){return fail(error)}});
+  },async args=>{try{return ok(withAccessLink(await cloneProject(args.project_id)))}catch(error){return fail(error)}});
 
   server.tool("restore_project_version","Restore slide content/design and approval statuses from a version id returned by the versions API.",{
     project_id:z.string().uuid(),version_id:z.string().uuid()
