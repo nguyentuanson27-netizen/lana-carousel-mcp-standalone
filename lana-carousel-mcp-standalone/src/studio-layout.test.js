@@ -10,8 +10,12 @@ async function read(name) {
 
 test("Content Studio loads wide-layout assets after the existing Stitch assets", async () => {
   const html = await read("widget.html");
-  assert.match(html, /stitch-ui\.css[^\n]+stitch-layout\.css/su);
-  assert.match(html, /stitch-ui\.js[^\n]+studio-layout\.js/su);
+  const baseCss = html.indexOf("/stitch-ui.css");
+  const layoutCss = html.indexOf("/stitch-layout.css");
+  const baseJs = html.indexOf("/stitch-ui.js");
+  const layoutJs = html.indexOf("/studio-layout.js");
+  assert.ok(baseCss >= 0 && layoutCss > baseCss);
+  assert.ok(baseJs >= 0 && layoutJs > baseJs);
 });
 
 test("wide layout removes inspector, supports sidebar collapse, and keeps edit toolbar beside preview", async () => {
