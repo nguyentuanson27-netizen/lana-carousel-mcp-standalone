@@ -153,7 +153,7 @@
   max-height:calc(100dvh - var(--topbar) - 190px);
 }
 
-@media(max-width:1360px) and (min-width:1121px){
+@media(max-width:1360px) and (min-width:1201px){
   #edit .visual{
     grid-template-columns:minmax(500px,650px) minmax(300px,1fr);
   }
@@ -162,7 +162,7 @@
   }
 }
 
-@media(max-width:1120px){
+@media(max-width:1200px){
   #edit .visual{
     grid-template-columns:1fr;
   }
@@ -172,6 +172,9 @@
     max-width:720px;
     margin-inline:auto;
   }
+}
+
+@media(max-width:1120px){
   #video .video-editor{
     grid-template-columns:minmax(310px,440px) minmax(0,1fr);
   }
