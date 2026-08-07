@@ -1,0 +1,207 @@
+name: Fix review 4880008318 v2
+
+on:
+  push:
+    branches:
+      - feat/ui-studio-improvements
+    paths:
+      - .github/workflows/fix-review-4880008318-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/ui-studio-improvements
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: lana-carousel-mcp-standalone/package-lock.json
+      - name: Apply code fixes
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          db_path = Path('lana-carousel-mcp-standalone/src/db.js')
+          db_source = db_path.read_text()
+          old_thumbnail = "  getProjectThumbnail: db.prepare(`SELECT public_url FROM assets a WHERE a.project_id = ? ORDER BY (SELECT MIN(s.position) FROM slides s WHERE s.selected_asset_id = a.id) IS NULL, (SELECT MIN(s.position) FROM slides s WHERE s.selected_asset_id = a.id) ASC, a.created_at ASC LIMIT 1`),"
+          new_thumbnail = """  getProjectThumbnail: db.prepare(`
+            SELECT a.public_url
+            FROM slides s
+            JOIN assets a
+              ON a.project_id = s.project_id
+             AND (
+               a.id = s.selected_asset_id
+               OR EXISTS (
+                 SELECT 1
+                 FROM slide_asset_selections sas
+                 WHERE sas.slide_id = s.id
+                   AND sas.asset_id = a.id
+               )
+             )
+            WHERE s.project_id = ?
+              AND s.image_approved = 1
+            ORDER BY
+              s.position ASC,
+              CASE WHEN a.id = s.selected_asset_id THEN 0 ELSE 1 END,
+              COALESCE((
+                SELECT MIN(sas.position)
+                FROM slide_asset_selections sas
+                WHERE sas.slide_id = s.id
+                  AND sas.asset_id = a.id
+              ), 0) ASC,
+              a.created_at ASC
+            LIMIT 1
+          `),"""
+          if db_source.count(old_thumbnail) != 1:
+              raise SystemExit('Expected exactly one thumbnail query')
+          db_path.write_text(db_source.replace(old_thumbnail, new_thumbnail, 1))
+
+          ui_path = Path('lana-carousel-mcp-standalone/public/stitch-ui.js')
+          ui_source = ui_path.read_text()
+          apply_anchor = "  function applySlideNavigationState() {"
+          filter_helper = """  function filterItems(items) {
+            const term = state.search.toLocaleLowerCase('vi');
+            return items.filter(item => {
+              const matchesSearch = !term || `${item.title} ${item.subtitle}`.toLocaleLowerCase('vi').includes(term);
+              const matchesFilter = state.filter === 'all' || (state.filter === 'done' ? item.status === 'done' : item.status !== 'done');
+              return matchesSearch && matchesFilter;
+            });
+          }
+
+          """
+          if ui_source.count(apply_anchor) != 1:
+              raise SystemExit('Expected exactly one slide navigation function')
+          ui_source = ui_source.replace(apply_anchor, filter_helper + apply_anchor, 1)
+
+          rail_start = ui_source.index("  function refreshRail(view, items) {")
+          filter_start = ui_source.index("    const term = state.search.toLocaleLowerCase('vi');", rail_start)
+          current_anchor = "    const current = currentItem(view, filtered);"
+          filter_end = ui_source.index(current_anchor, filter_start)
+          ui_source = ui_source[:filter_start] + "    const filtered = filterItems(items);\n" + ui_source[filter_end:]
+
+          step_anchor = "  function stepSlide(view, direction) {\n    const items = getCards(view);"
+          step_replacement = "  function stepSlide(view, direction) {\n    const items = filterItems(getCards(view));"
+          if ui_source.count(step_anchor) != 1:
+              raise SystemExit('Expected exactly one stepSlide implementation')
+          ui_path.write_text(ui_source.replace(step_anchor, step_replacement, 1))
+          PY
+      - name: Add regression tests
+        shell: bash
+        run: |
+          cat > lana-carousel-mcp-standalone/src/studio-improvements-review.test.js <<'EOF'
+          import assert from "node:assert/strict";
+          import fs from "node:fs/promises";
+          import os from "node:os";
+          import path from "node:path";
+          import { after, test } from "node:test";
+
+          const tempDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "lana-ui-review-"));
+          process.env.DATABASE_PATH = path.join(tempDirectory, "review.sqlite");
+          process.env.ASSET_DIRECTORY = path.join(tempDirectory, "assets");
+
+          const { db, sql } = await import(`./db.js?review-4880008318=${Date.now()}`);
+          const now = new Date().toISOString();
+
+          after(async () => {
+            db.close();
+            await fs.rm(tempDirectory, { recursive: true, force: true });
+          });
+
+          function insertProject(id) {
+            db.prepare(`
+              INSERT INTO projects (id,title,topic,created_at,updated_at,expires_at)
+              VALUES (?,?,?,?,?,?)
+            `).run(id, "Review project", "", now, now, "2099-01-01T00:00:00.000Z");
+          }
+
+          function insertSlide({ id, projectId, selectedAssetId = null, approved = 0 }) {
+            db.prepare(`
+              INSERT INTO slides (
+                id,project_id,position,subject,headline,body,selected_asset_id,
+                is_locked,render_status,created_at,updated_at,image_approved
+              ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+            `).run(id, projectId, 1, "Subject", "Headline", "Body", selectedAssetId, 0, "DIRTY", now, now, approved);
+          }
+
+          function insertAsset({ id, projectId, url, sha }) {
+            db.prepare(`
+              INSERT INTO assets (
+                id,project_id,storage_key,public_url,mime_type,file_size,width,height,
+                sha256,source_image_url,source_type,created_at
+              ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+            `).run(id, projectId, `${id}.webp`, url, "image/webp", 100, 1080, 1920, sha, "https://example.com/source.webp", "web", now);
+          }
+
+          test("dashboard thumbnail only exposes assets from an approved slide", () => {
+            insertProject("project-review");
+            insertAsset({
+              id: "asset-direct",
+              projectId: "project-review",
+              url: "/assets/direct.webp",
+              sha: "1111111111111111111111111111111111111111111111111111111111111111"
+            });
+            insertSlide({
+              id: "slide-review",
+              projectId: "project-review",
+              selectedAssetId: "asset-direct",
+              approved: 0
+            });
+
+            assert.equal(sql.getProjectThumbnail.get("project-review"), undefined);
+
+            db.prepare("UPDATE slides SET image_approved=1 WHERE id=?").run("slide-review");
+            assert.equal(sql.getProjectThumbnail.get("project-review").public_url, "/assets/direct.webp");
+
+            db.prepare("UPDATE slides SET image_approved=0 WHERE id=?").run("slide-review");
+            assert.equal(sql.getProjectThumbnail.get("project-review"), undefined);
+
+            insertAsset({
+              id: "asset-grid",
+              projectId: "project-review",
+              url: "/assets/grid.webp",
+              sha: "2222222222222222222222222222222222222222222222222222222222222222"
+            });
+            db.prepare("UPDATE slides SET image_approved=1, selected_asset_id=NULL, composition_mode='grid' WHERE id=?").run("slide-review");
+            db.prepare("INSERT INTO slide_asset_selections (slide_id,asset_id,position) VALUES (?,?,?)")
+              .run("slide-review", "asset-grid", 0);
+
+            assert.equal(sql.getProjectThumbnail.get("project-review").public_url, "/assets/grid.webp");
+          });
+
+          test("wheel navigation and slide rail share the active filter collection", async () => {
+            const source = await fs.readFile(new URL("../public/stitch-ui.js", import.meta.url), "utf8");
+            const railStart = source.indexOf("function refreshRail");
+            const railEnd = source.indexOf("function escapeHtml", railStart);
+            const stepStart = source.indexOf("function stepSlide");
+            const stepEnd = source.indexOf("workspaceShell?.addEventListener", stepStart);
+
+            assert.ok(source.includes("function filterItems(items)"));
+            assert.match(source.slice(railStart, railEnd), /const filtered = filterItems\(items\);/u);
+            assert.match(source.slice(stepStart, stepEnd), /const items = filterItems\(getCards\(view\)\);/u);
+          });
+          EOF
+          sed -i 's/^          //' lana-carousel-mcp-standalone/src/studio-improvements-review.test.js
+      - name: Validate application
+        working-directory: lana-carousel-mcp-standalone
+        run: |
+          npm ci
+          npm run check
+          npm run test:remotion
+      - name: Commit fixes
+        shell: bash
+        run: |
+          rm -f .github/workflows/fix-review-4880008318.yml
+          rm -f .github/workflows/fix-review-4880008318-v2.yml
+          git config user.name "nguyentuanson27-netizen"
+          git config user.email "nguyentuanson27@gmail.com"
+          git add -A
+          git commit -m "fix(ui): address review 4880008318"
+          git push origin HEAD:feat/ui-studio-improvements
