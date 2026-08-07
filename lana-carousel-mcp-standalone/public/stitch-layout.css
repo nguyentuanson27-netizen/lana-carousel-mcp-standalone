@@ -1,0 +1,266 @@
+:root{
+  --studio-sidebar-collapsed:72px;
+}
+
+/* Toàn bộ Content Studio: bỏ inspector phải và dành chiều ngang cho workspace. */
+.context-inspector{
+  display:none!important;
+}
+.studio-body{
+  grid-template-columns:var(--sidebar) minmax(0,1fr)!important;
+  transition:grid-template-columns .2s ease;
+}
+.workspace-shell{
+  padding:14px 18px 28px;
+}
+
+/* Không còn tiêu đề bước lớn. Riêng bước Sửa thiết kế giữ Brand Kit thành toolbar mỏng. */
+.workspace-header>div:first-child,
+#workspaceStats{
+  display:none!important;
+}
+.workspace-header{
+  min-height:0;
+  align-items:center;
+  justify-content:flex-end;
+  gap:10px;
+  padding:7px 18px!important;
+}
+.studio-app:not(.studio-view-edit) .workspace-header{
+  display:none!important;
+}
+.studio-view-edit .workspace-header{
+  display:flex!important;
+}
+.studio-view-edit .workspace-header .brand-kit{
+  position:relative;
+  top:auto;
+  margin:0;
+  padding:0;
+  box-shadow:none;
+}
+.studio-view-edit .workspace-header .brand-kit .field{
+  min-width:150px;
+}
+
+/* Sidebar desktop có thể thu gọn / mở rộng. */
+.sidebar-desktop-toggle{
+  flex:0 0 auto;
+}
+.studio-app.sidebar-collapsed .studio-body{
+  grid-template-columns:var(--studio-sidebar-collapsed) minmax(0,1fr)!important;
+}
+.studio-app.sidebar-collapsed .studio-sidebar{
+  width:var(--studio-sidebar-collapsed);
+}
+.studio-app.sidebar-collapsed .sidebar-brand{
+  flex-direction:column;
+  gap:8px;
+  padding:10px 7px;
+}
+.studio-app.sidebar-collapsed .sidebar-brand>div,
+.studio-app.sidebar-collapsed .workflow-caption,
+.studio-app.sidebar-collapsed .step b,
+.studio-app.sidebar-collapsed .step small,
+.studio-app.sidebar-collapsed .slide-navigation{
+  display:none!important;
+}
+.studio-app.sidebar-collapsed .brand-mark{
+  width:38px;
+  height:38px;
+  font-size:22px;
+}
+.studio-app.sidebar-collapsed .workflow-nav{
+  gap:6px;
+  padding:10px 7px;
+  border-bottom:0;
+}
+.studio-app.sidebar-collapsed .step{
+  display:grid;
+  grid-template-columns:1fr;
+  grid-template-rows:auto;
+  place-items:center;
+  padding:8px 5px;
+}
+.studio-app.sidebar-collapsed .step>span{
+  grid-row:auto;
+  margin:0;
+}
+
+/* Bước Sửa thiết kế: preview lớn hơn nhưng luôn vừa chiều cao viewport. */
+#edit .visual{
+  grid-template-columns:minmax(560px,760px) minmax(340px,1fr);
+  gap:20px;
+  align-items:start;
+}
+#edit .preview-column{
+  display:grid;
+  grid-template-columns:116px minmax(0,1fr);
+  grid-template-rows:auto;
+  gap:12px;
+  align-items:start;
+  position:sticky;
+  top:0;
+}
+#edit .preview-column .canvas{
+  grid-column:2;
+  grid-row:1;
+  width:min(100%,calc((100dvh - var(--topbar) - 92px) * .5625),620px)!important;
+  height:auto!important;
+  max-height:calc(100dvh - var(--topbar) - 92px);
+  justify-self:center;
+  margin:0 auto!important;
+}
+#edit .direct-toolbar{
+  grid-column:1;
+  grid-row:1;
+  display:flex;
+  flex-direction:column;
+  flex-wrap:nowrap;
+  align-items:stretch;
+  gap:8px;
+  max-height:calc(100dvh - var(--topbar) - 92px);
+  overflow:auto;
+  padding:9px;
+}
+#edit .direct-toolbar .direct-hint{
+  flex-basis:auto;
+  font-size:9px;
+  line-height:1.35;
+}
+#edit .direct-toolbar select,
+#edit .direct-toolbar input[type=number],
+#edit .direct-toolbar input[type=color],
+#edit .direct-toolbar .tool,
+#edit .direct-toolbar .action{
+  width:100%;
+  max-width:none;
+}
+#edit .direct-toolbar input[type=color]{
+  height:38px;
+}
+
+/* Video Builder: preview ghim lớn vừa phải và không vượt màn hình. */
+#video .video-editor{
+  grid-template-columns:minmax(390px,540px) minmax(0,1fr);
+  gap:20px;
+}
+#video .video-preview-sticky{
+  top:0;
+}
+#video .video-stage{
+  width:min(100%,calc((100dvh - var(--topbar) - 190px) * .5625),480px);
+  max-height:calc(100dvh - var(--topbar) - 190px);
+}
+
+@media(max-width:1360px) and (min-width:1201px){
+  #edit .visual{
+    grid-template-columns:minmax(500px,650px) minmax(300px,1fr);
+  }
+  #edit .preview-column{
+    grid-template-columns:104px minmax(0,1fr);
+  }
+}
+
+@media(max-width:1200px){
+  #edit .visual{
+    grid-template-columns:1fr;
+  }
+  #edit .preview-column{
+    position:relative;
+    grid-template-columns:104px minmax(0,1fr);
+    max-width:720px;
+    margin-inline:auto;
+  }
+}
+
+@media(max-width:1120px){
+  #video .video-editor{
+    grid-template-columns:minmax(310px,440px) minmax(0,1fr);
+  }
+}
+
+@media(max-width:850px){
+  .sidebar-desktop-toggle{
+    display:none!important;
+  }
+  .studio-app.sidebar-collapsed .studio-body{
+    display:block!important;
+  }
+  .studio-app.sidebar-collapsed .studio-sidebar{
+    width:min(330px,88vw);
+  }
+  .studio-app.sidebar-collapsed .sidebar-brand{
+    flex-direction:row;
+    padding:18px;
+  }
+  .studio-app.sidebar-collapsed .sidebar-brand>div,
+  .studio-app.sidebar-collapsed .workflow-caption,
+  .studio-app.sidebar-collapsed .step b,
+  .studio-app.sidebar-collapsed .step small,
+  .studio-app.sidebar-collapsed .slide-navigation{
+    display:initial!important;
+  }
+  .studio-app.sidebar-collapsed .workflow-nav{
+    display:grid;
+    padding:0 10px 14px;
+    border-bottom:1px solid var(--line);
+  }
+  .studio-app.sidebar-collapsed .step{
+    display:grid;
+    grid-template-columns:30px 1fr;
+    grid-template-rows:auto auto;
+    place-items:initial;
+    padding:10px;
+  }
+  .studio-app.sidebar-collapsed .step>span{
+    grid-row:1/3;
+  }
+  .workspace-shell{
+    padding:12px 12px 90px;
+  }
+  .studio-view-edit .workspace-header{
+    padding:6px 12px!important;
+  }
+  .studio-view-edit .workspace-header .brand-kit{
+    width:100%;
+  }
+  #edit .preview-column{
+    grid-template-columns:1fr;
+    gap:10px;
+  }
+  #edit .preview-column .canvas{
+    grid-column:1;
+    grid-row:1;
+    width:min(100%,calc((100dvh - var(--topbar) - 170px) * .5625))!important;
+    max-height:calc(100dvh - var(--topbar) - 170px);
+  }
+  #edit .direct-toolbar{
+    grid-column:1;
+    grid-row:2;
+    flex-direction:row;
+    flex-wrap:wrap;
+    max-height:none;
+    overflow:visible;
+  }
+  #edit .direct-toolbar .direct-hint{
+    flex-basis:100%;
+  }
+  #edit .direct-toolbar select{
+    width:auto;
+    min-width:130px;
+  }
+  #edit .direct-toolbar input[type=number],
+  #edit .direct-toolbar input[type=color],
+  #edit .direct-toolbar .tool,
+  #edit .direct-toolbar .action{
+    width:auto;
+  }
+  #video .video-editor{
+    grid-template-columns:1fr;
+  }
+  #video .video-stage{
+    width:min(100%,calc((100dvh - var(--topbar) - 180px) * .5625));
+    max-height:calc(100dvh - var(--topbar) - 180px);
+  }
+}
