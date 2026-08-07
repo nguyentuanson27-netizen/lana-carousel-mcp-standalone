@@ -1,8 +1,9 @@
+import { config } from "./config.js";
 import { AppError } from "./errors.js";
 import { normalizeQuotaClientId } from "./quota-principal.js";
 
-const defaultTtlMs = 2 * 60 * 60 * 1000;
-const defaultMaxSessionsPerPrincipal = 20;
+const defaultTtlMs = config.mcpSessionTtlSeconds * 1000;
+const defaultMaxSessionsPerPrincipal = config.mcpMaxSessionsPerPrincipal;
 
 export class McpPrincipalBindings {
   constructor({
@@ -25,6 +26,7 @@ export class McpPrincipalBindings {
       principal: normalizeQuotaClientId(principal),
       transport: resources.transport ?? current.transport,
       server: resources.server ?? current.server,
+      activeRequests: current.activeRequests || 0,
       touchedAt: Date.now()
     };
     this.sessions.set(key, entry);
@@ -80,6 +82,26 @@ export class McpPrincipalBindings {
     return this.sessions.get(String(sessionId));
   }
 
+  beginActivity(sessionId, principal) {
+    if (!sessionId) return null;
+    this.assert(sessionId, principal);
+    const key = String(sessionId);
+    const entry = this.sessions.get(key);
+    entry.activeRequests = (entry.activeRequests || 0) + 1;
+    let released = false;
+    return {
+      entry,
+      release: () => {
+        if (released) return;
+        released = true;
+        const current = this.sessions.get(key);
+        if (!current || current !== entry) return;
+        current.activeRequests = Math.max(0, (current.activeRequests || 1) - 1);
+        current.touchedAt = Date.now();
+      }
+    };
+  }
+
   detach(sessionId) {
     const key = String(sessionId || "");
     const entry = this.sessions.get(key) || null;
@@ -110,6 +132,7 @@ export class McpPrincipalBindings {
     const removed = [];
     const entries = [];
     for (const [sessionId, entry] of this.sessions) {
+      if ((entry.activeRequests || 0) > 0) continue;
       if (entry.touchedAt < now - this.ttlMs) {
         this.sessions.delete(sessionId);
         removed.push(sessionId);
@@ -129,8 +152,15 @@ export const mcpPrincipalBindings = new McpPrincipalBindings();
 
 export function enforceMcpPrincipal(req, res, principal) {
   const sessionId = String(req.headers["mcp-session-id"] || "");
-  mcpPrincipalBindings.assert(sessionId, principal);
-  if (sessionId || typeof res.once !== "function") return;
+  if (sessionId) {
+    const activity = mcpPrincipalBindings.beginActivity(sessionId, principal);
+    if (activity && typeof res.once === "function") {
+      res.once("finish", activity.release);
+      res.once("close", activity.release);
+    }
+    return;
+  }
+  if (typeof res.once !== "function") return;
 
   res.once("finish", () => {
     if (res.statusCode >= 400 || typeof res.getHeader !== "function") return;

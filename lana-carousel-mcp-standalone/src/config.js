@@ -58,5 +58,7 @@ export const config = Object.freeze({
   apiDailyMutationQuota: integerEnv("API_DAILY_MUTATION_QUOTA", 500),
   apiDailyHeavyQuota: integerEnv("API_DAILY_HEAVY_QUOTA", 60),
   projectAccessTokenTtlSeconds: integerEnv("PROJECT_ACCESS_TOKEN_TTL_SECONDS", 300),
-  projectSessionTtlSeconds: integerEnv("PROJECT_SESSION_TTL_SECONDS", 3600)
+  projectSessionTtlSeconds: integerEnv("PROJECT_SESSION_TTL_SECONDS", 3600),
+  mcpMaxSessionsPerPrincipal: integerEnv("MCP_MAX_SESSIONS_PER_PRINCIPAL", 200),
+  mcpSessionTtlSeconds: integerEnv("MCP_SESSION_TTL_SECONDS", 1800)
 });

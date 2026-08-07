@@ -22,7 +22,7 @@ import {
   addSlide, approveProjectContent, approveSlideAsset, approveSlideAssets, cloneProject,
   createProject, deleteProject, extendProject, getApprovedAssetFiles, getProject,
   getProjectVersions, importAssetFromUrl, listProjects, purgeExpiredProjects,
-  restoreProjectVersion, updateBrandKit, updateSlideCrop, updateSlideContent,
+  restoreProjectVersion, updateBrandKit, updateSlideCrop, updateSlideContent, updateSlideDesign,
   updateProjectVideo, updateSlideVideo
 } from "./service.js";
 
@@ -180,6 +180,23 @@ app.patch("/api/projects/:projectId/slides/:slideId/crop", handle(async (req, re
     frameOpacity: z.number().min(0).max(1).optional(), frameRadius: z.number().int().min(0).max(240).optional()
   }).parse(req.body);
   res.json(updateSlideCrop({ projectId: req.params.projectId, slideId: req.params.slideId, ...body }));
+}));
+
+app.patch("/api/projects/:projectId/slides/:slideId/design", handle(async (req, res) => {
+  const body = z.object({
+    cropX: z.number().min(0).max(100), cropY: z.number().min(0).max(100), cropZoom: z.number().min(1).max(3),
+    imageBrightness: z.number().min(.3).max(2).optional(), imageContrast: z.number().min(.3).max(2).optional(),
+    imageSaturation: z.number().min(0).max(2).optional(), imageBlur: z.number().min(0).max(20).optional(),
+    imageGrayscale: z.number().min(0).max(1).optional(), frameInset: z.number().int().min(0).max(360).optional(),
+    frameWidth: z.number().int().min(0).max(80).optional(), frameColor: z.string().regex(/^#[0-9A-F]{6}$/iu).optional(),
+    frameOpacity: z.number().min(0).max(1).optional(), frameRadius: z.number().int().min(0).max(240).optional(),
+    textEnabled: z.boolean(), overlayText: z.string().max(500), textFont: z.string().min(1).max(100),
+    textSize: z.number().min(24).max(220), textPosition: z.enum(["top", "center", "bottom"]),
+    textColor: z.string().regex(/^#[0-9A-F]{6}$/iu), textAlign: z.enum(["left", "center", "right"]),
+    textX: z.number().min(3).max(97), textY: z.number().min(3).max(97),
+    textLayers: z.array(textLayerSchema).max(10).default([])
+  }).parse(req.body);
+  res.json(updateSlideDesign({ projectId: req.params.projectId, slideId: req.params.slideId, ...body }));
 }));
 
 app.post("/api/projects/:projectId/slides/:slideId/assets/import-url", handle(async (req, res) => {

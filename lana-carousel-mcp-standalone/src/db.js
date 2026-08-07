@@ -147,6 +147,7 @@ for (const [name, definition] of Object.entries({
   frame_opacity: "REAL NOT NULL DEFAULT 1",
   frame_radius: "INTEGER NOT NULL DEFAULT 0",
   text_layers: "TEXT",
+  design_saved_at: "TEXT",
   video_settings: "TEXT"
 })) if (!slideColumns.has(name)) db.exec(`ALTER TABLE slides ADD COLUMN ${name} ${definition}`);
 
@@ -213,7 +214,7 @@ export const sql = {
   getSlides: db.prepare(`SELECT * FROM slides WHERE project_id = ? ORDER BY position ASC`),
   countSlides: db.prepare(`SELECT COUNT(*) AS count FROM slides WHERE project_id = ?`),
   getSlideBySubject: db.prepare(`SELECT * FROM slides WHERE project_id=? AND lower(trim(subject))=lower(trim(?)) LIMIT 1`),
-  updateSlideCrop: db.prepare(`UPDATE slides SET crop_x=@crop_x,crop_y=@crop_y,crop_zoom=@crop_zoom,image_brightness=@image_brightness,image_contrast=@image_contrast,image_saturation=@image_saturation,image_blur=@image_blur,image_grayscale=@image_grayscale,frame_inset=@frame_inset,frame_width=@frame_width,frame_color=@frame_color,frame_opacity=@frame_opacity,frame_radius=@frame_radius,render_status='DIRTY',updated_at=@updated_at WHERE id=@id AND project_id=@project_id`),
+  updateSlideCrop: db.prepare(`UPDATE slides SET crop_x=@crop_x,crop_y=@crop_y,crop_zoom=@crop_zoom,image_brightness=@image_brightness,image_contrast=@image_contrast,image_saturation=@image_saturation,image_blur=@image_blur,image_grayscale=@image_grayscale,frame_inset=@frame_inset,frame_width=@frame_width,frame_color=@frame_color,frame_opacity=@frame_opacity,frame_radius=@frame_radius,design_saved_at=NULL,render_status='DIRTY',updated_at=@updated_at WHERE id=@id AND project_id=@project_id`),
   getAssets: db.prepare(`SELECT * FROM assets WHERE project_id = ? ORDER BY created_at ASC`),
   getAsset: db.prepare(`SELECT * FROM assets WHERE id = ?`),
   getCandidates: db.prepare(`SELECT asset_id FROM slide_asset_candidates WHERE slide_id=? ORDER BY created_at ASC`),
@@ -224,10 +225,11 @@ export const sql = {
   addCandidate: db.prepare(`INSERT OR IGNORE INTO slide_asset_candidates (slide_id,asset_id,created_at) VALUES (?,?,?)`),
   findAssetByHash: db.prepare(`SELECT * FROM assets WHERE project_id=? AND sha256=?`),
   createAsset: db.prepare(`INSERT INTO assets (id,project_id,storage_key,public_url,mime_type,file_size,width,height,sha256,source_image_url,source_page_url,source_title,source_publisher,source_type,alt_text,created_at) VALUES (@id,@project_id,@storage_key,@public_url,@mime_type,@file_size,@width,@height,@sha256,@source_image_url,@source_page_url,@source_title,@source_publisher,@source_type,@alt_text,@created_at)`),
-  assignAsset: db.prepare(`UPDATE slides SET selected_asset_id=?,render_status='DIRTY',updated_at=? WHERE id=?`),
-  updateSlideContent: db.prepare(`UPDATE slides SET headline=@headline,body=@body,text_enabled=@text_enabled,overlay_text=@overlay_text,text_font=@text_font,text_size=@text_size,text_position=@text_position,text_color=@text_color,text_align=@text_align,text_x=@text_x,text_y=@text_y,text_layers=@text_layers,render_status='DIRTY',updated_at=@updated_at WHERE id=@id AND project_id=@project_id`),
+  assignAsset: db.prepare(`UPDATE slides SET selected_asset_id=?,design_saved_at=NULL,render_status='DIRTY',updated_at=? WHERE id=?`),
+  updateSlideContent: db.prepare(`UPDATE slides SET headline=@headline,body=@body,text_enabled=@text_enabled,overlay_text=@overlay_text,text_font=@text_font,text_size=@text_size,text_position=@text_position,text_color=@text_color,text_align=@text_align,text_x=@text_x,text_y=@text_y,text_layers=@text_layers,design_saved_at=NULL,render_status='DIRTY',updated_at=@updated_at WHERE id=@id AND project_id=@project_id`),
+  markSlideDesignSaved: db.prepare(`UPDATE slides SET design_saved_at=?,updated_at=? WHERE id=? AND project_id=?`),
   markSlideImagePending: db.prepare(`UPDATE slides SET image_approved=0 WHERE id=?`),
-  approveSlideAsset: db.prepare(`UPDATE slides SET selected_asset_id=?,composition_mode=?,image_approved=1,render_status='DIRTY',updated_at=? WHERE id=?`),
+  approveSlideAsset: db.prepare(`UPDATE slides SET selected_asset_id=?,composition_mode=?,image_approved=1,design_saved_at=NULL,render_status='DIRTY',updated_at=? WHERE id=?`),
   approveContent: db.prepare(`UPDATE projects SET content_status='APPROVED',updated_at=? WHERE id=?`),
   markContentPending: db.prepare(`UPDATE projects SET content_status='PENDING',updated_at=? WHERE id=?`),
   markImagesPending: db.prepare(`UPDATE projects SET image_status='PENDING',updated_at=? WHERE id=?`),

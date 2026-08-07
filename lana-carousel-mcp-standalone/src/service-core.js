@@ -34,7 +34,7 @@ function mapSlide(row) {
     imageGrayscale: row.image_grayscale ?? 0, frameInset: row.frame_inset ?? 40,
     frameWidth: row.frame_width ?? 0, frameColor: row.frame_color || "#FFFFFF",
     frameOpacity: row.frame_opacity ?? 1, frameRadius: row.frame_radius ?? 0,
-    textLayers: json(row.text_layers, []),
+    textLayers: json(row.text_layers, []), designSaved: Boolean(row.design_saved_at), designSavedAt: row.design_saved_at || null,
     video: json(row.video_settings, {})
   };
 }
@@ -146,6 +146,7 @@ export async function cloneProject(projectId) {
         sql.createSlide.run({ id: newSlideId, project_id: cloneId, position: slide.position, subject: slide.subject, headline: slide.headline, body: slide.body, created_at: timestamp, updated_at: timestamp });
         sql.updateSlideCrop.run({ id: newSlideId, project_id: cloneId, crop_x: slide.cropX, crop_y: slide.cropY, crop_zoom: slide.cropZoom, image_brightness: slide.imageBrightness, image_contrast: slide.imageContrast, image_saturation: slide.imageSaturation, image_blur: slide.imageBlur, image_grayscale: slide.imageGrayscale, frame_inset: slide.frameInset, frame_width: slide.frameWidth, frame_color: slide.frameColor, frame_opacity: slide.frameOpacity, frame_radius: slide.frameRadius, updated_at: timestamp });
         sql.updateSlideContent.run({ id: newSlideId, project_id: cloneId, headline: slide.headline, body: slide.body, text_enabled: slide.textEnabled ? 1 : 0, overlay_text: slide.overlayText, text_font: slide.textFont, text_size: slide.textSize, text_position: slide.textPosition, text_color: slide.textColor, text_align: slide.textAlign, text_x: slide.textX, text_y: slide.textY, text_layers: JSON.stringify(slide.textLayers || []), updated_at: timestamp });
+        if (slide.designSaved) sql.markSlideDesignSaved.run(timestamp, timestamp, newSlideId, cloneId);
         sql.updateSlideVideo.run(JSON.stringify(slide.video || {}), timestamp, newSlideId, cloneId);
       }
       for (const mapped of assetMap.values()) {
@@ -210,6 +211,37 @@ export function updateSlideCrop(input) {
   return getProject(input.projectId);
 }
 
+export function updateSlideDesign(input) {
+  const row = sql.getSlide.get(input.slideId);
+  if (!row || row.project_id !== input.projectId) throw new AppError("SLIDE_NOT_FOUND", "Không tìm thấy slide.", 404);
+  const project = requireProject(input.projectId), slide = mapSlide(row), timestamp = now();
+  db.transaction(() => {
+    sql.updateSlideCrop.run({
+      id: input.slideId, project_id: input.projectId,
+      crop_x: input.cropX ?? slide.cropX, crop_y: input.cropY ?? slide.cropY, crop_zoom: input.cropZoom ?? slide.cropZoom,
+      image_brightness: input.imageBrightness ?? slide.imageBrightness, image_contrast: input.imageContrast ?? slide.imageContrast,
+      image_saturation: input.imageSaturation ?? slide.imageSaturation, image_blur: input.imageBlur ?? slide.imageBlur,
+      image_grayscale: input.imageGrayscale ?? slide.imageGrayscale, frame_inset: input.frameInset ?? slide.frameInset,
+      frame_width: input.frameWidth ?? slide.frameWidth, frame_color: input.frameColor ?? slide.frameColor,
+      frame_opacity: input.frameOpacity ?? slide.frameOpacity, frame_radius: input.frameRadius ?? slide.frameRadius,
+      updated_at: timestamp
+    });
+    sql.updateSlideContent.run({
+      id: input.slideId, project_id: input.projectId, headline: slide.headline, body: slide.body,
+      text_enabled: input.textEnabled ?? slide.textEnabled ? 1 : 0,
+      overlay_text: input.overlayText ?? slide.overlayText, text_font: input.textFont ?? slide.textFont,
+      text_size: input.textSize ?? slide.textSize, text_position: input.textPosition ?? slide.textPosition,
+      text_color: input.textColor ?? slide.textColor, text_align: input.textAlign ?? slide.textAlign,
+      text_x: input.textX ?? slide.textX, text_y: input.textY ?? slide.textY,
+      text_layers: JSON.stringify(input.textLayers ?? slide.textLayers ?? []), updated_at: timestamp
+    });
+    sql.markSlideDesignSaved.run(timestamp, timestamp, input.slideId, input.projectId);
+    sql.updateProjectStatuses.run(project.content_status || "PENDING", project.image_status || "PENDING", timestamp, input.projectId);
+    saveVersion(input.projectId, "save_slide_design");
+  })();
+  return getProject(input.projectId);
+}
+
 export function getProjectVersions(projectId) {
   requireProject(projectId);
   return sql.getVersions.all(projectId).map(row => ({ id: row.id, action: row.action, createdAt: row.created_at }));
@@ -224,6 +256,7 @@ export function restoreProjectVersion(projectId, versionId) {
       if (!sql.getSlide.get(oldSlide.id)) continue;
       sql.updateSlideCrop.run({ id: oldSlide.id, project_id: projectId, crop_x: oldSlide.cropX ?? 50, crop_y: oldSlide.cropY ?? 50, crop_zoom: oldSlide.cropZoom ?? 1, image_brightness: oldSlide.imageBrightness ?? 1, image_contrast: oldSlide.imageContrast ?? 1, image_saturation: oldSlide.imageSaturation ?? 1, image_blur: oldSlide.imageBlur ?? 0, image_grayscale: oldSlide.imageGrayscale ?? 0, frame_inset: oldSlide.frameInset ?? 40, frame_width: oldSlide.frameWidth ?? 0, frame_color: oldSlide.frameColor || "#FFFFFF", frame_opacity: oldSlide.frameOpacity ?? 1, frame_radius: oldSlide.frameRadius ?? 0, updated_at: timestamp });
       sql.updateSlideContent.run({ id: oldSlide.id, project_id: projectId, headline: oldSlide.headline, body: oldSlide.body, text_enabled: oldSlide.textEnabled ? 1 : 0, overlay_text: oldSlide.overlayText, text_font: oldSlide.textFont, text_size: oldSlide.textSize, text_position: oldSlide.textPosition, text_color: oldSlide.textColor, text_align: oldSlide.textAlign, text_x: oldSlide.textX, text_y: oldSlide.textY, text_layers: JSON.stringify(oldSlide.textLayers || []), updated_at: timestamp });
+      if (oldSlide.designSaved) sql.markSlideDesignSaved.run(timestamp, timestamp, oldSlide.id, projectId);
       sql.updateSlideVideo.run(JSON.stringify(oldSlide.video || {}), timestamp, oldSlide.id, projectId);
     }
     sql.updateVideoSettings.run(snapshot.videoEnabled ? 1 : 0, JSON.stringify(snapshot.videoSettings || {}), timestamp, projectId);
