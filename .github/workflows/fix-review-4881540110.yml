@@ -1,0 +1,133 @@
+name: Fix review 4881540110
+
+on:
+  push:
+    branches:
+      - fix/carousel-design-save-status
+    paths:
+      - .github/workflows/fix-review-4881540110.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/carousel-design-save-status
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: lana-carousel-mcp-standalone/package-lock.json
+      - name: Apply lifecycle fix
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          binding_path = Path('lana-carousel-mcp-standalone/src/mcp-principal-binding.js')
+          source = binding_path.read_text()
+
+          bind_old = '''      server: resources.server ?? current.server,
+      touchedAt: Date.now()
+'''
+          bind_new = '''      server: resources.server ?? current.server,
+      activeRequests: current.activeRequests || 0,
+      touchedAt: Date.now()
+'''
+          if source.count(bind_old) != 1:
+              raise SystemExit('bind anchor mismatch')
+          source = source.replace(bind_old, bind_new, 1)
+
+          get_old = '''  get(sessionId, principal) {
+    this.assert(sessionId, principal);
+    return this.sessions.get(String(sessionId));
+  }
+
+  detach(sessionId) {
+'''
+          get_new = '''  get(sessionId, principal) {
+    this.assert(sessionId, principal);
+    return this.sessions.get(String(sessionId));
+  }
+
+  beginActivity(sessionId, principal) {
+    if (!sessionId) return null;
+    this.assert(sessionId, principal);
+    const key = String(sessionId);
+    const entry = this.sessions.get(key);
+    entry.activeRequests = (entry.activeRequests || 0) + 1;
+    let released = false;
+    return {
+      entry,
+      release: () => {
+        if (released) return;
+        released = true;
+        const current = this.sessions.get(key);
+        if (!current || current !== entry) return;
+        current.activeRequests = Math.max(0, (current.activeRequests || 1) - 1);
+        current.touchedAt = Date.now();
+      }
+    };
+  }
+
+  detach(sessionId) {
+'''
+          if source.count(get_old) != 1:
+              raise SystemExit('get anchor mismatch')
+          source = source.replace(get_old, get_new, 1)
+
+          purge_old = '''    for (const [sessionId, entry] of this.sessions) {
+      if (entry.touchedAt < now - this.ttlMs) {
+'''
+          purge_new = '''    for (const [sessionId, entry] of this.sessions) {
+      if ((entry.activeRequests || 0) > 0) continue;
+      if (entry.touchedAt < now - this.ttlMs) {
+'''
+          if source.count(purge_old) != 1:
+              raise SystemExit('purge anchor mismatch')
+          binding_path.write_text(source.replace(purge_old, purge_new, 1))
+
+          http_path = Path('lana-carousel-mcp-standalone/src/http-server.js')
+          http = http_path.read_text()
+          route_old = '''app.all("/mcp", handle(async (req, res) => {
+  const sessionId = String(req.headers["mcp-session-id"] || "");
+  const existing = sessionId ? mcpPrincipalBindings.get(sessionId, req.apiClientId) : null;
+  let transport = existing?.transport;
+'''
+          route_new = '''app.all("/mcp", handle(async (req, res) => {
+  const sessionId = String(req.headers["mcp-session-id"] || "");
+  const activity = sessionId ? mcpPrincipalBindings.beginActivity(sessionId, req.apiClientId) : null;
+  const existing = activity?.entry || null;
+  if (activity && typeof res.once === "function") {
+    res.once("finish", activity.release);
+    res.once("close", activity.release);
+  }
+  let transport = existing?.transport;
+'''
+          if http.count(route_old) != 1:
+              raise SystemExit('MCP route anchor mismatch')
+          http_path.write_text(http.replace(route_old, route_new, 1))
+
+          test_path = Path('lana-carousel-mcp-standalone/src/mcp-active-session-lifecycle.test.js')
+          test_path.write_text('''import assert from "node:assert/strict";\nimport fs from "node:fs/promises";\nimport test from "node:test";\nimport { McpPrincipalBindings } from "./mcp-principal-binding.js";\n\ntest("active MCP request prevents idle purge until response lifecycle releases it", () => {\n  const registry = new McpPrincipalBindings({ ttlMs: 10, maxSessionsPerPrincipal: 2 });\n  registry.bind("stream", "key:a");\n  const activity = registry.beginActivity("stream", "key:a");\n  const active = registry.sessions.get("stream");\n  assert.equal(active.activeRequests, 1);\n  assert.deepEqual(registry.purge(active.touchedAt + 1000), []);\n  assert.equal(registry.sessions.has("stream"), true);\n\n  activity.release();\n  const released = registry.sessions.get("stream");\n  assert.equal(released.activeRequests, 0);\n  assert.deepEqual(registry.purge(released.touchedAt + 11), ["stream"]);\n});\n\ntest("MCP HTTP route tracks response finish and close for existing sessions", async () => {\n  const source = await fs.readFile(new URL("./http-server.js", import.meta.url), "utf8");\n  assert.match(source, /mcpPrincipalBindings\\.beginActivity\\(sessionId, req\\.apiClientId\\)/u);\n  assert.match(source, /res\\.once\\("finish", activity\\.release\\)/u);\n  assert.match(source, /res\\.once\\("close", activity\\.release\\)/u);\n});\n''')
+          PY
+      - name: Validate application
+        working-directory: lana-carousel-mcp-standalone
+        run: |
+          npm ci
+          npm run check
+          npm run test:remotion
+      - name: Commit fix
+        shell: bash
+        run: |
+          rm .github/workflows/fix-review-4881540110.yml
+          git config user.name "nguyentuanson27-netizen"
+          git config user.email "nguyentuanson27@gmail.com"
+          git add -A
+          git commit -m "fix(mcp): preserve active streams across idle TTL"
+          git push origin HEAD:fix/carousel-design-save-status
