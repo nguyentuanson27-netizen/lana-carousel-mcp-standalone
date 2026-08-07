@@ -1,4 +1,5 @@
 import path from "node:path";
+import sharp from "sharp";
 import { AppError } from "./errors.js";
 import { socialConfig } from "./social-config.js";
 import { signMediaPath, verifyMediaSignature } from "./social-crypto.js";
@@ -29,7 +30,7 @@ export function socialCarouselMedia(projectId) {
   return project.slides.slice(0, 10).map(slide => ({
     slideId: slide.id,
     position: slide.position,
-    url: signedUrl(`/social-media/carousel/${encodeURIComponent(projectId)}/${encodeURIComponent(slide.id)}.webp`)
+    url: signedUrl(`/social-media/carousel/${encodeURIComponent(projectId)}/${encodeURIComponent(slide.id)}.jpg`)
   }));
 }
 
@@ -51,8 +52,9 @@ export async function serveSocialCarouselImage(req, res) {
   const project = getProject(req.params.projectId, { includeStorage: true });
   const slide = project.slides.find(item => item.id === req.params.slideId);
   if (!slide || !slide.imageApproved || !slide.designSaved) return res.status(404).send("Slide not available");
-  const buffer = await renderSlideSnapshot(slide, project.assets);
-  res.setHeader("Content-Type", "image/webp");
+  const snapshot = await renderSlideSnapshot(slide, project.assets);
+  const buffer = await sharp(snapshot).jpeg({ quality: 92, chromaSubsampling: "4:4:4" }).toBuffer();
+  res.setHeader("Content-Type", "image/jpeg");
   res.setHeader("Cache-Control", "public, max-age=300");
   return res.send(buffer);
 }
