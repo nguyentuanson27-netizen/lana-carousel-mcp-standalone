@@ -107,7 +107,8 @@ export function listProjects({ search = "" } = {}) {
   return sql.listProjects.all().filter(row => !query || `${row.title} ${row.topic}`.toLocaleLowerCase("vi").includes(query)).map(row => ({
     id: row.id, title: row.title, topic: row.topic, contentStatus: row.content_status,
     imageStatus: row.image_status, createdAt: row.created_at, updatedAt: row.updated_at,
-    expiresAt: row.expires_at, widgetUrl: `${config.publicBaseUrl}/widget?projectId=${encodeURIComponent(row.id)}`
+    expiresAt: row.expires_at, widgetUrl: `${config.publicBaseUrl}/widget?projectId=${encodeURIComponent(row.id)}`,
+    thumbnailUrl: sql.getProjectThumbnail.get(row.id)?.public_url || null
   }));
 }
 
