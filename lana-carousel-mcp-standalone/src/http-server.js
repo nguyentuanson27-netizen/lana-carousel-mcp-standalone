@@ -18,6 +18,7 @@ import { getRenderJob, getRenderJobBuffer, startRenderJob } from "./render-jobs.
 import { deleteVideoRenderJob, getVideoRenderFile, getVideoRenderJob, startVideoRenderJob } from "./video-jobs.js";
 import { videoAnalysisAssetDir, purgeExpiredVideoAnalysis } from "./video-analysis-service.js";
 import { videoAnalysisRouter } from "./video-analysis-routes.js";
+import { registerSocialRoutes } from "./social-routes.js";
 import {
   addSlide, approveProjectContent, approveSlideAsset, approveSlideAssets, cloneProject,
   createProject, deleteProject, extendProject, getApprovedAssetFiles, getProject,
@@ -32,6 +33,7 @@ const publicDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)
 app.use(apiSecurity);
 app.use(express.json({ limit: "1mb" }));
 app.use("/api/video-analysis", videoAnalysisRouter);
+registerSocialRoutes(app);
 app.use("/assets", express.static(config.assetDirectory, { fallthrough: false, immutable: true, maxAge: "1y" }));
 app.use("/video-audio", express.static(videoAudioDirectory, { fallthrough: false, maxAge: "7d" }));
 app.use("/video-analysis-assets", express.static(videoAnalysisAssetDir, { fallthrough: false, maxAge: "14d" }));

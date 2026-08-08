@@ -10,6 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700&family=Playfair+Display:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&family=Roboto:wght@400;500;700&family=TikTok+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/stitch-ui.css?v=1.1.0">
   <link rel="stylesheet" href="/stitch-layout.css?v=1.0.0">
+  <link rel="stylesheet" href="/social-studio.css?v=1.0.0">
   <style>
     .workspace-header.compact-workspace-header{align-items:center;gap:18px;padding:12px 28px 10px}
     .workspace-header.compact-workspace-header h1{margin:2px 0 0}
@@ -59,6 +60,7 @@
           <button class="step" data-view="edit" type="button"><span>3</span><b>Sửa thiết kế</b><small>Chữ, crop và Brand Kit</small></button>
           <button class="step" data-view="download" type="button"><span>4</span><b>Render & tải</b><small>Xuất bộ ảnh ZIP</small></button>
           <button class="step" data-view="video" type="button"><span>5</span><b>Video tùy chọn</b><small>Timeline, TTS và MP4</small></button>
+          <button class="step social-step" data-view="social" type="button"><span>6</span><b>Đăng mạng xã hội</b><small>TikTok, Facebook, Instagram</small></button>
         </nav>
 
         <section id="slideNavigation" class="slide-navigation">
@@ -98,6 +100,7 @@
           <section id="edit" class="panel workspace-panel"></section>
           <section id="download" class="panel workspace-panel"></section>
           <section id="video" class="panel workspace-panel video-workspace"></section>
+          <section id="social" class="panel workspace-panel social-workspace" aria-label="Đăng mạng xã hội"></section>
         </div>
       </main>
 
@@ -112,5 +115,6 @@
   <script src="/widget.js?v=2.5.0"></script>
   <script src="/stitch-ui.js?v=1.1.0"></script>
   <script src="/studio-layout.js?v=1.0.0"></script>
+  <script src="/social-studio.js?v=1.0.0"></script>
 </body>
 </html>
