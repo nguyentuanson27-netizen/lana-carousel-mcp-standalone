@@ -311,7 +311,7 @@ function issueTokenPair({ clientId, subject, resource, scope, quotaClientId, fam
   };
 }
 
-export function exchangeAuthorizationCode({ code, clientId, redirectUri, codeVerifier, resource }) {
+export function exchangeAuthorizationCode({ code, clientId, redirectUri, codeVerifier, resource, beforeExchange }) {
   return db.transaction(() => {
     const codeHash = hash(code);
     const record = sql.getCode.get(codeHash);
@@ -320,6 +320,7 @@ export function exchangeAuthorizationCode({ code, clientId, redirectUri, codeVer
     if (record.client_id !== String(clientId || "") || record.redirect_uri !== normalizedRedirectUri(redirectUri)) throw oauthError("invalid_grant", "Authorization code không thuộc client/redirect này.");
     if (record.resource !== String(resource || "") || record.resource !== mcpResourceUri()) throw oauthError("invalid_target", "resource không khớp authorization code.");
     if (!pkceMatches(codeVerifier, record.code_challenge)) throw oauthError("invalid_grant", "PKCE verifier không hợp lệ.");
+    if (typeof beforeExchange === "function") beforeExchange(record.client_id);
     if (sql.consumeCode.run(timestamp, codeHash, timestamp).changes !== 1) throw oauthError("invalid_grant", "Authorization code đã được sử dụng.");
     return issueTokenPair({
       clientId: record.client_id,
@@ -331,7 +332,7 @@ export function exchangeAuthorizationCode({ code, clientId, redirectUri, codeVer
   })();
 }
 
-export function exchangeRefreshToken({ refreshToken, clientId, resource }) {
+export function exchangeRefreshToken({ refreshToken, clientId, resource, beforeExchange }) {
   const outcome = db.transaction(() => {
     const tokenHash = hash(refreshToken);
     const record = sql.getRefresh.get(tokenHash);
@@ -374,6 +375,7 @@ export function exchangeRefreshToken({ refreshToken, clientId, resource }) {
       return { error: oauthError("invalid_grant", "Phát hiện refresh token đã được sử dụng; toàn bộ token family đã bị thu hồi.") };
     }
 
+    if (typeof beforeExchange === "function") beforeExchange(record.client_id);
     const issued = issueTokenPair({
       clientId: record.client_id,
       subject: record.subject,
