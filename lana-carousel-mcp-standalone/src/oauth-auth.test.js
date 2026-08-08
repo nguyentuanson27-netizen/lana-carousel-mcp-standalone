@@ -164,7 +164,7 @@ test("Google identity must be verified and present on the configured allowlist",
   }), error => error.code === "GOOGLE_ACCOUNT_NOT_ALLOWED");
 });
 
-test("admin login UI contains Google OAuth and no API-key form", async () => {
+test("admin login UI contains Google OAuth and no API-key input or submission", async () => {
   const rootUrl = new URL("../", import.meta.url);
   const [html, script] = await Promise.all([
     fs.readFile(new URL("public/admin-auth.html", rootUrl), "utf8"),
@@ -172,5 +172,6 @@ test("admin login UI contains Google OAuth and no API-key form", async () => {
   ]);
   assert.match(html, /Tiếp tục với Google/u);
   assert.match(script, /\/auth\/google\/start/u);
-  assert.equal(/API key|X-API-Key|apiKey/u.test(`${html}\n${script}`), false);
+  assert.equal(/id="apiKey"|name="apiKey"|type="password"/u.test(html), false);
+  assert.equal(/X-API-Key|keyInput|\/auth\/admin-session[^\n]*method/u.test(script), false);
 });
