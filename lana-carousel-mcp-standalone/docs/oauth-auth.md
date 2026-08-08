@@ -44,6 +44,22 @@ Browser flow:
 
 Không lưu Google access/refresh token. Lana chỉ dùng ID token đã xác minh để xác thực danh tính rồi tạo session nội bộ.
 
+### Reverse proxy / TLS boundary
+
+`src/http-server.js` lắng nghe HTTP nội bộ, trong khi production dùng `PUBLIC_BASE_URL=https://...`. Vì vậy TLS phải kết thúc ở reverse proxy/load balancer phía trước Node.
+
+Khi Google OAuth được bật trên production HTTPS, cần cấu hình rõ IP/subnet của **chính reverse proxy được tin cậy**:
+
+```env
+OAUTH_TRUSTED_PROXY_CIDRS=127.0.0.1/8,::1/128
+```
+
+Ví dụ trên chỉ đúng khi Nginx/Caddy kết nối tới Node từ loopback. Nếu proxy chạy trong Docker/VPC/host khác, dùng đúng IP hoặc CIDR thực tế của proxy đó; không dùng dải rộng chỉ để “cho chạy”.
+
+Lana truyền danh sách này cho Express `trust proxy`. Nhờ đó `req.ip` chỉ dùng `X-Forwarded-For` khi request đi qua proxy nằm trong allowlist; request trực tiếp từ địa chỉ không được trust không thể tự khai báo client IP bằng forwarded header.
+
+Reverse proxy cuối cùng phải **overwrite/normalize** `X-Forwarded-For`, `X-Forwarded-Host` và `X-Forwarded-Proto` thay vì nối tiếp giá trị tùy ý do client gửi. Nếu chưa biết chính xác topology/proxy source CIDR thì không bật OAuth production cho tới khi xác định được boundary này.
+
 ## 2. OAuth cho MCP
 
 MCP endpoint vẫn là:
@@ -85,6 +101,8 @@ MCP client
 ```
 
 Lana bắt buộc PKCE `S256`. Access token được ràng buộc với resource chính xác `PUBLIC_BASE_URL/mcp`; token dành cho resource khác không dùng được với MCP.
+
+`/oauth/token` có hai lớp giới hạn: pre-auth theo `req.ip` đã được xác định qua trusted-proxy boundary, và giới hạn theo client chỉ sau khi authorization code/refresh token chứng minh client/resource hợp lệ. Vì `client_id` là public identifier, request giả chỉ biết `client_id` không được phép đốt quota client hợp lệ.
 
 Nếu admin session hết hạn sau khi màn hình consent đã được tạo nhưng trước lúc bấm Cho phép/Hủy, Lana dừng request với trang báo phiên đã hết hạn và yêu cầu MCP client bắt đầu lại OAuth flow. Lana không cố tái tạo một authorization request thiếu tham số từ POST cũ.
 
