@@ -26,13 +26,14 @@ const {
   registerOAuthClient,
   validateAuthorizationRequest
 } = await import("./oauth-store.js");
+const oauthRoutes = await import("./oauth-routes.js");
 const {
   assertAllowedGoogleIdentity,
   consentHtml,
   oauthAuthorizationServerMetadata,
   oauthProtectedResourceMetadata,
   setOAuthHtmlSecurityHeaders
-} = await import("./oauth-routes.js");
+} = oauthRoutes;
 const { apiSecurity } = await import("./api-security.js");
 const { db } = await import("./db.js");
 
@@ -59,6 +60,10 @@ function runSecurity(headers = {}) {
 
 function tokenHash(token) {
   return createHash("sha256").update(String(token)).digest("hex");
+}
+
+function totalDbChanges() {
+  return Number(db.prepare("SELECT total_changes() AS changes").get().changes || 0);
 }
 
 test("OAuth metadata advertises MCP resource, DCR, PKCE and refresh tokens", () => {
@@ -173,6 +178,70 @@ test("expired refresh ancestor replay revokes a still-active descendant", () => 
     clientId: client.client_id,
     resource: mcpResourceUri()
   }), error => error.code === "invalid_grant");
+});
+
+test("refresh rotation keeps fixed family expiry and constant per-request DB writes", () => {
+  const client = registerOAuthClient({ redirect_uris: ["https://bounded-refresh.example/callback"] });
+  const verifier = "d".repeat(64);
+  const challenge = createHash("sha256").update(verifier).digest("base64url");
+  const request = validateAuthorizationRequest({
+    client_id: client.client_id,
+    redirect_uri: "https://bounded-refresh.example/callback",
+    response_type: "code",
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+    resource: mcpResourceUri(),
+    scope: "mcp"
+  });
+  const consent = consumeConsentRequest(createConsentRequest(request, "user:bounded-refresh"), "user:bounded-refresh");
+  const first = exchangeAuthorizationCode({
+    code: issueAuthorizationCode(consent),
+    clientId: client.client_id,
+    redirectUri: "https://bounded-refresh.example/callback",
+    codeVerifier: verifier,
+    resource: mcpResourceUri()
+  });
+  const firstLineage = db.prepare("SELECT family_id FROM oauth_refresh_token_lineage WHERE token_hash=?").get(tokenHash(first.refresh_token));
+  assert.ok(firstLineage?.family_id);
+
+  const fixedFamilyExpiry = new Date(Date.now() + 60 * 60_000).toISOString();
+  let currentRefresh = first.refresh_token;
+  const writeDeltas = [];
+  for (let index = 0; index < 5; index += 1) {
+    db.prepare("UPDATE oauth_refresh_token_lineage SET family_expires_at=? WHERE family_id=?").run(fixedFamilyExpiry, firstLineage.family_id);
+    const before = totalDbChanges();
+    const next = exchangeRefreshToken({
+      refreshToken: currentRefresh,
+      clientId: client.client_id,
+      resource: mcpResourceUri()
+    });
+    writeDeltas.push(totalDbChanges() - before);
+    currentRefresh = next.refresh_token;
+  }
+
+  assert.equal(new Set(writeDeltas).size, 1, `expected constant write work, got ${writeDeltas.join(",")}`);
+  const lineageState = db.prepare("SELECT COUNT(*) AS count, COUNT(DISTINCT family_expires_at) AS expiries FROM oauth_refresh_token_lineage WHERE family_id=?").get(firstLineage.family_id);
+  assert.equal(Number(lineageState.count), 6);
+  assert.equal(Number(lineageState.expiries), 1);
+  const currentRow = db.prepare("SELECT expires_at FROM oauth_refresh_tokens WHERE token_hash=?").get(tokenHash(currentRefresh));
+  assert.equal(currentRow.expires_at, fixedFamilyExpiry);
+});
+
+test("OAuth token endpoint limiter bounds repeated requests per source", () => {
+  const consume = oauthRoutes.consumeOAuthTokenRateLimit;
+  assert.equal(typeof consume, "function");
+  const req = { ip: "203.0.113.42", socket: { remoteAddress: "203.0.113.42" } };
+  let denied = null;
+  for (let index = 0; index < 200; index += 1) {
+    const outcome = consume(req, 120_000);
+    if (!outcome.allowed) {
+      denied = outcome;
+      break;
+    }
+  }
+  assert.ok(denied, "token limiter should reject a burst before 200 requests");
+  assert.ok(Number(denied.retryAfterSeconds) >= 1 && Number(denied.retryAfterSeconds) <= 60);
+  assert.equal(consume(req, 180_001).allowed, true);
 });
 
 test("open DCR consent visibly distinguishes a self-asserted trusted name from its callback", () => {
