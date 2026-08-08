@@ -74,6 +74,13 @@ function oauthProtocolError(res, error) {
   });
 }
 
+export function setOAuthHtmlSecurityHeaders(res) {
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Content-Security-Policy", "frame-ancestors 'none'");
+  res.setHeader("X-Frame-Options", "DENY");
+}
+
 function escapeHtml(value = "") {
   return String(value).replace(/[&<>"']/gu, character => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
@@ -229,16 +236,14 @@ export function registerOAuthRoutes(app) {
       return res.redirect(302, `/auth/google/start?returnTo=${encodeURIComponent(returnTo)}`);
     }
     const consentToken = createConsentRequest(request, admin.quota_client_id);
-    res.setHeader("Cache-Control", "no-store");
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    setOAuthHtmlSecurityHeaders(res);
     return res.status(200).send(consentHtml({ clientName: request.clientName, scope: request.scope, consentToken, redirectUri: request.redirectUri }));
   });
 
   app.post("/oauth/authorize", formParser, (req, res) => {
     const admin = currentAdmin(req);
     if (!admin) {
-      res.setHeader("Cache-Control", "no-store");
-      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      setOAuthHtmlSecurityHeaders(res);
       return res.status(401).send(expiredConsentHtml());
     }
     try {
