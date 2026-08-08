@@ -227,21 +227,21 @@ test("refresh rotation keeps fixed family expiry and constant per-request DB wri
   assert.equal(currentRow.expires_at, fixedFamilyExpiry);
 });
 
-test("OAuth token endpoint limiter bounds repeated requests per source", () => {
+test("OAuth token endpoint limiter bounds requests per client without coupling clients behind one proxy", () => {
   const consume = oauthRoutes.consumeOAuthTokenRateLimit;
   assert.equal(typeof consume, "function");
-  const req = { ip: "203.0.113.42", socket: { remoteAddress: "203.0.113.42" } };
   let denied = null;
   for (let index = 0; index < 200; index += 1) {
-    const outcome = consume(req, 120_000);
+    const outcome = consume("client-a", 120_000);
     if (!outcome.allowed) {
       denied = outcome;
       break;
     }
   }
-  assert.ok(denied, "token limiter should reject a burst before 200 requests");
+  assert.ok(denied, "token limiter should reject a client burst before 200 requests");
   assert.ok(Number(denied.retryAfterSeconds) >= 1 && Number(denied.retryAfterSeconds) <= 60);
-  assert.equal(consume(req, 180_001).allowed, true);
+  assert.equal(consume("client-b", 120_000).allowed, true);
+  assert.equal(consume("client-a", 180_001).allowed, true);
 });
 
 test("open DCR consent visibly distinguishes a self-asserted trusted name from its callback", () => {
