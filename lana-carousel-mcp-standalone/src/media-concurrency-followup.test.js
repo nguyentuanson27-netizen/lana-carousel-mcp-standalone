@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import {randomUUID} from "node:crypto";
+import {createHash,randomUUID} from "node:crypto";
 import {EventEmitter} from "node:events";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -27,6 +27,10 @@ const {
  createVideoAnalysisAccessUrl,
  exchangeResourceAccessToken
 }=await import("./project-access.js");
+const {
+ consumeConsentRequest,createConsentRequest,exchangeAuthorizationCode,issueAuthorizationCode,
+ mcpResourceUri,registerOAuthClient,validateAuthorizationRequest
+}=await import("./oauth-store.js");
 const {createSignedMediaUrl}=await import("./media-access.js");
 const {publicError}=await import("./errors.js");
 
@@ -57,6 +61,22 @@ function runSecurity(req){
 
 function tokenFrom(url){
  return new URLSearchParams(new URL(url).hash.replace(/^#/u,"")).get("access_token");
+}
+
+function issueMcpToken(subject,label){
+ const redirectUri=`https://${label}.example/callback`;
+ const client=registerOAuthClient({client_name:label,redirect_uris:[redirectUri]});
+ const verifier=label.padEnd(64,"x").slice(0,64);
+ const challenge=createHash("sha256").update(verifier).digest("base64url");
+ const request=validateAuthorizationRequest({
+  client_id:client.client_id,redirect_uri:redirectUri,response_type:"code",
+  code_challenge:challenge,code_challenge_method:"S256",resource:mcpResourceUri(),scope:"mcp"
+ });
+ const consent=consumeConsentRequest(createConsentRequest(request,subject),subject);
+ return exchangeAuthorizationCode({
+  code:issueAuthorizationCode(consent),clientId:client.client_id,redirectUri,
+  codeVerifier:verifier,resource:mcpResourceUri()
+ }).access_token;
 }
 
 function insertAsset({id,projectId,sha,storageKey=`${id}.webp`}){
@@ -170,10 +190,12 @@ test("candidate trigger keeps concurrent imports at ten and cleans the rejected 
  assert.equal(fileStates.filter(Boolean).length,1);
 });
 
-test("HTTP MCP session cannot switch API principals",()=>{
+test("HTTP MCP session cannot switch OAuth principals",()=>{
  const sessionId=randomUUID();
+ const tokenA=issueMcpToken("user:principal-a","client-a");
+ const tokenB=issueMcpToken("user:principal-b","client-b");
  const initialized=runSecurity(fakeRequest("/mcp",{
-  method:"POST",headers:{"x-api-key":keyA}
+  method:"POST",headers:{authorization:`Bearer ${tokenA}`}
  }));
  assert.equal(initialized.nextCalled,true);
  initialized.res.setHeader("mcp-session-id",sessionId);
@@ -181,7 +203,7 @@ test("HTTP MCP session cannot switch API principals",()=>{
 
  const wrong=runSecurity(fakeRequest("/mcp",{
   method:"POST",
-  headers:{"mcp-session-id":sessionId,"x-api-key":keyB}
+  headers:{"mcp-session-id":sessionId,authorization:`Bearer ${tokenB}`}
  }));
  assert.equal(wrong.nextCalled,false);
  assert.equal(wrong.res.statusCode,403);
@@ -189,7 +211,7 @@ test("HTTP MCP session cannot switch API principals",()=>{
 
  const correct=runSecurity(fakeRequest("/mcp",{
   method:"POST",
-  headers:{"mcp-session-id":sessionId,"x-api-key":keyA}
+  headers:{"mcp-session-id":sessionId,authorization:`Bearer ${tokenA}`}
  }));
  assert.equal(correct.nextCalled,true);
 });

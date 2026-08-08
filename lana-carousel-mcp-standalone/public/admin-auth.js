@@ -7,37 +7,18 @@ const returnTo = safeReturnTo(
   ["/", "/projects", "/widget"],
   "/projects"
 );
-const form = document.getElementById("loginForm");
-const keyInput = document.getElementById("apiKey");
-const submitButton = document.getElementById("submitButton");
+const loginButton = document.getElementById("googleLoginButton");
 const errorBox = document.getElementById("error");
+
+const authError = params.get("authError");
+if (authError) errorBox.textContent = authError;
 
 fetch("/auth/admin-session", { credentials: "same-origin" })
   .then(response => { if (response.ok) location.replace(returnTo); })
   .catch(() => {});
 
-form.addEventListener("submit", async event => {
-  event.preventDefault();
-  errorBox.textContent = "";
-  submitButton.disabled = true;
-  submitButton.textContent = "Đang đăng nhập…";
-  try {
-    const response = await fetch("/auth/admin-session", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "X-API-Key": keyInput.value }
-    });
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      throw new Error(body.message || "Không thể đăng nhập.");
-    }
-    keyInput.value = "";
-    location.replace(returnTo);
-  } catch (error) {
-    errorBox.textContent = error.message;
-    submitButton.disabled = false;
-    submitButton.textContent = "Đăng nhập";
-    keyInput.focus();
-    keyInput.select();
-  }
+loginButton.addEventListener("click", () => {
+  loginButton.disabled = true;
+  loginButton.textContent = "Đang chuyển sang Google…";
+  location.assign(`/auth/google/start?returnTo=${encodeURIComponent(returnTo)}`);
 });

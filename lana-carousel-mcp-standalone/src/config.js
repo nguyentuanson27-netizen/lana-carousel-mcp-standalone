@@ -25,7 +25,7 @@ function csvEnv(name) {
 
 export function validateApiKeys(values, { required = false } = {}) {
   const keys = [...new Set((values || []).map(value => String(value).trim()).filter(Boolean))];
-  if (required && keys.length === 0) throw new Error("API_KEY or API_KEYS is required when NODE_ENV=production");
+  if (required && keys.length === 0) throw new Error("API_KEY or API_KEYS is required");
   const placeholder = /^(?:replace|change|changeme|example|sample|test|dev|your)[-_ ]/iu;
   for (const key of keys) {
     if (key.length < 32) throw new Error("Every API key must contain at least 32 characters");
@@ -35,11 +35,37 @@ export function validateApiKeys(values, { required = false } = {}) {
 }
 
 const production = process.env.NODE_ENV === "production";
-const apiKeys = validateApiKeys([...csvEnv("API_KEYS"), ...csvEnv("API_KEY")], { required: production });
+const publicBaseUrl = (process.env.PUBLIC_BASE_URL || "http://localhost:8787").replace(/\/$/, "");
+const apiKeys = validateApiKeys([...csvEnv("API_KEYS"), ...csvEnv("API_KEY")]);
+const googleOAuthClientId = String(process.env.GOOGLE_OAUTH_CLIENT_ID || "").trim();
+const googleOAuthClientSecret = String(process.env.GOOGLE_OAUTH_CLIENT_SECRET || "").trim();
+const googleOAuthConfigured = Boolean(googleOAuthClientId && googleOAuthClientSecret);
+const oauthAllowedEmails = csvEnv("OAUTH_ALLOWED_EMAILS").map(value => value.toLowerCase());
+const oauthAllowedDomains = csvEnv("OAUTH_ALLOWED_DOMAINS").map(value => value.toLowerCase().replace(/^@/u, ""));
+const oauthTrustedProxyCidrs = [...new Set(csvEnv("OAUTH_TRUSTED_PROXY_CIDRS"))];
+
+if (Boolean(googleOAuthClientId) !== Boolean(googleOAuthClientSecret)) {
+  throw new Error("GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET must be configured together");
+}
+// Keep existing API-key deployments bootable during migration, but browser login and /mcp
+// switch to OAuth as soon as Google OAuth is configured. A fresh production install still
+// needs at least one real authentication mechanism.
+if (production && !googleOAuthConfigured && apiKeys.length === 0) {
+  throw new Error("Configure Google OAuth, or keep a legacy API key temporarily during migration");
+}
+if (production && googleOAuthConfigured && oauthAllowedEmails.length === 0 && oauthAllowedDomains.length === 0) {
+  throw new Error("Set OAUTH_ALLOWED_EMAILS or OAUTH_ALLOWED_DOMAINS when Google OAuth is enabled in production");
+}
+// This Node server listens plain HTTP. An HTTPS PUBLIC_BASE_URL therefore means TLS is
+// terminated upstream. OAuth endpoint rate limiting must only trust forwarded client IPs
+// from proxy addresses/subnets that the operator explicitly controls.
+if (production && googleOAuthConfigured && publicBaseUrl.startsWith("https://") && oauthTrustedProxyCidrs.length === 0) {
+  throw new Error("Set OAUTH_TRUSTED_PROXY_CIDRS to the trusted TLS proxy IP/subnet(s) when production OAuth uses HTTPS");
+}
 
 export const config = Object.freeze({
   port: integerEnv("PORT", 8787),
-  publicBaseUrl: (process.env.PUBLIC_BASE_URL || "http://localhost:8787").replace(/\/$/, ""),
+  publicBaseUrl,
   databasePath: resolveFromRoot(process.env.DATABASE_PATH, "./data/lana-carousel.sqlite"),
   assetDirectory: resolveFromRoot(process.env.ASSET_DIRECTORY, "./data/assets"),
   maxImageBytes: integerEnv("MAX_IMAGE_BYTES", 10 * 1024 * 1024),
@@ -53,7 +79,18 @@ export const config = Object.freeze({
   projectAudioMaxBytes: integerEnv("PROJECT_AUDIO_MAX_BYTES", 250 * 1024 * 1024),
   maxRedirects: integerEnv("MAX_REDIRECTS", 3),
   apiKeys,
-  apiAuthRequired: production || apiKeys.length > 0,
+  googleOAuthClientId,
+  googleOAuthClientSecret,
+  googleOAuthConfigured,
+  oauthAllowedEmails,
+  oauthAllowedDomains,
+  oauthTrustedProxyCidrs,
+  oauthAccessTokenTtlSeconds: integerEnv("OAUTH_ACCESS_TOKEN_TTL_SECONDS", 3600),
+  oauthRefreshTokenTtlSeconds: integerEnv("OAUTH_REFRESH_TOKEN_TTL_SECONDS", 30 * 24 * 3600),
+  oauthAuthorizationCodeTtlSeconds: integerEnv("OAUTH_AUTHORIZATION_CODE_TTL_SECONDS", 300),
+  oauthLoginStateTtlSeconds: integerEnv("OAUTH_LOGIN_STATE_TTL_SECONDS", 600),
+  oauthConsentTtlSeconds: integerEnv("OAUTH_CONSENT_TTL_SECONDS", 300),
+  apiAuthRequired: production || googleOAuthConfigured || apiKeys.length > 0,
   apiRateLimitPerMinute: integerEnv("API_RATE_LIMIT_PER_MINUTE", 120),
   apiDailyMutationQuota: integerEnv("API_DAILY_MUTATION_QUOTA", 500),
   apiDailyHeavyQuota: integerEnv("API_DAILY_HEAVY_QUOTA", 60),
