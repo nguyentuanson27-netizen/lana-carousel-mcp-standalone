@@ -108,3 +108,11 @@ test("A social post freezes media once and every delivery consumes that immutabl
   assert.match(routes, /await createPublishPost/u);
   assert.match(routes, /serveSocialSnapshotFile/u);
 });
+
+test("Restart recovery recomputes parent social post status after failing interrupted deliveries", async () => {
+  const recovery = await read("src/social-recovery.js");
+  assert.match(recovery, /SELECT DISTINCT post_id/u);
+  assert.match(recovery, /WHERE status IN \('PROCESSING','UPLOADING'\)/u);
+  assert.match(recovery, /recomputeSocialPostStatus\(postId\)/u);
+  assert.match(recovery, /db\.transaction\(\(\) =>/u);
+});
