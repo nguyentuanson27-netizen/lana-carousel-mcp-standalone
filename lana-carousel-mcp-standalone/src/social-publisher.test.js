@@ -68,6 +68,27 @@ test("Social compose draft survives quiet delivery polling", async () => {
   assert.match(socialUi, /loadOverview\(\{ quiet: true \}\)/u);
 });
 
+test("Resource project links get an explicit admin login handoff for Social Publisher", async () => {
+  const [socialUi, adminAuth] = await Promise.all([
+    read("public/social-studio.js"),
+    read("public/admin-auth.js")
+  ]);
+  assert.match(socialUi, /adminRequired:\s*false/u);
+  assert.match(socialUi, /SOCIAL_ADMIN_REQUIRED/u);
+  assert.match(socialUi, /data-social-admin-login/u);
+  assert.match(socialUi, /admin-auth\.html\?returnTo=/u);
+  assert.match(socialUi, /social=1/u);
+  assert.match(adminAuth, /\["\/", "\/projects", "\/widget"\]/u);
+});
+
+test("Expired auth-layer sessions also hand Social Publisher to admin login", async () => {
+  const socialUi = await read("public/social-studio.js");
+  assert.match(socialUi, /function requiresAdminLogin\(error\)/u);
+  assert.match(socialUi, /error\?\.status === 401 && error\?\.code === "UNAUTHORIZED"/u);
+  assert.match(socialUi, /state\.adminRequired = requiresAdminLogin\(error\)/u);
+  assert.match(socialUi, /if \(requiresAdminLogin\(error\)\)/u);
+});
+
 test("Social API is admin-only while provider media is HMAC signed", async () => {
   const [routes, media, server] = await Promise.all([
     read("src/social-routes.js"),
