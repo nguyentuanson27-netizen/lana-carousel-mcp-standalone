@@ -35,12 +35,14 @@ export function validateApiKeys(values, { required = false } = {}) {
 }
 
 const production = process.env.NODE_ENV === "production";
+const publicBaseUrl = (process.env.PUBLIC_BASE_URL || "http://localhost:8787").replace(/\/$/, "");
 const apiKeys = validateApiKeys([...csvEnv("API_KEYS"), ...csvEnv("API_KEY")]);
 const googleOAuthClientId = String(process.env.GOOGLE_OAUTH_CLIENT_ID || "").trim();
 const googleOAuthClientSecret = String(process.env.GOOGLE_OAUTH_CLIENT_SECRET || "").trim();
 const googleOAuthConfigured = Boolean(googleOAuthClientId && googleOAuthClientSecret);
 const oauthAllowedEmails = csvEnv("OAUTH_ALLOWED_EMAILS").map(value => value.toLowerCase());
 const oauthAllowedDomains = csvEnv("OAUTH_ALLOWED_DOMAINS").map(value => value.toLowerCase().replace(/^@/u, ""));
+const oauthTrustedProxyCidrs = [...new Set(csvEnv("OAUTH_TRUSTED_PROXY_CIDRS"))];
 
 if (Boolean(googleOAuthClientId) !== Boolean(googleOAuthClientSecret)) {
   throw new Error("GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET must be configured together");
@@ -54,10 +56,16 @@ if (production && !googleOAuthConfigured && apiKeys.length === 0) {
 if (production && googleOAuthConfigured && oauthAllowedEmails.length === 0 && oauthAllowedDomains.length === 0) {
   throw new Error("Set OAUTH_ALLOWED_EMAILS or OAUTH_ALLOWED_DOMAINS when Google OAuth is enabled in production");
 }
+// This Node server listens plain HTTP. An HTTPS PUBLIC_BASE_URL therefore means TLS is
+// terminated upstream. OAuth endpoint rate limiting must only trust forwarded client IPs
+// from proxy addresses/subnets that the operator explicitly controls.
+if (production && googleOAuthConfigured && publicBaseUrl.startsWith("https://") && oauthTrustedProxyCidrs.length === 0) {
+  throw new Error("Set OAUTH_TRUSTED_PROXY_CIDRS to the trusted TLS proxy IP/subnet(s) when production OAuth uses HTTPS");
+}
 
 export const config = Object.freeze({
   port: integerEnv("PORT", 8787),
-  publicBaseUrl: (process.env.PUBLIC_BASE_URL || "http://localhost:8787").replace(/\/$/, ""),
+  publicBaseUrl,
   databasePath: resolveFromRoot(process.env.DATABASE_PATH, "./data/lana-carousel.sqlite"),
   assetDirectory: resolveFromRoot(process.env.ASSET_DIRECTORY, "./data/assets"),
   maxImageBytes: integerEnv("MAX_IMAGE_BYTES", 10 * 1024 * 1024),
@@ -76,6 +84,7 @@ export const config = Object.freeze({
   googleOAuthConfigured,
   oauthAllowedEmails,
   oauthAllowedDomains,
+  oauthTrustedProxyCidrs,
   oauthAccessTokenTtlSeconds: integerEnv("OAUTH_ACCESS_TOKEN_TTL_SECONDS", 3600),
   oauthRefreshTokenTtlSeconds: integerEnv("OAUTH_REFRESH_TOKEN_TTL_SECONDS", 30 * 24 * 3600),
   oauthAuthorizationCodeTtlSeconds: integerEnv("OAUTH_AUTHORIZATION_CODE_TTL_SECONDS", 300),
