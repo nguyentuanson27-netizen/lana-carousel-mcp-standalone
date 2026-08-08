@@ -11,7 +11,6 @@ import {
   createGoogleLoginState,
   exchangeAuthorizationCode,
   exchangeRefreshToken,
-  getOAuthClient,
   issueAuthorizationCode,
   mcpResourceUri,
   registerOAuthClient,
@@ -60,11 +59,11 @@ function safeReturnTo(candidate, fallback = "/projects") {
 }
 
 function googleClient() {
-  return new OAuth2Client({
-    clientId: config.googleOAuthClientId,
-    clientSecret: config.googleOAuthClientSecret,
-    redirectUri: `${config.publicBaseUrl}/auth/google/callback`
-  });
+  return new OAuth2Client(
+    config.googleOAuthClientId,
+    config.googleOAuthClientSecret,
+    `${config.publicBaseUrl}/auth/google/callback`
+  );
 }
 
 function oauthProtocolError(res, error) {
@@ -141,8 +140,16 @@ function principalForGoogleSubject(subject) {
   return `user:${createHash("sha256").update(String(subject)).digest("hex").slice(0, 32)}`;
 }
 
+function pageShell(title, body) {
+  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>${escapeHtml(title)}</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:#f5f1eb;color:#2b221d;font:15px/1.5 system-ui,sans-serif}main{width:min(480px,100%);padding:30px;border:1px solid #ded4ca;border-radius:24px;background:#fffdf9;box-shadow:0 24px 80px #39261b1f}h1{margin:0 0 8px;font:500 31px Georgia,serif}p{color:#796d64}.client{padding:14px 16px;border:1px solid #ded4ca;border-radius:14px;background:#faf6f1;margin:18px 0}.actions{display:flex;gap:10px;margin-top:22px}.actions button,.actions a{flex:1;padding:12px;border-radius:999px;border:1px solid #8d3f3d;font:700 14px system-ui;cursor:pointer;text-align:center;text-decoration:none}.approve{background:#8d3f3d;color:#fff}.deny{background:#fff;color:#8d3f3d}</style></head><body><main>${body}</main></body></html>`;
+}
+
 function consentHtml({ clientName, scope, consentToken }) {
-  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Cấp quyền Lana MCP</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:#f5f1eb;color:#2b221d;font:15px/1.5 system-ui,sans-serif}main{width:min(480px,100%);padding:30px;border:1px solid #ded4ca;border-radius:24px;background:#fffdf9;box-shadow:0 24px 80px #39261b1f}h1{margin:0 0 8px;font:500 31px Georgia,serif}p{color:#796d64}.client{padding:14px 16px;border:1px solid #ded4ca;border-radius:14px;background:#faf6f1;margin:18px 0}.actions{display:flex;gap:10px;margin-top:22px}.actions button{flex:1;padding:12px;border-radius:999px;border:1px solid #8d3f3d;font:700 14px system-ui;cursor:pointer}.approve{background:#8d3f3d;color:#fff}.deny{background:#fff;color:#8d3f3d}</style></head><body><main><h1>Kết nối Lana MCP</h1><p>Một ứng dụng muốn truy cập Lana MCP bằng tài khoản Google bạn vừa xác thực.</p><div class="client"><strong>${escapeHtml(clientName)}</strong><br><span>Quyền: ${escapeHtml(scope)}</span></div><p>Cho phép ứng dụng này tạo và chỉnh sửa nội dung thông qua MCP với quota của tài khoản hiện tại?</p><form method="post" action="/oauth/authorize"><input type="hidden" name="consent_token" value="${escapeHtml(consentToken)}"><div class="actions"><button class="deny" type="submit" name="decision" value="deny">Hủy</button><button class="approve" type="submit" name="decision" value="approve">Cho phép</button></div></form></main></body></html>`;
+  return pageShell("Cấp quyền Lana MCP", `<h1>Kết nối Lana MCP</h1><p>Một ứng dụng muốn truy cập Lana MCP bằng tài khoản Google bạn vừa xác thực.</p><div class="client"><strong>${escapeHtml(clientName)}</strong><br><span>Quyền: ${escapeHtml(scope)}</span></div><p>Cho phép ứng dụng này tạo và chỉnh sửa nội dung thông qua MCP với quota của tài khoản hiện tại?</p><form method="post" action="/oauth/authorize"><input type="hidden" name="consent_token" value="${escapeHtml(consentToken)}"><div class="actions"><button class="deny" type="submit" name="decision" value="deny">Hủy</button><button class="approve" type="submit" name="decision" value="approve">Cho phép</button></div></form>`);
+}
+
+function expiredConsentHtml() {
+  return pageShell("Phiên cấp quyền đã hết hạn", `<h1>Phiên xác thực đã hết hạn</h1><p>Phiên đăng nhập Lana đã hết hạn trong lúc bạn đang cấp quyền MCP. Vì authorization request gốc không được phục hồi từ một POST đã hết phiên, Lana dừng flow tại đây thay vì redirect thiếu tham số.</p><p>Hãy quay lại ChatGPT hoặc MCP client và chọn kết nối lại để bắt đầu một OAuth flow mới.</p><div class="actions"><a class="approve" href="/admin-auth.html">Đăng nhập Lana</a></div>`);
 }
 
 export function registerOAuthRoutes(app) {
@@ -227,7 +234,11 @@ export function registerOAuthRoutes(app) {
 
   app.post("/oauth/authorize", formParser, (req, res) => {
     const admin = currentAdmin(req);
-    if (!admin) return res.redirect(302, `/auth/google/start?returnTo=${encodeURIComponent(req.originalUrl || "/oauth/authorize")}`);
+    if (!admin) {
+      res.setHeader("Cache-Control", "no-store");
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      return res.status(401).send(expiredConsentHtml());
+    }
     try {
       const consent = consumeConsentRequest(String(req.body.consent_token || ""), admin.quota_client_id);
       if (req.body.decision !== "approve") {
@@ -266,11 +277,5 @@ export function registerOAuthRoutes(app) {
     } catch (error) {
       return oauthProtocolError(res, error);
     }
-  });
-
-  app.get("/oauth/client/:clientId", (req, res) => {
-    const client = getOAuthClient(req.params.clientId);
-    if (!client) return res.status(404).json({ error: "invalid_client" });
-    return res.json({ client_id: client.client_id, client_name: client.client_name, redirect_uris: client.redirectUris });
   });
 }
