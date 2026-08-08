@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { AppError, publicError } from "./errors.js";
 import { completeMetaOAuth, completeTikTokOAuth, metaOAuthUrl, tiktokOAuthUrl } from "./social-oauth.js";
-import { serveSocialCarouselImage, serveSocialVideo } from "./social-media.js";
+import { serveSocialSnapshotFile } from "./social-media.js";
 import "./social-recovery.js";
 import {
   createPublishPost,
@@ -63,7 +63,7 @@ export function registerSocialRoutes(app) {
       }).default({}),
       accountIds: z.array(z.string().uuid()).min(1).max(20)
     }).parse(req.body || {});
-    res.status(202).json(createPublishPost({ projectId: req.params.projectId, ...body }));
+    res.status(202).json(await createPublishPost({ projectId: req.params.projectId, ...body }));
   }));
 
   app.post("/api/projects/:projectId/social/deliveries/:deliveryId/retry", handle(async (req, res) => {
@@ -113,6 +113,5 @@ export function registerSocialRoutes(app) {
     }
   });
 
-  app.get("/social-media/carousel/:projectId/:slideId.jpg", handle(serveSocialCarouselImage));
-  app.get("/social-media/video/:projectId/:jobId.mp4", handle(async (req, res) => serveSocialVideo(req, res)));
+  app.get("/social-media/posts/:postId/:fileName", handle(async (req, res) => serveSocialSnapshotFile(req, res)));
 }
