@@ -20,7 +20,9 @@ import {
 
 const registrationBuckets = new Map();
 const tokenBuckets = new Map();
+const tokenPreAuthBuckets = new Map();
 const OAUTH_TOKEN_REQUESTS_PER_MINUTE = 60;
+const OAUTH_TOKEN_PREAUTH_REQUESTS_PER_MINUTE = OAUTH_TOKEN_REQUESTS_PER_MINUTE * 10;
 const jsonParser = express.json({ limit: "64kb", type: ["application/json", "application/*+json"] });
 const formParser = express.urlencoded({ extended: false, limit: "64kb" });
 
@@ -109,6 +111,25 @@ function registrationAllowed(req) {
   return true;
 }
 
+function consumeMinuteBucket(buckets, principal, limit, nowMs = Date.now()) {
+  const timestamp = Number(nowMs);
+  const minute = Math.floor(timestamp / 60_000);
+  const id = `${principal}:${minute}`;
+  const count = buckets.get(id) || 0;
+  if (count >= limit) {
+    return {
+      allowed: false,
+      retryAfterSeconds: Math.max(1, Math.ceil((((minute + 1) * 60_000) - timestamp) / 1000))
+    };
+  }
+  buckets.set(id, count + 1);
+  for (const key of buckets.keys()) {
+    const bucket = Number(key.slice(key.lastIndexOf(":") + 1));
+    if (Number.isFinite(bucket) && bucket < minute - 2) buckets.delete(key);
+  }
+  return { allowed: true, retryAfterSeconds: 0 };
+}
+
 function tokenRateLimitPrincipal(rawClientId) {
   const clientId = String(rawClientId || "").trim();
   if (!/^client_[A-Za-z0-9_-]{43,64}$/u.test(clientId)) return "unknown-client";
@@ -116,23 +137,30 @@ function tokenRateLimitPrincipal(rawClientId) {
 }
 
 export function consumeOAuthTokenRateLimit(clientId, nowMs = Date.now()) {
-  const timestamp = Number(nowMs);
-  const minute = Math.floor(timestamp / 60_000);
-  const principal = tokenRateLimitPrincipal(clientId);
-  const id = `${principal}:${minute}`;
-  const count = tokenBuckets.get(id) || 0;
-  if (count >= OAUTH_TOKEN_REQUESTS_PER_MINUTE) {
-    return {
-      allowed: false,
-      retryAfterSeconds: Math.max(1, Math.ceil((((minute + 1) * 60_000) - timestamp) / 1000))
-    };
-  }
-  tokenBuckets.set(id, count + 1);
-  for (const key of tokenBuckets.keys()) {
-    const bucket = Number(key.slice(key.lastIndexOf(":") + 1));
-    if (Number.isFinite(bucket) && bucket < minute - 2) tokenBuckets.delete(key);
-  }
-  return { allowed: true, retryAfterSeconds: 0 };
+  return consumeMinuteBucket(
+    tokenBuckets,
+    tokenRateLimitPrincipal(clientId),
+    OAUTH_TOKEN_REQUESTS_PER_MINUTE,
+    nowMs
+  );
+}
+
+export function consumeOAuthTokenPreAuthRateLimit(source, nowMs = Date.now()) {
+  const principal = String(source || "unknown-source").slice(0, 128);
+  return consumeMinuteBucket(
+    tokenPreAuthBuckets,
+    principal,
+    OAUTH_TOKEN_PREAUTH_REQUESTS_PER_MINUTE,
+    nowMs
+  );
+}
+
+function enforceProvenClientTokenRateLimit(clientId) {
+  const rateLimit = consumeOAuthTokenRateLimit(clientId);
+  if (rateLimit.allowed) return;
+  const error = new AppError("rate_limited", "Đã gửi quá nhiều yêu cầu OAuth token hợp lệ cho client này.", 429);
+  error.retryAfterSeconds = rateLimit.retryAfterSeconds;
+  throw error;
 }
 
 export function oauthProtectedResourceMetadata() {
@@ -288,10 +316,10 @@ export function registerOAuthRoutes(app) {
   });
 
   app.post("/oauth/token", formParser, (req, res, next) => {
-    const rateLimit = consumeOAuthTokenRateLimit(req.body?.client_id);
+    const rateLimit = consumeOAuthTokenPreAuthRateLimit(req.socket?.remoteAddress || "unknown-source");
     if (rateLimit.allowed) return next();
     res.setHeader("Retry-After", String(rateLimit.retryAfterSeconds));
-    return oauthProtocolError(res, new AppError("rate_limited", "Đã gửi quá nhiều yêu cầu tới OAuth token endpoint cho client này.", 429));
+    return oauthProtocolError(res, new AppError("rate_limited", "Đã gửi quá nhiều yêu cầu tới OAuth token endpoint từ nguồn kết nối này.", 429));
   }, (req, res) => {
     try {
       const grantType = String(req.body.grant_type || "");
@@ -302,13 +330,15 @@ export function registerOAuthRoutes(app) {
           clientId: req.body.client_id,
           redirectUri: req.body.redirect_uri,
           codeVerifier: req.body.code_verifier,
-          resource: req.body.resource
+          resource: req.body.resource,
+          beforeExchange: enforceProvenClientTokenRateLimit
         });
       } else if (grantType === "refresh_token") {
         tokens = exchangeRefreshToken({
           refreshToken: req.body.refresh_token,
           clientId: req.body.client_id,
-          resource: req.body.resource
+          resource: req.body.resource,
+          beforeExchange: enforceProvenClientTokenRateLimit
         });
       } else {
         throw new AppError("unsupported_grant_type", "Chỉ hỗ trợ authorization_code và refresh_token.", 400);
@@ -316,6 +346,9 @@ export function registerOAuthRoutes(app) {
       res.setHeader("Cache-Control", "no-store");
       return res.json(tokens);
     } catch (error) {
+      if (Number.isFinite(Number(error?.retryAfterSeconds))) {
+        res.setHeader("Retry-After", String(error.retryAfterSeconds));
+      }
       return oauthProtocolError(res, error);
     }
   });
