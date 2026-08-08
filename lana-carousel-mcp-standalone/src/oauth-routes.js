@@ -18,6 +18,8 @@ import {
 } from "./oauth-store.js";
 
 const registrationBuckets = new Map();
+const tokenBuckets = new Map();
+const OAUTH_TOKEN_REQUESTS_PER_MINUTE = 60;
 const jsonParser = express.json({ limit: "64kb", type: ["application/json", "application/*+json"] });
 const formParser = express.urlencoded({ extended: false, limit: "64kb" });
 
@@ -104,6 +106,26 @@ function registrationAllowed(req) {
     if (Number.isFinite(bucket) && bucket < hour - 2) registrationBuckets.delete(key);
   }
   return true;
+}
+
+export function consumeOAuthTokenRateLimit(req, nowMs = Date.now()) {
+  const timestamp = Number(nowMs);
+  const minute = Math.floor(timestamp / 60_000);
+  const source = String(req.ip || req.socket?.remoteAddress || "unknown");
+  const id = `${source}:${minute}`;
+  const count = tokenBuckets.get(id) || 0;
+  if (count >= OAUTH_TOKEN_REQUESTS_PER_MINUTE) {
+    return {
+      allowed: false,
+      retryAfterSeconds: Math.max(1, Math.ceil((((minute + 1) * 60_000) - timestamp) / 1000))
+    };
+  }
+  tokenBuckets.set(id, count + 1);
+  for (const key of tokenBuckets.keys()) {
+    const bucket = Number(key.slice(key.lastIndexOf(":") + 1));
+    if (Number.isFinite(bucket) && bucket < minute - 2) tokenBuckets.delete(key);
+  }
+  return { allowed: true, retryAfterSeconds: 0 };
 }
 
 export function oauthProtectedResourceMetadata() {
@@ -258,7 +280,12 @@ export function registerOAuthRoutes(app) {
     }
   });
 
-  app.post("/oauth/token", formParser, (req, res) => {
+  app.post("/oauth/token", (req, res, next) => {
+    const rateLimit = consumeOAuthTokenRateLimit(req);
+    if (rateLimit.allowed) return next();
+    res.setHeader("Retry-After", String(rateLimit.retryAfterSeconds));
+    return oauthProtocolError(res, new AppError("rate_limited", "Đã gửi quá nhiều yêu cầu tới OAuth token endpoint.", 429));
+  }, formParser, (req, res) => {
     try {
       const grantType = String(req.body.grant_type || "");
       let tokens;
