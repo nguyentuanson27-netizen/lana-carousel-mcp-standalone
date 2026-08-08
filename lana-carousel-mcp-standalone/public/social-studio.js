@@ -48,6 +48,11 @@
     return `/widget?projectId=${encodeURIComponent(projectId)}&social=1`;
   }
 
+  function requiresAdminLogin(error) {
+    return error?.code === "SOCIAL_ADMIN_REQUIRED" ||
+      (error?.status === 401 && error?.code === "UNAUTHORIZED");
+  }
+
   function formatTime(value) {
     if (!value) return "";
     try { return new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short" }).format(new Date(value)); }
@@ -226,7 +231,7 @@
       state.error = "";
       if (!quiet) state.notice = "";
     } catch (error) {
-      state.adminRequired = error.code === "SOCIAL_ADMIN_REQUIRED";
+      state.adminRequired = requiresAdminLogin(error);
       state.error = state.adminRequired ? "" : error.message;
       if (state.adminRequired) state.overview = null;
     } finally {
@@ -358,7 +363,7 @@
         await loadOverview({ quiet: true });
       }
     } catch (error) {
-      if (error.code === "SOCIAL_ADMIN_REQUIRED") {
+      if (requiresAdminLogin(error)) {
         state.adminRequired = true;
         state.overview = null;
         state.error = "";
