@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS social_posts (
   content_type TEXT NOT NULL CHECK(content_type IN ('carousel','video')),
   caption TEXT NOT NULL DEFAULT '',
   captions TEXT NOT NULL DEFAULT '{}',
+  media_snapshot TEXT NOT NULL DEFAULT '{}',
   status TEXT NOT NULL DEFAULT 'QUEUED',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -63,6 +64,11 @@ CREATE TABLE IF NOT EXISTS social_publish_events (
 CREATE INDEX IF NOT EXISTS idx_social_events_post ON social_publish_events(post_id, created_at ASC);
 `);
 
+const socialPostColumns = new Set(db.prepare(`PRAGMA table_info(social_posts)`).all().map(column => column.name));
+if (!socialPostColumns.has("media_snapshot")) {
+  db.exec(`ALTER TABLE social_posts ADD COLUMN media_snapshot TEXT NOT NULL DEFAULT '{}'`);
+}
+
 const statements = {
   upsertAccount: db.prepare(`
     INSERT INTO social_accounts (
@@ -87,7 +93,7 @@ const statements = {
   listAccounts: db.prepare(`SELECT * FROM social_accounts WHERE status='ACTIVE' ORDER BY platform, account_name`),
   deleteAccount: db.prepare(`DELETE FROM social_accounts WHERE id=?`),
   updateTokens: db.prepare(`UPDATE social_accounts SET access_token_encrypted=?,refresh_token_encrypted=?,token_expires_at=?,scopes=?,updated_at=? WHERE id=?`),
-  createPost: db.prepare(`INSERT INTO social_posts (id,project_id,content_type,caption,captions,status,created_at,updated_at) VALUES (@id,@project_id,@content_type,@caption,@captions,@status,@created_at,@updated_at)`),
+  createPost: db.prepare(`INSERT INTO social_posts (id,project_id,content_type,caption,captions,media_snapshot,status,created_at,updated_at) VALUES (@id,@project_id,@content_type,@caption,@captions,@media_snapshot,@status,@created_at,@updated_at)`),
   createDelivery: db.prepare(`INSERT INTO social_deliveries (id,post_id,account_id,platform,account_name,status,attempt_count,provider_state,error,created_at,updated_at) VALUES (@id,@post_id,@account_id,@platform,@account_name,@status,0,'{}',NULL,@created_at,@updated_at)`),
   getPost: db.prepare(`SELECT * FROM social_posts WHERE id=?`),
   listPosts: db.prepare(`SELECT * FROM social_posts WHERE project_id=? ORDER BY created_at DESC LIMIT ?`),
@@ -151,6 +157,7 @@ function mapPost(row) {
     contentType: row.content_type,
     caption: row.caption,
     captions: json(row.captions, {}),
+    mediaSnapshot: json(row.media_snapshot, {}),
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -207,7 +214,7 @@ export function updateSocialAccountTokens(id, { accessToken, refreshToken = "", 
   return getSocialAccount(id, { includeSecrets: true });
 }
 
-export function createSocialPost({ projectId, contentType, caption = "", captions = {}, accounts }) {
+export function createSocialPost({ projectId, contentType, caption = "", captions = {}, mediaSnapshot = {}, accounts }) {
   const timestamp = now();
   const id = randomUUID();
   db.transaction(() => {
@@ -217,6 +224,7 @@ export function createSocialPost({ projectId, contentType, caption = "", caption
       content_type: contentType,
       caption,
       captions: JSON.stringify(captions || {}),
+      media_snapshot: JSON.stringify(mediaSnapshot || {}),
       status: "QUEUED",
       created_at: timestamp,
       updated_at: timestamp
@@ -231,7 +239,11 @@ export function createSocialPost({ projectId, contentType, caption = "", caption
       created_at: timestamp,
       updated_at: timestamp
     });
-    statements.insertEvent.run(randomUUID(), id, null, "POST_QUEUED", JSON.stringify({ accountCount: accounts.length, contentType }), timestamp);
+    statements.insertEvent.run(randomUUID(), id, null, "POST_QUEUED", JSON.stringify({
+      accountCount: accounts.length,
+      contentType,
+      mediaSnapshotId: mediaSnapshot?.snapshotId || null
+    }), timestamp);
   })();
   return getSocialPost(id);
 }
