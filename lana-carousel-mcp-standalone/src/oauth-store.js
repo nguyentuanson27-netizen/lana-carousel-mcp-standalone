@@ -108,6 +108,7 @@ const sql = {
   purgeRefreshLineage: db.prepare(`DELETE FROM oauth_refresh_token_lineage WHERE token_hash NOT IN (SELECT token_hash FROM oauth_refresh_tokens)`)
 };
 
+const registeredClientIds = new Set(db.prepare("SELECT client_id FROM oauth_clients").all().map(row => String(row.client_id)));
 const now = () => new Date().toISOString();
 const hash = value => createHash("sha256").update(String(value)).digest("hex");
 const opaque = prefix => `${prefix}_${randomBytes(32).toString("base64url")}`;
@@ -156,6 +157,7 @@ export function registerOAuthClient(metadata = {}) {
   const createdAt = now();
   const clientName = String(metadata.client_name || "MCP client").slice(0, 200);
   sql.createClient.run({ client_id: clientId, client_name: clientName, redirect_uris: JSON.stringify(redirectUris), created_at: createdAt });
+  registeredClientIds.add(clientId);
   return {
     client_id: clientId,
     client_id_issued_at: Math.floor(Date.parse(createdAt) / 1000),
@@ -165,6 +167,10 @@ export function registerOAuthClient(metadata = {}) {
     response_types: ["code"],
     token_endpoint_auth_method: "none"
   };
+}
+
+export function isRegisteredOAuthClient(clientId) {
+  return registeredClientIds.has(String(clientId || ""));
 }
 
 export function getOAuthClient(clientId) {
