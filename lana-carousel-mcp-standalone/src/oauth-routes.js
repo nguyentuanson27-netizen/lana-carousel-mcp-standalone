@@ -108,11 +108,16 @@ function registrationAllowed(req) {
   return true;
 }
 
-export function consumeOAuthTokenRateLimit(req, nowMs = Date.now()) {
+function tokenRateLimitPrincipal(rawClientId) {
+  const clientId = String(rawClientId || "").trim();
+  return /^client_[A-Za-z0-9_-]{43,64}$/u.test(clientId) ? clientId : "invalid-client";
+}
+
+export function consumeOAuthTokenRateLimit(clientId, nowMs = Date.now()) {
   const timestamp = Number(nowMs);
   const minute = Math.floor(timestamp / 60_000);
-  const source = String(req.ip || req.socket?.remoteAddress || "unknown");
-  const id = `${source}:${minute}`;
+  const principal = tokenRateLimitPrincipal(clientId);
+  const id = `${principal}:${minute}`;
   const count = tokenBuckets.get(id) || 0;
   if (count >= OAUTH_TOKEN_REQUESTS_PER_MINUTE) {
     return {
@@ -280,12 +285,12 @@ export function registerOAuthRoutes(app) {
     }
   });
 
-  app.post("/oauth/token", (req, res, next) => {
-    const rateLimit = consumeOAuthTokenRateLimit(req);
+  app.post("/oauth/token", formParser, (req, res, next) => {
+    const rateLimit = consumeOAuthTokenRateLimit(req.body?.client_id);
     if (rateLimit.allowed) return next();
     res.setHeader("Retry-After", String(rateLimit.retryAfterSeconds));
-    return oauthProtocolError(res, new AppError("rate_limited", "Đã gửi quá nhiều yêu cầu tới OAuth token endpoint.", 429));
-  }, formParser, (req, res) => {
+    return oauthProtocolError(res, new AppError("rate_limited", "Đã gửi quá nhiều yêu cầu tới OAuth token endpoint cho client này.", 429));
+  }, (req, res) => {
     try {
       const grantType = String(req.body.grant_type || "");
       let tokens;
