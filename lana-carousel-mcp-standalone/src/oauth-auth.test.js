@@ -27,6 +27,7 @@ const {
 } = await import("./oauth-store.js");
 const {
   assertAllowedGoogleIdentity,
+  consentHtml,
   oauthAuthorizationServerMetadata,
   oauthProtectedResourceMetadata
 } = await import("./oauth-routes.js");
@@ -108,11 +109,32 @@ test("authorization code flow is audience-bound, one-time and PKCE protected", (
     resource: mcpResourceUri()
   });
   assert.ok(getOAuthAccessToken(refreshed.access_token));
+
   assert.throws(() => exchangeRefreshToken({
     refreshToken: tokens.refresh_token,
     clientId: client.client_id,
     resource: mcpResourceUri()
   }), error => error.code === "invalid_grant");
+
+  assert.throws(() => exchangeRefreshToken({
+    refreshToken: refreshed.refresh_token,
+    clientId: client.client_id,
+    resource: mcpResourceUri()
+  }), error => error.code === "invalid_grant");
+});
+
+test("open DCR consent visibly distinguishes a self-asserted trusted name from its callback", () => {
+  const html = consentHtml({
+    clientName: "ChatGPT",
+    scope: "mcp",
+    consentToken: "consent-test",
+    redirectUri: "https://evil.example/oauth/callback"
+  });
+  assert.match(html, />ChatGPT</u);
+  assert.match(html, /chưa được Lana xác minh/u);
+  assert.match(html, /Callback host:/u);
+  assert.match(html, /evil\.example/u);
+  assert.match(html, /https:\/\/evil\.example\/oauth\/callback/u);
 });
 
 test("MCP accepts OAuth Bearer and rejects legacy API key authentication", () => {
