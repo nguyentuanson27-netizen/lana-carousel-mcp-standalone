@@ -141,11 +141,13 @@ function principalForGoogleSubject(subject) {
 }
 
 function pageShell(title, body) {
-  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>${escapeHtml(title)}</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:#f5f1eb;color:#2b221d;font:15px/1.5 system-ui,sans-serif}main{width:min(480px,100%);padding:30px;border:1px solid #ded4ca;border-radius:24px;background:#fffdf9;box-shadow:0 24px 80px #39261b1f}h1{margin:0 0 8px;font:500 31px Georgia,serif}p{color:#796d64}.client{padding:14px 16px;border:1px solid #ded4ca;border-radius:14px;background:#faf6f1;margin:18px 0}.actions{display:flex;gap:10px;margin-top:22px}.actions button,.actions a{flex:1;padding:12px;border-radius:999px;border:1px solid #8d3f3d;font:700 14px system-ui;cursor:pointer;text-align:center;text-decoration:none}.approve{background:#8d3f3d;color:#fff}.deny{background:#fff;color:#8d3f3d}</style></head><body><main>${body}</main></body></html>`;
+  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>${escapeHtml(title)}</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:#f5f1eb;color:#2b221d;font:15px/1.5 system-ui,sans-serif}main{width:min(520px,100%);padding:30px;border:1px solid #ded4ca;border-radius:24px;background:#fffdf9;box-shadow:0 24px 80px #39261b1f}h1{margin:0 0 8px;font:500 31px Georgia,serif}p{color:#796d64}.client{padding:14px 16px;border:1px solid #ded4ca;border-radius:14px;background:#faf6f1;margin:18px 0}.warning{padding:12px 14px;border:1px solid #d8a948;border-radius:12px;background:#fff8df;color:#6e5415;font-weight:650}.redirect{display:block;margin-top:8px;padding:10px 12px;border-radius:10px;background:#fff;color:#493f38;font:12px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere}.actions{display:flex;gap:10px;margin-top:22px}.actions button,.actions a{flex:1;padding:12px;border-radius:999px;border:1px solid #8d3f3d;font:700 14px system-ui;cursor:pointer;text-align:center;text-decoration:none}.approve{background:#8d3f3d;color:#fff}.deny{background:#fff;color:#8d3f3d}</style></head><body><main>${body}</main></body></html>`;
 }
 
-function consentHtml({ clientName, scope, consentToken }) {
-  return pageShell("Cấp quyền Lana MCP", `<h1>Kết nối Lana MCP</h1><p>Một ứng dụng muốn truy cập Lana MCP bằng tài khoản Google bạn vừa xác thực.</p><div class="client"><strong>${escapeHtml(clientName)}</strong><br><span>Quyền: ${escapeHtml(scope)}</span></div><p>Cho phép ứng dụng này tạo và chỉnh sửa nội dung thông qua MCP với quota của tài khoản hiện tại?</p><form method="post" action="/oauth/authorize"><input type="hidden" name="consent_token" value="${escapeHtml(consentToken)}"><div class="actions"><button class="deny" type="submit" name="decision" value="deny">Hủy</button><button class="approve" type="submit" name="decision" value="approve">Cho phép</button></div></form>`);
+export function consentHtml({ clientName, scope, consentToken, redirectUri }) {
+  let redirectHost = "không xác định";
+  try { redirectHost = new URL(redirectUri).host; } catch { /* validated upstream */ }
+  return pageShell("Cấp quyền Lana MCP", `<h1>Kết nối Lana MCP</h1><p>Một ứng dụng muốn truy cập Lana MCP bằng tài khoản Google bạn vừa xác thực.</p><div class="warning">Client này được đăng ký động và <strong>chưa được Lana xác minh</strong>. Tên ứng dụng bên dưới do chính client tự khai báo; hãy kiểm tra kỹ nơi nhận callback trước khi cho phép.</div><div class="client"><strong>${escapeHtml(clientName)}</strong><br><span>Quyền: ${escapeHtml(scope)}</span><br><span>Callback host: <strong>${escapeHtml(redirectHost)}</strong></span><code class="redirect">${escapeHtml(redirectUri)}</code></div><p>Chỉ chọn “Cho phép” nếu bạn nhận ra callback host ở trên và tin tưởng ứng dụng này.</p><form method="post" action="/oauth/authorize"><input type="hidden" name="consent_token" value="${escapeHtml(consentToken)}"><div class="actions"><button class="deny" type="submit" name="decision" value="deny">Hủy</button><button class="approve" type="submit" name="decision" value="approve">Cho phép</button></div></form>`);
 }
 
 function expiredConsentHtml() {
@@ -229,7 +231,7 @@ export function registerOAuthRoutes(app) {
     const consentToken = createConsentRequest(request, admin.quota_client_id);
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("Content-Type", "text/html; charset=utf-8");
-    return res.status(200).send(consentHtml({ clientName: request.clientName, scope: request.scope, consentToken }));
+    return res.status(200).send(consentHtml({ clientName: request.clientName, scope: request.scope, consentToken, redirectUri: request.redirectUri }));
   });
 
   app.post("/oauth/authorize", formParser, (req, res) => {
