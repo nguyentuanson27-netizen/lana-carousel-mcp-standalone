@@ -246,6 +246,21 @@ test("OAuth token endpoint limiter bounds requests per client without coupling c
   assert.equal(consume(clientA, 180_001).allowed, true);
 });
 
+test("OAuth token endpoint limiter shares one bucket across well-formed unregistered client IDs", () => {
+  const consume = oauthRoutes.consumeOAuthTokenRateLimit;
+  let deniedAt = -1;
+  for (let index = 0; index < 200; index += 1) {
+    const fakeClientId = `client_${String(index).padStart(43, "x")}`;
+    const outcome = consume(fakeClientId, 240_000);
+    if (!outcome.allowed) {
+      deniedAt = index;
+      break;
+    }
+  }
+  assert.equal(deniedAt, 60, "well-formed but unregistered client IDs must share the 60/minute unknown-client bucket");
+  assert.equal(consume("client_" + "z".repeat(43), 300_001).allowed, true);
+});
+
 test("open DCR consent visibly distinguishes a self-asserted trusted name from its callback", () => {
   const html = consentHtml({
     clientName: "ChatGPT",
