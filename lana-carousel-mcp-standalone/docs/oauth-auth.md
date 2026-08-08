@@ -27,7 +27,9 @@ OAUTH_ALLOWED_EMAILS=owner@example.com
 # OAUTH_ALLOWED_DOMAINS=lanadesign.vn
 ```
 
-Production yêu cầu Google client và ít nhất một allowlist email/domain. Lana kiểm tra `email_verified` từ Google trước khi tạo HttpOnly admin session.
+Để bật browser login và MCP OAuth trên production, cần cấu hình đủ Google client và ít nhất một allowlist email/domain. Trong giai đoạn rollout, process production cũ vẫn được phép khởi động tạm thời nếu còn `API_KEY`, nhưng API key đó **không** đăng nhập được Content Studio và **không** kết nối được `/mcp`; nó chỉ còn phục vụ REST automation qua `X-API-Key`.
+
+Lana kiểm tra `email_verified` từ Google trước khi tạo HttpOnly admin session.
 
 Browser flow:
 
@@ -84,6 +86,8 @@ MCP client
 
 Lana bắt buộc PKCE `S256`. Access token được ràng buộc với resource chính xác `PUBLIC_BASE_URL/mcp`; token dành cho resource khác không dùng được với MCP.
 
+Nếu admin session hết hạn sau khi màn hình consent đã được tạo nhưng trước lúc bấm Cho phép/Hủy, Lana dừng request với trang báo phiên đã hết hạn và yêu cầu MCP client bắt đầu lại OAuth flow. Lana không cố tái tạo một authorization request thiếu tham số từ POST cũ.
+
 ## 3. Token lifetime
 
 Mặc định:
@@ -100,7 +104,7 @@ Authorization code và consent token chỉ dùng một lần. Refresh token đư
 
 ## 4. Chuyển ChatGPT MCP từ API key sang OAuth
 
-Sau khi deploy cấu hình OAuth:
+Sau khi deploy và cấu hình Google OAuth:
 
 1. Xóa/reconnect MCP cũ nếu connection đang lưu API key.
 2. Dùng lại URL `https://content.lanadesign.tech/mcp` mà không nhập API key.
@@ -112,7 +116,7 @@ Sau khi deploy cấu hình OAuth:
 
 ## 5. Legacy REST API key
 
-Có thể tạm giữ:
+Có thể tạm giữ trong thời gian migration:
 
 ```env
 API_KEY=...
