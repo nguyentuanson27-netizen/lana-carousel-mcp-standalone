@@ -219,6 +219,10 @@ function expiredConsentHtml() {
 }
 
 export function registerOAuthRoutes(app) {
+  if (config.oauthTrustedProxyCidrs.length > 0) {
+    app.set("trust proxy", config.oauthTrustedProxyCidrs);
+  }
+
   app.get(["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"], (_req, res) => {
     res.setHeader("Cache-Control", "public, max-age=300");
     res.json(oauthProtectedResourceMetadata());
@@ -316,7 +320,7 @@ export function registerOAuthRoutes(app) {
   });
 
   app.post("/oauth/token", formParser, (req, res, next) => {
-    const rateLimit = consumeOAuthTokenPreAuthRateLimit(req.socket?.remoteAddress || "unknown-source");
+    const rateLimit = consumeOAuthTokenPreAuthRateLimit(req.ip || req.socket?.remoteAddress || "unknown-source");
     if (rateLimit.allowed) return next();
     res.setHeader("Retry-After", String(rateLimit.retryAfterSeconds));
     return oauthProtocolError(res, new AppError("rate_limited", "Đã gửi quá nhiều yêu cầu tới OAuth token endpoint từ nguồn kết nối này.", 429));
