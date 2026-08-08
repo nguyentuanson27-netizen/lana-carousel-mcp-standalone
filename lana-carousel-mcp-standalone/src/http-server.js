@@ -13,6 +13,7 @@ import { apiSecurity } from "./api-security.js";
 import { consumeApiQuota } from "./api-quota.js";
 import { mcpPrincipalBindings } from "./mcp-principal-binding.js";
 import { createMcpServer } from "./mcp-tools.js";
+import { registerOAuthRoutes } from "./oauth-routes.js";
 import { createProjectAudioAsset, purgeOrphanedProjectAudio, videoAudioDirectory } from "./project-audio.js";
 import { getRenderJob, getRenderJobBuffer, startRenderJob } from "./render-jobs.js";
 import { deleteVideoRenderJob, getVideoRenderFile, getVideoRenderJob, startVideoRenderJob } from "./video-jobs.js";
@@ -30,6 +31,7 @@ import {
 const app = express();
 const publicDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../public");
 
+registerOAuthRoutes(app);
 app.use(apiSecurity);
 app.use(express.json({ limit: "1mb" }));
 app.use("/api/video-analysis", videoAnalysisRouter);
