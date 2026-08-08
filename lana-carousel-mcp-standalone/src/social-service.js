@@ -2,7 +2,14 @@ import { AppError } from "./errors.js";
 import { getProject } from "./service-core.js";
 import { socialFeatureStatus, socialConfig } from "./social-config.js";
 import { formBody, socialFetchJson } from "./social-http.js";
-import { socialCarouselMedia, socialVideoMedia, latestReadyVideoJob } from "./social-media.js";
+import {
+  createSocialMediaSnapshot,
+  latestReadyVideoJob,
+  purgeOrphanedSocialMediaSnapshots,
+  removeSocialMediaSnapshot,
+  socialCarouselMedia,
+  socialMediaFromSnapshot
+} from "./social-media.js";
 import { publishMetaDelivery } from "./social-provider-meta.js";
 import { fetchTikTokPublishStatus, publishTikTokDraft } from "./social-provider-tiktok.js";
 import {
@@ -26,12 +33,6 @@ let pumpScheduled = false;
 
 function captionFor(post, platform) {
   return String(post.captions?.[platform] || post.caption || "").trim();
-}
-
-function contentMedia(projectId, contentType) {
-  return contentType === "video"
-    ? { video: socialVideoMedia(projectId), images: [] }
-    : { video: null, images: socialCarouselMedia(projectId) };
 }
 
 async function refreshTikTokAccount(account) {
@@ -72,7 +73,6 @@ export async function processSocialDelivery(deliveryId) {
     if (!delivery || delivery.status !== "QUEUED") return delivery;
     const post = getSocialPost(delivery.postId);
     if (!post) throw new AppError("SOCIAL_POST_NOT_FOUND", "Không tìm thấy kế hoạch đăng.", 404);
-    const project = getProject(post.projectId);
     delivery = updateSocialDelivery(delivery.id, {
       status: "PROCESSING",
       attemptCount: delivery.attemptCount + 1,
@@ -81,11 +81,17 @@ export async function processSocialDelivery(deliveryId) {
     recordSocialEvent(post.id, delivery.id, "DELIVERY_STARTED", { attempt: delivery.attemptCount, platform: delivery.platform });
 
     const account = await accountForDelivery(delivery);
-    const media = contentMedia(post.projectId, post.contentType);
+    const media = socialMediaFromSnapshot(post);
     const caption = captionFor(post, delivery.platform);
     const result = delivery.platform === "tiktok"
       ? await publishTikTokDraft({ account, contentType: post.contentType, media, caption })
-      : await publishMetaDelivery({ account, contentType: post.contentType, media, caption, projectTitle: project.title });
+      : await publishMetaDelivery({
+          account,
+          contentType: post.contentType,
+          media,
+          caption,
+          projectTitle: post.mediaSnapshot?.projectTitle || "Lana Content Studio"
+        });
 
     const status = result.status || "PUBLISHED";
     delivery = updateSocialDelivery(delivery.id, {
@@ -98,7 +104,8 @@ export async function processSocialDelivery(deliveryId) {
     });
     recordSocialEvent(post.id, delivery.id, status === "AWAITING_USER" ? "DELIVERY_UPLOADED_TO_DRAFT" : "DELIVERY_PUBLISHED", {
       remoteId: delivery.remoteId,
-      platform: delivery.platform
+      platform: delivery.platform,
+      mediaSnapshotId: post.mediaSnapshot?.snapshotId || null
     });
     recomputeSocialPostStatus(post.id);
     return delivery;
@@ -133,18 +140,26 @@ export function scheduleSocialPump() {
   });
 }
 
-export function createPublishPost({ projectId, contentType, caption = "", captions = {}, accountIds }) {
+export async function createPublishPost({ projectId, contentType, caption = "", captions = {}, accountIds }) {
   getProject(projectId);
   const uniqueIds = [...new Set(accountIds || [])];
   if (!uniqueIds.length) throw new AppError("SOCIAL_ACCOUNT_REQUIRED", "Hãy chọn ít nhất một tài khoản mạng xã hội.", 400);
   const accounts = uniqueIds.map(id => getSocialAccount(id)).filter(Boolean);
   if (accounts.length !== uniqueIds.length) throw new AppError("SOCIAL_ACCOUNT_NOT_FOUND", "Một tài khoản MXH không còn tồn tại.", 404);
-  if (contentType === "carousel") socialCarouselMedia(projectId);
-  else if (contentType === "video") socialVideoMedia(projectId);
-  else throw new AppError("SOCIAL_CONTENT_TYPE_INVALID", "Loại nội dung Social không hợp lệ.", 400);
-  const post = createSocialPost({ projectId, contentType, caption, captions, accounts });
-  scheduleSocialPump();
-  return post;
+  if (!new Set(["carousel", "video"]).has(contentType)) {
+    throw new AppError("SOCIAL_CONTENT_TYPE_INVALID", "Loại nội dung Social không hợp lệ.", 400);
+  }
+
+  let mediaSnapshot;
+  try {
+    mediaSnapshot = await createSocialMediaSnapshot(projectId, contentType);
+    const post = createSocialPost({ projectId, contentType, caption, captions, mediaSnapshot, accounts });
+    scheduleSocialPump();
+    return post;
+  } catch (error) {
+    if (mediaSnapshot) await removeSocialMediaSnapshot(mediaSnapshot);
+    throw error;
+  }
 }
 
 export function retrySocialDelivery({ projectId, deliveryId }) {
@@ -152,6 +167,7 @@ export function retrySocialDelivery({ projectId, deliveryId }) {
   if (!delivery) throw new AppError("SOCIAL_DELIVERY_NOT_FOUND", "Không tìm thấy delivery.", 404);
   const post = getSocialPost(delivery.postId);
   if (!post || post.projectId !== projectId) throw new AppError("SOCIAL_DELIVERY_NOT_FOUND", "Delivery không thuộc dự án này.", 404);
+  if (!post.mediaSnapshot?.snapshotId) throw new AppError("SOCIAL_MEDIA_SNAPSHOT_MISSING", "Lượt đăng cũ không có media snapshot để retry an toàn.", 409);
   const reset = resetSocialDeliveryForRetry(deliveryId);
   if (!reset) throw new AppError("SOCIAL_DELIVERY_NOT_RETRYABLE", "Chỉ delivery FAILED mới được retry.", 409);
   recomputeSocialPostStatus(post.id);
@@ -205,6 +221,11 @@ export function disconnectSocialAccount(accountId) {
   return { success: true, id: accountId };
 }
 
+purgeOrphanedSocialMediaSnapshots().catch(error => console.error("Initial social media snapshot cleanup failed", error));
 setTimeout(scheduleSocialPump, 250).unref?.();
 const socialPumpTimer = setInterval(scheduleSocialPump, 15_000);
 socialPumpTimer.unref();
+const socialSnapshotCleanupTimer = setInterval(() => {
+  purgeOrphanedSocialMediaSnapshots().catch(error => console.error("Social media snapshot cleanup failed", error));
+}, 6 * 60 * 60 * 1000);
+socialSnapshotCleanupTimer.unref();
