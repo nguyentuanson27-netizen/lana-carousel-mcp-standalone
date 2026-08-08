@@ -16,6 +16,13 @@
     notice: "",
     selectedAccounts: new Set(),
     contentType: "carousel",
+    compose: {
+      caption: null,
+      facebook: "",
+      instagram: "",
+      tiktok: "",
+      expanded: false
+    },
     pollTimer: null
   };
 
@@ -59,6 +66,16 @@
     if (!state.selectedAccounts.size) accounts.forEach(account => state.selectedAccounts.add(account.id));
   }
 
+  function captureComposeState() {
+    const caption = panel.querySelector("#socialCaption");
+    if (!caption) return;
+    state.compose.caption = caption.value;
+    state.compose.facebook = panel.querySelector("#socialCaptionFacebook")?.value || "";
+    state.compose.instagram = panel.querySelector("#socialCaptionInstagram")?.value || "";
+    state.compose.tiktok = panel.querySelector("#socialCaptionTiktok")?.value || "";
+    state.compose.expanded = panel.querySelector(".social-caption-grid details")?.open === true;
+  }
+
   function deliveryActions(delivery) {
     const actions = [];
     if (delivery.remoteUrl) actions.push(`<a href="${escapeHtml(delivery.remoteUrl)}" target="_blank" rel="noopener">Xem bài</a>`);
@@ -87,6 +104,7 @@
 
   function render() {
     if (!state.active) return;
+    captureComposeState();
     if (state.loading && !state.overview) {
       panel.innerHTML = '<div class="social-shell"><div class="social-card social-empty">Đang tải Social Publisher…</div></div>';
       return;
@@ -105,6 +123,7 @@
     if (state.contentType === "video" && !videoReady && carouselReady) state.contentType = "carousel";
     const selectedReady = state.contentType === "video" ? videoReady : carouselReady;
     const feature = overview.feature || {};
+    const composeCaption = state.compose.caption ?? overview.project?.title ?? "";
 
     panel.innerHTML = `<div class="social-shell">
       ${state.notice ? `<div class="social-alert">${escapeHtml(state.notice)}</div>` : ""}
@@ -146,13 +165,13 @@
             <label><input type="radio" name="socialContentType" value="video" ${state.contentType === "video" ? "checked" : ""} ${videoReady ? "" : "disabled"}> Video</label>
           </div>
           <div class="social-caption-grid">
-            <label class="field">Caption chung<textarea id="socialCaption" maxlength="5000" placeholder="Caption dùng chung cho các kênh…">${escapeHtml(overview.project?.title || "")}</textarea></label>
-            <details>
+            <label class="field">Caption chung<textarea id="socialCaption" maxlength="5000" placeholder="Caption dùng chung cho các kênh…">${escapeHtml(composeCaption)}</textarea></label>
+            <details ${state.compose.expanded ? "open" : ""}>
               <summary>Chỉnh caption riêng từng nền tảng</summary>
               <div class="social-platform-captions">
-                <label class="field">Facebook<textarea id="socialCaptionFacebook" maxlength="5000" placeholder="Để trống = dùng caption chung"></textarea></label>
-                <label class="field">Instagram<textarea id="socialCaptionInstagram" maxlength="2200" placeholder="Để trống = dùng caption chung"></textarea></label>
-                <label class="field">TikTok<textarea id="socialCaptionTiktok" maxlength="2200" placeholder="Để trống = dùng caption chung"></textarea></label>
+                <label class="field">Facebook<textarea id="socialCaptionFacebook" maxlength="5000" placeholder="Để trống = dùng caption chung">${escapeHtml(state.compose.facebook)}</textarea></label>
+                <label class="field">Instagram<textarea id="socialCaptionInstagram" maxlength="2200" placeholder="Để trống = dùng caption chung">${escapeHtml(state.compose.instagram)}</textarea></label>
+                <label class="field">TikTok<textarea id="socialCaptionTiktok" maxlength="2200" placeholder="Để trống = dùng caption chung">${escapeHtml(state.compose.tiktok)}</textarea></label>
               </div>
             </details>
           </div>
@@ -293,7 +312,7 @@
         const accountIds = [...panel.querySelectorAll("[data-social-account]:checked")].map(input => input.dataset.socialAccount);
         if (!accountIds.length) throw new Error("Hãy chọn ít nhất một tài khoản mạng xã hội.");
         publish.disabled = true;
-        publish.textContent = "Đang xếp hàng…";
+        publish.textContent = "Đang đóng băng media…";
         const caption = panel.querySelector("#socialCaption")?.value.trim() || "";
         const captions = {
           facebook: panel.querySelector("#socialCaptionFacebook")?.value.trim() || "",
@@ -305,7 +324,7 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ contentType: state.contentType, caption, captions, accountIds })
         });
-        state.notice = "Đã tạo lượt đăng. Mỗi nền tảng sẽ được xử lý độc lập.";
+        state.notice = "Đã tạo lượt đăng với media snapshot cố định. Mỗi nền tảng sẽ được xử lý độc lập.";
         await loadOverview({ quiet: true });
       }
     } catch (error) {
