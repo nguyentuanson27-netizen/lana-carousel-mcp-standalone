@@ -1,0 +1,127 @@
+# Lana OAuth authentication
+
+Lana dùng hai lớp OAuth liên kết với cùng một danh tính người dùng:
+
+1. **Google OAuth/OIDC** để đăng nhập Lana Content Studio trong trình duyệt.
+2. **Lana OAuth 2.1 Authorization Server** để các MCP client như ChatGPT lấy access token bằng Authorization Code + PKCE.
+
+API key không còn được dùng cho browser login hoặc endpoint `/mcp`. `API_KEY` / `API_KEYS` chỉ còn là fallback tùy chọn cho REST automation thông qua header `X-API-Key`.
+
+## 1. Google OAuth cho Content Studio
+
+Tạo OAuth 2.0 Client ID loại **Web application** trong Google Cloud Console.
+
+Authorized redirect URI production:
+
+```text
+https://content.lanadesign.tech/auth/google/callback
+```
+
+Cấu hình `.env`:
+
+```env
+GOOGLE_OAUTH_CLIENT_ID=...
+GOOGLE_OAUTH_CLIENT_SECRET=...
+OAUTH_ALLOWED_EMAILS=owner@example.com
+# hoặc cho phép cả Google Workspace domain:
+# OAUTH_ALLOWED_DOMAINS=lanadesign.vn
+```
+
+Production yêu cầu Google client và ít nhất một allowlist email/domain. Lana kiểm tra `email_verified` từ Google trước khi tạo HttpOnly admin session.
+
+Browser flow:
+
+```text
+/admin-auth.html
+  -> /auth/google/start
+  -> Google OAuth
+  -> /auth/google/callback
+  -> lana_admin_session (HttpOnly)
+  -> /projects hoặc project đang mở
+```
+
+Không lưu Google access/refresh token. Lana chỉ dùng ID token đã xác minh để xác thực danh tính rồi tạo session nội bộ.
+
+## 2. OAuth cho MCP
+
+MCP endpoint vẫn là:
+
+```text
+https://content.lanadesign.tech/mcp
+```
+
+OAuth discovery:
+
+```text
+https://content.lanadesign.tech/.well-known/oauth-protected-resource
+https://content.lanadesign.tech/.well-known/oauth-authorization-server
+```
+
+Authorization server endpoints:
+
+```text
+POST /oauth/register
+GET  /oauth/authorize
+POST /oauth/authorize
+POST /oauth/token
+```
+
+Flow:
+
+```text
+MCP client
+  -> Protected Resource Metadata
+  -> Authorization Server Metadata
+  -> Dynamic Client Registration
+  -> /oauth/authorize?resource=https://content.lanadesign.tech/mcp&code_challenge=...
+  -> Google login nếu browser chưa có Lana admin session
+  -> màn hình xác nhận "Kết nối Lana MCP"
+  -> authorization code
+  -> /oauth/token + code_verifier
+  -> opaque Bearer access token + refresh token
+  -> Authorization: Bearer <access_token> trên mọi request /mcp
+```
+
+Lana bắt buộc PKCE `S256`. Access token được ràng buộc với resource chính xác `PUBLIC_BASE_URL/mcp`; token dành cho resource khác không dùng được với MCP.
+
+## 3. Token lifetime
+
+Mặc định:
+
+```env
+OAUTH_ACCESS_TOKEN_TTL_SECONDS=3600
+OAUTH_REFRESH_TOKEN_TTL_SECONDS=2592000
+OAUTH_AUTHORIZATION_CODE_TTL_SECONDS=300
+OAUTH_LOGIN_STATE_TTL_SECONDS=600
+OAUTH_CONSENT_TTL_SECONDS=300
+```
+
+Authorization code và consent token chỉ dùng một lần. Refresh token được rotate mỗi lần refresh.
+
+## 4. Chuyển ChatGPT MCP từ API key sang OAuth
+
+Sau khi deploy cấu hình OAuth:
+
+1. Xóa/reconnect MCP cũ nếu connection đang lưu API key.
+2. Dùng lại URL `https://content.lanadesign.tech/mcp` mà không nhập API key.
+3. MCP client nhận `401` với `WWW-Authenticate` trỏ đến Protected Resource Metadata.
+4. Client mở browser OAuth flow.
+5. Đăng nhập Google bằng tài khoản nằm trong allowlist.
+6. Xác nhận cấp scope `mcp`.
+7. Client tự dùng và refresh Bearer token.
+
+## 5. Legacy REST API key
+
+Có thể tạm giữ:
+
+```env
+API_KEY=...
+```
+
+nhưng chỉ cho REST/server-to-server qua:
+
+```http
+X-API-Key: ...
+```
+
+`Authorization: Bearer` được dành cho OAuth, và `/mcp` không chấp nhận API key. Sau khi mọi automation REST đã chuyển sang cơ chế khác, có thể xóa hẳn `API_KEY`/`API_KEYS` khỏi production.
