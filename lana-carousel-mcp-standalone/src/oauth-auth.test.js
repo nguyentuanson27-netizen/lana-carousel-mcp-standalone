@@ -22,6 +22,7 @@ const {
   getOAuthAccessToken,
   issueAuthorizationCode,
   mcpResourceUri,
+  purgeOAuthState,
   registerOAuthClient,
   validateAuthorizationRequest
 } = await import("./oauth-store.js");
@@ -29,9 +30,11 @@ const {
   assertAllowedGoogleIdentity,
   consentHtml,
   oauthAuthorizationServerMetadata,
-  oauthProtectedResourceMetadata
+  oauthProtectedResourceMetadata,
+  setOAuthHtmlSecurityHeaders
 } = await import("./oauth-routes.js");
 const { apiSecurity } = await import("./api-security.js");
+const { db } = await import("./db.js");
 
 function fakeResponse() {
   return {
@@ -52,6 +55,10 @@ function runSecurity(headers = {}) {
   let nextCalled = false;
   apiSecurity(req, res, () => { nextCalled = true; });
   return { req, res, nextCalled };
+}
+
+function tokenHash(token) {
+  return createHash("sha256").update(String(token)).digest("hex");
 }
 
 test("OAuth metadata advertises MCP resource, DCR, PKCE and refresh tokens", () => {
@@ -123,6 +130,51 @@ test("authorization code flow is audience-bound, one-time and PKCE protected", (
   }), error => error.code === "invalid_grant");
 });
 
+test("expired refresh ancestor replay revokes a still-active descendant", () => {
+  const client = registerOAuthClient({ redirect_uris: ["https://refresh.example/callback"] });
+  const verifier = "c".repeat(64);
+  const challenge = createHash("sha256").update(verifier).digest("base64url");
+  const request = validateAuthorizationRequest({
+    client_id: client.client_id,
+    redirect_uri: "https://refresh.example/callback",
+    response_type: "code",
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+    resource: mcpResourceUri(),
+    scope: "mcp"
+  });
+  const consent = consumeConsentRequest(createConsentRequest(request, "user:refresh-expiry"), "user:refresh-expiry");
+  const first = exchangeAuthorizationCode({
+    code: issueAuthorizationCode(consent),
+    clientId: client.client_id,
+    redirectUri: "https://refresh.example/callback",
+    codeVerifier: verifier,
+    resource: mcpResourceUri()
+  });
+  const second = exchangeRefreshToken({
+    refreshToken: first.refresh_token,
+    clientId: client.client_id,
+    resource: mcpResourceUri()
+  });
+
+  const past = new Date(Date.now() - 60_000).toISOString();
+  const future = new Date(Date.now() + 60 * 60_000).toISOString();
+  db.prepare("UPDATE oauth_refresh_tokens SET expires_at=? WHERE token_hash=?").run(past, tokenHash(first.refresh_token));
+  db.prepare("UPDATE oauth_refresh_tokens SET expires_at=? WHERE token_hash=?").run(future, tokenHash(second.refresh_token));
+  purgeOAuthState();
+
+  assert.throws(() => exchangeRefreshToken({
+    refreshToken: first.refresh_token,
+    clientId: client.client_id,
+    resource: mcpResourceUri()
+  }), error => error.code === "invalid_grant");
+  assert.throws(() => exchangeRefreshToken({
+    refreshToken: second.refresh_token,
+    clientId: client.client_id,
+    resource: mcpResourceUri()
+  }), error => error.code === "invalid_grant");
+});
+
 test("open DCR consent visibly distinguishes a self-asserted trusted name from its callback", () => {
   const html = consentHtml({
     clientName: "ChatGPT",
@@ -135,6 +187,13 @@ test("open DCR consent visibly distinguishes a self-asserted trusted name from i
   assert.match(html, /Callback host:/u);
   assert.match(html, /evil\.example/u);
   assert.match(html, /https:\/\/evil\.example\/oauth\/callback/u);
+});
+
+test("OAuth authorization HTML blocks framing", () => {
+  const res = fakeResponse();
+  setOAuthHtmlSecurityHeaders(res);
+  assert.equal(res.headers["content-security-policy"], "frame-ancestors 'none'");
+  assert.equal(res.headers["x-frame-options"], "DENY");
 });
 
 test("MCP accepts OAuth Bearer and rejects legacy API key authentication", () => {
