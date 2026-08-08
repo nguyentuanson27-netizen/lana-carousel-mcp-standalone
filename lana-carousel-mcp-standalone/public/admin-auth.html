@@ -10,24 +10,18 @@
     *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 20% 0%,#ead8c7,transparent 35rem),var(--paper);color:var(--ink);font:15px/1.5 system-ui,sans-serif}
     main{width:min(460px,100%);padding:30px;border:1px solid var(--line);border-radius:24px;background:var(--card);box-shadow:0 24px 80px #39261b1f}
     h1{margin:0 0 8px;font:500 32px Georgia,serif}p{margin:0 0 22px;color:var(--muted)}
-    label{display:grid;gap:7px;font-weight:700}input{width:100%;padding:13px;border:1px solid var(--line);border-radius:12px;font:inherit}
-    button{width:100%;margin-top:16px;padding:12px;border:0;border-radius:999px;background:var(--accent);color:#fff;font:700 15px system-ui;cursor:pointer}
-    button:disabled{opacity:.55}.error{min-height:22px;margin:12px 0 0;color:#a03935;font-size:13px}
-    small{display:block;margin-top:14px;color:var(--muted)}
+    button{width:100%;display:flex;align-items:center;justify-content:center;gap:10px;margin-top:16px;padding:13px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--ink);font:700 15px system-ui;cursor:pointer}
+    button:hover{border-color:#bca99b;background:#fffaf7}button:disabled{opacity:.55}.error{min-height:22px;margin:12px 0 0;color:#a03935;font-size:13px}
+    small{display:block;margin-top:14px;color:var(--muted)}.google{font-size:18px;font-weight:800;color:#4285f4}
   </style>
 </head>
 <body>
   <main>
     <h1>Lana Content Studio</h1>
-    <p>Nhập API key quản trị để mở dashboard production.</p>
-    <form id="loginForm">
-      <label>API key
-        <input id="apiKey" type="password" autocomplete="current-password" required autofocus>
-      </label>
-      <button id="submitButton" type="submit">Đăng nhập</button>
-      <p id="error" class="error" role="alert"></p>
-    </form>
-    <small>Key chỉ được gửi một lần để tạo cookie HttpOnly và không được lưu trong trình duyệt.</small>
+    <p>Đăng nhập bằng tài khoản Google được cấp quyền để mở dashboard và Social Publisher.</p>
+    <button id="googleLoginButton" type="button"><span class="google">G</span> Tiếp tục với Google</button>
+    <p id="error" class="error" role="alert"></p>
+    <small>Không cần nhập hoặc lưu API key trong trình duyệt. Phiên đăng nhập được lưu bằng cookie HttpOnly.</small>
   </main>
   <script type="module" src="/admin-auth.js"></script>
 </body>
