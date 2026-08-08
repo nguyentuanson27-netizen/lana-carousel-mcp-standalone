@@ -81,6 +81,14 @@ test("Resource project links get an explicit admin login handoff for Social Publ
   assert.match(adminAuth, /\["\/", "\/projects", "\/widget"\]/u);
 });
 
+test("Expired auth-layer sessions also hand Social Publisher to admin login", async () => {
+  const socialUi = await read("public/social-studio.js");
+  assert.match(socialUi, /function requiresAdminLogin\(error\)/u);
+  assert.match(socialUi, /error\?\.status === 401 && error\?\.code === "UNAUTHORIZED"/u);
+  assert.match(socialUi, /state\.adminRequired = requiresAdminLogin\(error\)/u);
+  assert.match(socialUi, /if \(requiresAdminLogin\(error\)\)/u);
+});
+
 test("Social API is admin-only while provider media is HMAC signed", async () => {
   const [routes, media, server] = await Promise.all([
     read("src/social-routes.js"),
