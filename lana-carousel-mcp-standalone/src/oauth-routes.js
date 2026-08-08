@@ -11,6 +11,7 @@ import {
   createGoogleLoginState,
   exchangeAuthorizationCode,
   exchangeRefreshToken,
+  isRegisteredOAuthClient,
   issueAuthorizationCode,
   mcpResourceUri,
   registerOAuthClient,
@@ -110,7 +111,8 @@ function registrationAllowed(req) {
 
 function tokenRateLimitPrincipal(rawClientId) {
   const clientId = String(rawClientId || "").trim();
-  return /^client_[A-Za-z0-9_-]{43,64}$/u.test(clientId) ? clientId : "invalid-client";
+  if (!/^client_[A-Za-z0-9_-]{43,64}$/u.test(clientId)) return "unknown-client";
+  return isRegisteredOAuthClient(clientId) ? clientId : "unknown-client";
 }
 
 export function consumeOAuthTokenRateLimit(clientId, nowMs = Date.now()) {
