@@ -45,11 +45,14 @@ const oauthAllowedDomains = csvEnv("OAUTH_ALLOWED_DOMAINS").map(value => value.t
 if (Boolean(googleOAuthClientId) !== Boolean(googleOAuthClientSecret)) {
   throw new Error("GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET must be configured together");
 }
-if (production && !googleOAuthConfigured) {
-  throw new Error("Google OAuth is required in production: set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET");
+// Keep existing API-key deployments bootable during migration, but browser login and /mcp
+// switch to OAuth as soon as Google OAuth is configured. A fresh production install still
+// needs at least one real authentication mechanism.
+if (production && !googleOAuthConfigured && apiKeys.length === 0) {
+  throw new Error("Configure Google OAuth, or keep a legacy API key temporarily during migration");
 }
-if (production && oauthAllowedEmails.length === 0 && oauthAllowedDomains.length === 0) {
-  throw new Error("Set OAUTH_ALLOWED_EMAILS or OAUTH_ALLOWED_DOMAINS in production");
+if (production && googleOAuthConfigured && oauthAllowedEmails.length === 0 && oauthAllowedDomains.length === 0) {
+  throw new Error("Set OAUTH_ALLOWED_EMAILS or OAUTH_ALLOWED_DOMAINS when Google OAuth is enabled in production");
 }
 
 export const config = Object.freeze({
