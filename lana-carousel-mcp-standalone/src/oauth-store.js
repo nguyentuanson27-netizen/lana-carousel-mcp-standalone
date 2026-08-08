@@ -63,11 +63,18 @@ CREATE TABLE IF NOT EXISTS oauth_refresh_tokens (
   revoked_at TEXT,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS oauth_refresh_token_lineage (
+  token_hash TEXT PRIMARY KEY,
+  family_id TEXT NOT NULL,
+  replaced_by_hash TEXT,
+  created_at TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_oauth_login_states_expiry ON oauth_login_states(expires_at);
 CREATE INDEX IF NOT EXISTS idx_oauth_consent_expiry ON oauth_consent_requests(expires_at);
 CREATE INDEX IF NOT EXISTS idx_oauth_codes_expiry ON oauth_authorization_codes(expires_at);
 CREATE INDEX IF NOT EXISTS idx_oauth_access_expiry ON oauth_access_tokens(expires_at);
 CREATE INDEX IF NOT EXISTS idx_oauth_refresh_expiry ON oauth_refresh_tokens(expires_at);
+CREATE INDEX IF NOT EXISTS idx_oauth_refresh_lineage_family ON oauth_refresh_token_lineage(family_id);
 `);
 
 const sql = {
@@ -87,11 +94,16 @@ const sql = {
   createRefresh: db.prepare(`INSERT INTO oauth_refresh_tokens(token_hash,client_id,subject,resource,scope,quota_client_id,expires_at,revoked_at,created_at) VALUES(@token_hash,@client_id,@subject,@resource,@scope,@quota_client_id,@expires_at,NULL,@created_at)`),
   getRefresh: db.prepare(`SELECT * FROM oauth_refresh_tokens WHERE token_hash=?`),
   revokeRefresh: db.prepare(`UPDATE oauth_refresh_tokens SET revoked_at=? WHERE token_hash=? AND revoked_at IS NULL AND datetime(expires_at)>datetime(?)`),
+  createRefreshLineage: db.prepare(`INSERT OR IGNORE INTO oauth_refresh_token_lineage(token_hash,family_id,replaced_by_hash,created_at) VALUES(@token_hash,@family_id,NULL,@created_at)`),
+  getRefreshLineage: db.prepare(`SELECT * FROM oauth_refresh_token_lineage WHERE token_hash=?`),
+  linkRefreshReplacement: db.prepare(`UPDATE oauth_refresh_token_lineage SET replaced_by_hash=? WHERE token_hash=? AND replaced_by_hash IS NULL`),
+  revokeRefreshFamily: db.prepare(`UPDATE oauth_refresh_tokens SET revoked_at=COALESCE(revoked_at,@revoked_at) WHERE token_hash IN (SELECT token_hash FROM oauth_refresh_token_lineage WHERE family_id=@family_id)`),
   purgeLoginStates: db.prepare(`DELETE FROM oauth_login_states WHERE used_at IS NOT NULL OR datetime(expires_at)<=datetime(?)`),
   purgeConsent: db.prepare(`DELETE FROM oauth_consent_requests WHERE used_at IS NOT NULL OR datetime(expires_at)<=datetime(?)`),
   purgeCodes: db.prepare(`DELETE FROM oauth_authorization_codes WHERE used_at IS NOT NULL OR datetime(expires_at)<=datetime(?)`),
   purgeAccess: db.prepare(`DELETE FROM oauth_access_tokens WHERE datetime(expires_at)<=datetime(?)`),
-  purgeRefresh: db.prepare(`DELETE FROM oauth_refresh_tokens WHERE revoked_at IS NOT NULL OR datetime(expires_at)<=datetime(?)`)
+  purgeRefresh: db.prepare(`DELETE FROM oauth_refresh_tokens WHERE datetime(expires_at)<=datetime(?)`),
+  purgeRefreshLineage: db.prepare(`DELETE FROM oauth_refresh_token_lineage WHERE token_hash NOT IN (SELECT token_hash FROM oauth_refresh_tokens)`)
 };
 
 const now = () => new Date().toISOString();
@@ -255,9 +267,10 @@ function pkceMatches(verifier, challenge) {
   return createHash("sha256").update(value).digest("base64url") === challenge;
 }
 
-function issueTokenPair({ clientId, subject, resource, scope, quotaClientId }) {
+function issueTokenPair({ clientId, subject, resource, scope, quotaClientId, familyId = opaque("grant") }) {
   const accessToken = opaque("access");
   const refreshToken = opaque("refresh");
+  const refreshTokenHash = hash(refreshToken);
   const createdAt = now();
   const accessExpiresAt = expiresAt(config.oauthAccessTokenTtlSeconds);
   const refreshExpiresAt = expiresAt(config.oauthRefreshTokenTtlSeconds);
@@ -266,15 +279,20 @@ function issueTokenPair({ clientId, subject, resource, scope, quotaClientId }) {
     quota_client_id: quotaClientId, expires_at: accessExpiresAt, created_at: createdAt
   });
   sql.createRefresh.run({
-    token_hash: hash(refreshToken), client_id: clientId, subject, resource, scope,
+    token_hash: refreshTokenHash, client_id: clientId, subject, resource, scope,
     quota_client_id: quotaClientId, expires_at: refreshExpiresAt, created_at: createdAt
   });
+  sql.createRefreshLineage.run({ token_hash: refreshTokenHash, family_id: familyId, created_at: createdAt });
   return {
-    access_token: accessToken,
-    token_type: "Bearer",
-    expires_in: config.oauthAccessTokenTtlSeconds,
-    refresh_token: refreshToken,
-    scope
+    familyId,
+    refreshTokenHash,
+    tokens: {
+      access_token: accessToken,
+      token_type: "Bearer",
+      expires_in: config.oauthAccessTokenTtlSeconds,
+      refresh_token: refreshToken,
+      scope
+    }
   };
 }
 
@@ -294,27 +312,60 @@ export function exchangeAuthorizationCode({ code, clientId, redirectUri, codeVer
       resource: record.resource,
       scope: record.scope,
       quotaClientId: record.subject
-    });
+    }).tokens;
   })();
 }
 
 export function exchangeRefreshToken({ refreshToken, clientId, resource }) {
-  return db.transaction(() => {
+  const outcome = db.transaction(() => {
     const tokenHash = hash(refreshToken);
     const record = sql.getRefresh.get(tokenHash);
     const timestamp = now();
-    if (!record || record.revoked_at || Date.parse(record.expires_at) <= Date.now()) throw oauthError("invalid_grant", "Refresh token đã hết hạn hoặc bị thu hồi.");
-    if (record.client_id !== String(clientId || "")) throw oauthError("invalid_client", "Refresh token không thuộc client này.");
-    if (record.resource !== String(resource || "") || record.resource !== mcpResourceUri()) throw oauthError("invalid_target", "resource không khớp refresh token.");
-    if (sql.revokeRefresh.run(timestamp, tokenHash, timestamp).changes !== 1) throw oauthError("invalid_grant", "Refresh token đã được sử dụng.");
-    return issueTokenPair({
+    if (!record || Date.parse(record.expires_at) <= Date.now()) {
+      return { error: oauthError("invalid_grant", "Refresh token đã hết hạn hoặc không hợp lệ.") };
+    }
+    if (record.client_id !== String(clientId || "")) {
+      return { error: oauthError("invalid_client", "Refresh token không thuộc client này.") };
+    }
+    if (record.resource !== String(resource || "") || record.resource !== mcpResourceUri()) {
+      return { error: oauthError("invalid_target", "resource không khớp refresh token.") };
+    }
+
+    let lineage = sql.getRefreshLineage.get(tokenHash);
+    if (!lineage) {
+      const familyId = opaque("grant");
+      sql.createRefreshLineage.run({ token_hash: tokenHash, family_id: familyId, created_at: record.created_at || timestamp });
+      lineage = sql.getRefreshLineage.get(tokenHash);
+    }
+
+    if (record.revoked_at) {
+      if (lineage?.replaced_by_hash) {
+        sql.revokeRefreshFamily.run({ revoked_at: timestamp, family_id: lineage.family_id });
+      }
+      return { error: oauthError("invalid_grant", "Phát hiện refresh token đã được sử dụng; toàn bộ token family đã bị thu hồi.") };
+    }
+
+    const issued = issueTokenPair({
       clientId: record.client_id,
       subject: record.subject,
       resource: record.resource,
       scope: record.scope,
-      quotaClientId: record.quota_client_id
+      quotaClientId: record.quota_client_id,
+      familyId: lineage.family_id
     });
+    if (sql.revokeRefresh.run(timestamp, tokenHash, timestamp).changes !== 1) {
+      sql.revokeRefreshFamily.run({ revoked_at: timestamp, family_id: lineage.family_id });
+      return { error: oauthError("invalid_grant", "Refresh token đã được sử dụng; toàn bộ token family đã bị thu hồi.") };
+    }
+    if (sql.linkRefreshReplacement.run(issued.refreshTokenHash, tokenHash).changes !== 1) {
+      sql.revokeRefreshFamily.run({ revoked_at: timestamp, family_id: lineage.family_id });
+      return { error: oauthError("invalid_grant", "Không thể hoàn tất refresh-token rotation; token family đã bị thu hồi.") };
+    }
+    return { tokens: issued.tokens };
   })();
+
+  if (outcome.error) throw outcome.error;
+  return outcome.tokens;
 }
 
 export function getOAuthAccessToken(accessToken) {
@@ -331,6 +382,7 @@ export function purgeOAuthState() {
   sql.purgeCodes.run(timestamp);
   sql.purgeAccess.run(timestamp);
   sql.purgeRefresh.run(timestamp);
+  sql.purgeRefreshLineage.run();
 }
 
 purgeOAuthState();
