@@ -4,7 +4,7 @@ const params = new URLSearchParams(location.search);
 const returnTo = safeReturnTo(
   params.get("returnTo"),
   location.origin,
-  ["/", "/projects"],
+  ["/", "/projects", "/widget"],
   "/projects"
 );
 const form = document.getElementById("loginForm");
