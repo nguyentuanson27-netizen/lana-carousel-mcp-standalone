@@ -99,7 +99,6 @@ const sql = {
   createRefreshLineage: db.prepare(`INSERT OR IGNORE INTO oauth_refresh_token_lineage(token_hash,family_id,replaced_by_hash,family_expires_at,created_at) VALUES(@token_hash,@family_id,NULL,@family_expires_at,@created_at)`),
   getRefreshLineage: db.prepare(`SELECT * FROM oauth_refresh_token_lineage WHERE token_hash=?`),
   linkRefreshReplacement: db.prepare(`UPDATE oauth_refresh_token_lineage SET replaced_by_hash=? WHERE token_hash=? AND replaced_by_hash IS NULL`),
-  extendRefreshFamily: db.prepare(`UPDATE oauth_refresh_token_lineage SET family_expires_at=@family_expires_at WHERE family_id=@family_id AND datetime(family_expires_at)<datetime(@family_expires_at)`),
   revokeRefreshFamily: db.prepare(`UPDATE oauth_refresh_tokens SET revoked_at=COALESCE(revoked_at,@revoked_at) WHERE token_hash IN (SELECT token_hash FROM oauth_refresh_token_lineage WHERE family_id=@family_id)`),
   purgeLoginStates: db.prepare(`DELETE FROM oauth_login_states WHERE used_at IS NOT NULL OR datetime(expires_at)<=datetime(?)`),
   purgeConsent: db.prepare(`DELETE FROM oauth_consent_requests WHERE used_at IS NOT NULL OR datetime(expires_at)<=datetime(?)`),
@@ -270,13 +269,15 @@ function pkceMatches(verifier, challenge) {
   return createHash("sha256").update(value).digest("base64url") === challenge;
 }
 
-function issueTokenPair({ clientId, subject, resource, scope, quotaClientId, familyId = opaque("grant") }) {
+function issueTokenPair({ clientId, subject, resource, scope, quotaClientId, familyId = opaque("grant"), familyExpiresAt = "" }) {
   const accessToken = opaque("access");
   const refreshToken = opaque("refresh");
   const refreshTokenHash = hash(refreshToken);
   const createdAt = now();
   const accessExpiresAt = expiresAt(config.oauthAccessTokenTtlSeconds);
-  const refreshExpiresAt = expiresAt(config.oauthRefreshTokenTtlSeconds);
+  const rollingRefreshExpiresAt = expiresAt(config.oauthRefreshTokenTtlSeconds);
+  const resolvedFamilyExpiresAt = familyExpiresAt || rollingRefreshExpiresAt;
+  const refreshExpiresAt = new Date(Math.min(Date.parse(rollingRefreshExpiresAt), Date.parse(resolvedFamilyExpiresAt))).toISOString();
   sql.createAccess.run({
     token_hash: hash(accessToken), client_id: clientId, subject, resource, scope,
     quota_client_id: quotaClientId, expires_at: accessExpiresAt, created_at: createdAt
@@ -285,11 +286,10 @@ function issueTokenPair({ clientId, subject, resource, scope, quotaClientId, fam
     token_hash: refreshTokenHash, client_id: clientId, subject, resource, scope,
     quota_client_id: quotaClientId, expires_at: refreshExpiresAt, created_at: createdAt
   });
-  sql.extendRefreshFamily.run({ family_id: familyId, family_expires_at: refreshExpiresAt });
   sql.createRefreshLineage.run({
     token_hash: refreshTokenHash,
     family_id: familyId,
-    family_expires_at: refreshExpiresAt,
+    family_expires_at: resolvedFamilyExpiresAt,
     created_at: createdAt
   });
   return {
@@ -374,7 +374,8 @@ export function exchangeRefreshToken({ refreshToken, clientId, resource }) {
       resource: record.resource,
       scope: record.scope,
       quotaClientId: record.quota_client_id,
-      familyId: lineage.family_id
+      familyId: lineage.family_id,
+      familyExpiresAt: lineage.family_expires_at
     });
     if (sql.revokeRefresh.run(timestamp, tokenHash, timestamp).changes !== 1) {
       sql.revokeRefreshFamily.run({ revoked_at: timestamp, family_id: lineage.family_id });
