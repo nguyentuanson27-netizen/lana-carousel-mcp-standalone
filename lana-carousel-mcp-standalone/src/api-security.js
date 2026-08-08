@@ -6,7 +6,6 @@ import { consumeApiQuota } from "./api-quota.js";
 import { runWithQuotaPrincipal } from "./quota-principal.js";
 import "./candidate-invariant.js";
 import {
-  createBrowserAdminSession,
   exchangeResourceAccessToken,
   getBrowserAdminSession,
   getResourceSession,
@@ -17,6 +16,7 @@ import {
   mediaResourceForPath,
   verifySignedMediaRequest
 } from "./media-access.js";
+import { getOAuthAccessToken } from "./oauth-store.js";
 import { enforceMcpPrincipal } from "./mcp-principal-binding.js";
 
 const minuteBuckets = new Map();
@@ -46,9 +46,12 @@ export function validApiKey(candidate) {
 }
 
 export function presentedApiKey(req) {
+  return String(req.headers["x-api-key"] || "").trim();
+}
+
+export function presentedBearerToken(req) {
   const authorization = String(req.headers.authorization || "");
-  const bearer = authorization.match(/^Bearer\s+(.+)$/iu)?.[1]?.trim();
-  return String(req.headers["x-api-key"] || bearer || "");
+  return authorization.match(/^Bearer\s+(.+)$/iu)?.[1]?.trim() || "";
 }
 
 function consume(map, id, windowKey, limit, weight = 1) {
@@ -141,10 +144,6 @@ function setResourceSessionCookie(res, sessionToken) {
   res.setHeader("Set-Cookie", `lana_resource_session=${encodeURIComponent(sessionToken)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${config.projectSessionTtlSeconds}${secureCookieSuffix()}`);
 }
 
-function setAdminSessionCookie(res, sessionToken) {
-  res.setHeader("Set-Cookie", `lana_admin_session=${encodeURIComponent(sessionToken)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${config.projectSessionTtlSeconds}${secureCookieSuffix()}`);
-}
-
 function rateLimit(req, id, limit = config.apiRateLimitPerMinute) {
   const minute = Math.floor(Date.now() / 60_000);
   return consume(minuteBuckets, id, minute, limit);
@@ -204,26 +203,37 @@ function authError(res, status, code, message) {
   return res.status(status).json({ code, message });
 }
 
+function mcpAuthError(res, status = 401, code = "UNAUTHORIZED", message = "Cần OAuth access token hợp lệ để kết nối Lana MCP.") {
+  const metadata = `${config.publicBaseUrl}/.well-known/oauth-protected-resource`;
+  res.setHeader("WWW-Authenticate", `Bearer resource_metadata="${metadata}", scope="mcp"`);
+  res.setHeader("Cache-Control", "no-store");
+  return res.status(status).json({ code, message });
+}
+
+function finishAuthenticatedRequest(req, res, next, id, path) {
+  if (!rateLimit(req, id)) {
+    res.setHeader("Retry-After", "60");
+    return res.status(429).json({ code: "RATE_LIMITED", message: "Đã vượt giới hạn yêu cầu mỗi phút." });
+  }
+
+  try {
+    applyRestQuota(req, id);
+    if (path === "/mcp") enforceMcpPrincipal(req, res, id);
+  } catch (error) {
+    return res.status(error?.status || 429).json({
+      code: error?.code || "DAILY_QUOTA_EXCEEDED",
+      message: error?.message || "Đã vượt quota."
+    });
+  }
+
+  req.apiClientId = id;
+  return runWithQuotaPrincipal(id, next);
+}
+
 export function apiSecurity(req, res, next) {
   const path = normalizedPath(req);
   const mediaRequest = isProtectedMediaPath(req);
   if (mediaRequest) lockPrivateMediaCache(req, res);
-
-  if (req.method === "POST" && path === "/auth/admin-session") {
-    if (!exchangeRateLimited(req, "admin-exchange")) {
-      return res.status(429).json({ code: "RATE_LIMITED", message: "Đã thử đăng nhập quá nhiều lần." });
-    }
-    const key = presentedApiKey(req);
-    if (!validApiKey(key)) {
-      res.setHeader("WWW-Authenticate", "Bearer");
-      return res.status(401).json({ code: "UNAUTHORIZED", message: "API key không hợp lệ." });
-    }
-    const quotaClientId = `key:${digestId(key)}`;
-    const session = createBrowserAdminSession(quotaClientId);
-    setAdminSessionCookie(res, session.sessionToken);
-    res.setHeader("Cache-Control", "no-store");
-    return res.status(204).end();
-  }
 
   if (req.method === "GET" && path === "/auth/admin-session") {
     res.setHeader("Cache-Control", "no-store");
@@ -282,13 +292,20 @@ export function apiSecurity(req, res, next) {
     config.apiAuthRequired &&
     ["GET", "HEAD"].includes(req.method) &&
     ["/", "/projects"].includes(path) &&
-    !validApiKey(presentedApiKey(req)) &&
     !adminSession(req)
   ) {
     return res.redirect(302, dashboardLoginUrl(req));
   }
 
   if (!shouldProtect(req) || !config.apiAuthRequired) return next();
+
+  if (path === "/mcp") {
+    const access = getOAuthAccessToken(presentedBearerToken(req));
+    if (!access) return mcpAuthError(res);
+    req.apiAccessType = "oauth-token";
+    req.oauthAccessToken = access;
+    return finishAuthenticatedRequest(req, res, next, access.quota_client_id || access.subject, path);
+  }
 
   if (mediaRequest && !["GET", "HEAD"].includes(req.method)) {
     return res.status(405).json({ code: "METHOD_NOT_ALLOWED", message: "Media chỉ hỗ trợ GET hoặc HEAD." });
@@ -342,23 +359,7 @@ export function apiSecurity(req, res, next) {
     }
   }
 
-  if (!rateLimit(req, id)) {
-    res.setHeader("Retry-After", "60");
-    return res.status(429).json({ code: "RATE_LIMITED", message: "Đã vượt giới hạn yêu cầu mỗi phút." });
-  }
-
-  try {
-    applyRestQuota(req, id);
-    if (path === "/mcp") enforceMcpPrincipal(req, res, id);
-  } catch (error) {
-    return res.status(error?.status || 429).json({
-      code: error?.code || "DAILY_QUOTA_EXCEEDED",
-      message: error?.message || "Đã vượt quota."
-    });
-  }
-
-  req.apiClientId = id;
-  return runWithQuotaPrincipal(id, next);
+  return finishAuthenticatedRequest(req, res, next, id, path);
 }
 
 setInterval(() => {
