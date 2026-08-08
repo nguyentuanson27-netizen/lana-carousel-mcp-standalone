@@ -14,6 +14,7 @@
     overview: null,
     error: "",
     notice: "",
+    adminRequired: false,
     selectedAccounts: new Set(),
     contentType: "carousel",
     compose: {
@@ -34,8 +35,17 @@
     const response = await fetch(url, options);
     let value = {};
     try { value = await response.json(); } catch { /* keep empty */ }
-    if (!response.ok) throw new Error(value.message || `Yêu cầu thất bại (${response.status})`);
+    if (!response.ok) {
+      const error = new Error(value.message || `Yêu cầu thất bại (${response.status})`);
+      error.code = value.code || "";
+      error.status = response.status;
+      throw error;
+    }
     return value;
+  }
+
+  function adminReturnTo() {
+    return `/widget?projectId=${encodeURIComponent(projectId)}&social=1`;
   }
 
   function formatTime(value) {
@@ -107,6 +117,17 @@
     captureComposeState();
     if (state.loading && !state.overview) {
       panel.innerHTML = '<div class="social-shell"><div class="social-card social-empty">Đang tải Social Publisher…</div></div>';
+      return;
+    }
+    if (state.adminRequired && !state.overview) {
+      panel.innerHTML = `<div class="social-shell">
+        <div class="social-alert">Bước đăng mạng xã hội cần phiên quản trị để bảo vệ tài khoản Facebook, Instagram và TikTok.</div>
+        <section class="social-card">
+          <h3>Đăng nhập quản trị để tiếp tục</h3>
+          <p>Bạn vẫn đang mở đúng dự án. Sau khi xác thực API key, Lana sẽ quay lại trực tiếp Bước 6 và giữ nguyên quyền truy cập dự án hiện tại.</p>
+          <div class="social-submit"><button class="action" type="button" data-social-admin-login>Đăng nhập quản trị</button></div>
+        </section>
+      </div>`;
       return;
     }
     if (state.error && !state.overview) {
@@ -201,10 +222,13 @@
     try {
       const overview = await socialJson(`/api/projects/${encodeURIComponent(projectId)}/social/overview`);
       state.overview = overview;
+      state.adminRequired = false;
       state.error = "";
       if (!quiet) state.notice = "";
     } catch (error) {
-      state.error = error.message;
+      state.adminRequired = error.code === "SOCIAL_ADMIN_REQUIRED";
+      state.error = state.adminRequired ? "" : error.message;
+      if (state.adminRequired) state.overview = null;
     } finally {
       state.loading = false;
       render();
@@ -268,6 +292,12 @@
 
   panel.addEventListener("click", async event => {
     try {
+      const adminLogin = event.target.closest("[data-social-admin-login]");
+      if (adminLogin) {
+        location.assign(`/admin-auth.html?returnTo=${encodeURIComponent(adminReturnTo())}`);
+        return;
+      }
+
       const reload = event.target.closest("[data-social-reload]");
       if (reload) return loadOverview();
 
@@ -328,7 +358,13 @@
         await loadOverview({ quiet: true });
       }
     } catch (error) {
-      state.error = error.message;
+      if (error.code === "SOCIAL_ADMIN_REQUIRED") {
+        state.adminRequired = true;
+        state.overview = null;
+        state.error = "";
+      } else {
+        state.error = error.message;
+      }
       render();
     }
   });
