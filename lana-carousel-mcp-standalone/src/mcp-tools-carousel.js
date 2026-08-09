@@ -95,12 +95,13 @@ export function registerCarouselTools(server){
     return ok(updateSlideContent({projectId:args.project_id,slideId:args.slide_id,headline:args.headline,body:args.body,textEnabled:slide.textEnabled,overlayText:slide.overlayText,textFont:slide.textFont,textSize:slide.textSize,textPosition:slide.textPosition,textColor:slide.textColor,textAlign:slide.textAlign,textX:slide.textX,textY:slide.textY,textLayers:slide.textLayers}));
   }catch(error){return fail(error)}});
 
-  server.tool("update_slide_design","Update crop focal point/zoom and primary text style for one slide.",{
-    project_id:z.string().uuid(),slide_id:z.string().uuid(),crop_x:z.number().min(0).max(100).optional(),crop_y:z.number().min(0).max(100).optional(),crop_zoom:z.number().min(1).max(3).optional(),text:z.string().max(500).optional(),font:z.string().max(100).optional(),size:z.number().min(24).max(220).optional(),color:z.string().regex(/^#[0-9A-F]{6}$/i).optional(),x:z.number().min(3).max(97).optional(),y:z.number().min(3).max(97).optional()
+  server.tool("update_slide_design","Update crop focal point/zoom/flip/fit and primary text style for one slide.",{
+    project_id:z.string().uuid(),slide_id:z.string().uuid(),crop_x:z.number().min(0).max(100).optional(),crop_y:z.number().min(0).max(100).optional(),crop_zoom:z.number().min(1).max(4).optional(),image_fit:z.enum(["cover","contain"]).optional(),image_background:z.string().regex(/^#[0-9A-F]{6}$/i).optional(),image_flip_h:z.boolean().optional(),image_flip_v:z.boolean().optional(),image_hue:z.number().min(-180).max(180).optional(),text:z.string().max(500).optional(),font:z.string().max(100).optional(),size:z.number().min(24).max(220).optional(),color:z.string().regex(/^#[0-9A-F]{6}$/i).optional(),x:z.number().min(3).max(97).optional(),y:z.number().min(3).max(97).optional()
   },async args=>{try{
     let project=getProject(args.project_id);const slide=project.slides.find(item=>item.id===args.slide_id);
     if(!slide)throw new Error("Slide not found");
-    if(args.crop_x!==undefined||args.crop_y!==undefined||args.crop_zoom!==undefined)project=updateSlideCrop({projectId:args.project_id,slideId:args.slide_id,cropX:args.crop_x??slide.cropX,cropY:args.crop_y??slide.cropY,cropZoom:args.crop_zoom??slide.cropZoom});
+    const imagePatch={cropX:args.crop_x,cropY:args.crop_y,cropZoom:args.crop_zoom,imageFit:args.image_fit,imageBackground:args.image_background,imageFlipH:args.image_flip_h,imageFlipV:args.image_flip_v,imageHue:args.image_hue};
+    if(Object.values(imagePatch).some(value=>value!==undefined))project=updateSlideCrop({projectId:args.project_id,slideId:args.slide_id,...imagePatch});
     const current=project.slides.find(item=>item.id===args.slide_id);
     return ok(updateSlideContent({projectId:args.project_id,slideId:args.slide_id,headline:current.headline,body:current.body,textEnabled:true,overlayText:args.text??current.overlayText,textFont:args.font??current.textFont,textSize:args.size??current.textSize,textPosition:"center",textColor:args.color??current.textColor,textAlign:current.textAlign,textX:args.x??current.textX,textY:args.y??current.textY,textLayers:current.textLayers}));
   }catch(error){return fail(error)}});
