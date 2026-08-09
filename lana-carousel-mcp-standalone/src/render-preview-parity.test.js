@@ -37,6 +37,16 @@ async function bandedAsset(name) {
   return writeAsset(name, await sharp(raw, { raw: { width: size, height: size, channels: 3 } }).png().toBuffer());
 }
 
+// Nửa trái đỏ đục, nửa phải trong suốt hoàn toàn — dùng để kiểm tra vùng alpha.
+async function halfTransparentAsset(name) {
+  const size = 300, raw = Buffer.alloc(size * size * 4);
+  for (let y = 0; y < size; y += 1) for (let x = 0; x < size; x += 1) {
+    const index = (y * size + x) * 4;
+    if (x < size / 2) { raw[index] = 255; raw[index + 3] = 255; }
+  }
+  return writeAsset(name, await sharp(raw, { raw: { width: size, height: size, channels: 4 } }).png().toBuffer());
+}
+
 async function flatAsset(name, [red, green, blue]) {
   const size = 300, raw = Buffer.alloc(size * size * 3);
   for (let index = 0; index < raw.length; index += 3) { raw[index] = red; raw[index + 1] = green; raw[index + 2] = blue; }
@@ -130,6 +140,37 @@ test("grid gaps use the slide background instead of a hard-coded cream", async (
   // Ba ảnh xếp lưới 2 cột nên ô thứ tư bỏ trống và phải hiện màu nền.
   const [red, green, blue] = pixel(WIDTH - 6, HEIGHT - 6);
   assert.ok(near(red, 0) && near(green, 0) && near(blue, 255), `ô lưới trống phải dùng màu nền, nhận ${red},${green},${blue}`);
+});
+
+test("transparent source pixels fall back to the slide background like the preview", async () => {
+  const asset = await halfTransparentAsset("alpha.png");
+  const rendered = await service.renderSlideSnapshot(
+    slideWith(asset, { imageBackground: "#0000FF" }), [asset], { width: WIDTH, height: HEIGHT }
+  );
+  // Preview đặt màu nền dưới ảnh nên ảnh xuất ra không được còn kênh alpha.
+  const metadata = await sharp(rendered).metadata();
+  assert.equal(metadata.hasAlpha, false, "ảnh xuất ra không được giữ vùng trong suốt");
+
+  const pixel = await renderPixels(slideWith(asset, { imageBackground: "#0000FF" }), [asset]);
+  const [red, green, blue] = pixel(WIDTH - 6, HEIGHT / 2);
+  assert.ok(near(red, 0) && near(green, 0) && near(blue, 255), `vùng trong suốt phải hiện màu nền, nhận ${red},${green},${blue}`);
+  assert.equal(dominant(pixel(6, HEIGHT / 2)), 0, "phần đục vẫn giữ nguyên màu đỏ");
+});
+
+test("the background behind transparent pixels goes through the colour filter too", async () => {
+  const asset = await halfTransparentAsset("alpha-filtered.png");
+  // `filter` trong preview nằm trên `.canvas-bg`, tức là lọc cả màu nền của lớp đó.
+  const pixel = await renderPixels(slideWith(asset, { imageBackground: "#0000FF", imageBrightness: .5 }), [asset]);
+  const [, , blue] = pixel(WIDTH - 6, HEIGHT / 2);
+  assert.ok(near(blue, 128), `nền sau khi giảm sáng 0.5 phải còn ~128, nhận ${blue}`);
+});
+
+test("transparent pixels inside a grid cell also use the slide background", async () => {
+  const first = await halfTransparentAsset("alpha-grid-a.png"), second = await halfTransparentAsset("alpha-grid-b.png");
+  const slide = { selectedAssetIds: [first.id, second.id], compositionMode: "grid", textEnabled: false, textLayers: [], imageBackground: "#0000FF" };
+  const pixel = await renderPixels(slide, [first, second]);
+  const [red, green, blue] = pixel(WIDTH - 6, HEIGHT / 4);
+  assert.ok(near(red, 0) && near(green, 0) && near(blue, 255), `ô lưới có alpha phải hiện màu nền, nhận ${red},${green},${blue}`);
 });
 
 test("new image controls survive a design save round trip", () => {

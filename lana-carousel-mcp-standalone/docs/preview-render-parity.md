@@ -47,9 +47,17 @@ màu khác hẳn `brightness(1.5)` của CSS.
 Preview đặt `filter` lên `.canvas-bg` — tức là lên toàn bộ nền ảnh đã ghép, còn khung viền và các lớp chữ
 nằm ngoài bộ lọc. Bản render phải theo đúng thứ tự đó, nếu lọc từng ô lưới thì vệt blur ở mép ô sẽ khác.
 
-### 6. Ô lưới trống và viền của chế độ "vừa cả ảnh"
+### 6. Ô lưới trống, viền "vừa cả ảnh" và vùng trong suốt
 
-Cả hai đều lấy màu `imageBackground` của slide, không dùng màu cố định.
+Cả ba đều lấy màu `imageBackground` của slide, không dùng màu cố định.
+
+Riêng vùng trong suốt cần lưu ý: `resize({ background })` của sharp **chỉ** tô phần viền sinh ra bởi
+`fit: "contain"`, nó không đụng tới kênh alpha có sẵn trong ảnh nguồn. Với PNG/WebP trong suốt, phải
+`flatten({ background })` trước khi lọc màu — nếu không, ảnh tải về giữ nguyên vùng trong suốt trong khi
+preview hiện màu nền, vì trình duyệt vẽ `background` của `.canvas-bg` nằm dưới ảnh.
+
+Vì màu nền đó nằm *trong* phạm vi `filter` của `.canvas-bg`, bước `flatten()` phải chạy **trước**
+`applyImageFilters()` để màu nền cũng được chỉnh sáng/tương phản như ở preview.
 
 ### 7. Chữ
 

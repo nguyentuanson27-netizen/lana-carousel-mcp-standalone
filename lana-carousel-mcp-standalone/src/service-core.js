@@ -598,6 +598,7 @@ export async function renderSlideSnapshot(slide, assets, { width = 1080, height 
   if (!ids.length) throw new AppError("SLIDE_HAS_NO_IMAGE", "Slide chưa có ảnh được chọn.", 409);
   const selectedAssets = ids.map(id => assetMap.get(id)).filter(Boolean);
   if (selectedAssets.length !== ids.length) throw new AppError("ASSET_NOT_FOUND", "Thiếu asset của slide.", 404);
+  const background = hexColor(slide.imageBackground, IMAGE_DESIGN_DEFAULTS.imageBackground);
   let base;
   if (slide.compositionMode !== "grid" || selectedAssets.length === 1) base = await cropAsset(selectedAssets[0], slide, width, height);
   else {
@@ -615,12 +616,14 @@ export async function renderSlideSnapshot(slide, assets, { width = 1080, height 
       };
     }));
     // Ô trống của lưới hiện màu nền canvas, giống hệt preview.
-    const background = hexColor(slide.imageBackground, IMAGE_DESIGN_DEFAULTS.imageBackground);
     base = await sharp({ create: { width, height, channels: 3, background } }).composite(composites).png().toBuffer();
   }
   const frame = frameOverlaySvg(slide, width, height), overlay = textOverlaySvg(slide, width, height);
+  // Preview đặt màu nền ở `.canvas-bg`, tức là nằm dưới ảnh, nên vùng trong suốt của PNG/WebP
+  // phải được lấp bằng đúng màu đó trước khi lọc — `resize({ background })` chỉ lo phần viền
+  // của chế độ `contain`, không đụng tới alpha bên trong ảnh gốc.
   // Preview lọc màu ở lớp `.canvas-bg`, còn khung viền và chữ nằm ngoài bộ lọc — giữ đúng thứ tự đó.
-  const filtered = await applyImageFilters(sharp(base), slide).toBuffer();
+  const filtered = await applyImageFilters(sharp(base).flatten({ background }), slide).toBuffer();
   return sharp(filtered).composite([frame, overlay].filter(Boolean).map(input => ({ input, left: 0, top: 0 }))).webp({ quality: 92 }).toBuffer();
 }
 
