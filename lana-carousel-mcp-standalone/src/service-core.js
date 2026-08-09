@@ -1,6 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+// Phải nạp trước sharp: fontconfig chỉ đọc FONTCONFIG_FILE một lần cho cả tiến trình.
+import "./fonts.js";
 import sharp from "sharp";
 import { db, sql } from "./db.js";
 import { config } from "./config.js";

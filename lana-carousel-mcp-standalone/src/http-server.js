@@ -39,6 +39,8 @@ registerSocialRoutes(app);
 app.use("/assets", express.static(config.assetDirectory, { fallthrough: false, immutable: true, maxAge: "1y" }));
 app.use("/video-audio", express.static(videoAudioDirectory, { fallthrough: false, maxAge: "7d" }));
 app.use("/video-analysis-assets", express.static(videoAnalysisAssetDir, { fallthrough: false, maxAge: "14d" }));
+// Font tự host: nội dung gắn với tên file nên cache dài, không phụ thuộc Google Fonts.
+app.use("/fonts", express.static(path.join(publicDirectory, "fonts"), { maxAge: "30d", immutable: true }));
 app.use(express.static(publicDirectory, { index: false, maxAge: "5m" }));
 
 app.get("/health", (_req, res) => res.json({ ok: true }));

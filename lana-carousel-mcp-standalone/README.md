@@ -21,6 +21,7 @@ Production:
 - Sửa ảnh trực tiếp trên khung xem trước: kéo để đổi vị trí, Ctrl/Cmd + lăn chuột để phóng to/thu nhỏ.
 - Ảnh tải về khớp ảnh preview theo hợp đồng ghi trong [docs/preview-render-parity.md](docs/preview-render-parity.md).
 - Nhiều lớp chữ kéo thả, rich text và animation trong MP4.
+- Font đi kèm repo (`public/fonts/`), dùng chung cho trình duyệt và renderer nên chữ trong ảnh tải về đúng font đã chọn.
 - Video 9:16, 1:1 và 16:9; TTS, phụ đề và nhạc nền.
 - Audio upload có lifecycle `STAGED → REFERENCED`; file chưa được lưu vào settings/version bị xóa sau grace period.
 - Giới hạn số file và tổng byte audio theo project để bảo vệ dung lượng ổ đĩa.

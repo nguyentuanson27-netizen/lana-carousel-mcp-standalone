@@ -59,10 +59,21 @@ preview hiện màu nền, vì trình duyệt vẽ `background` của `.canvas-b
 Vì màu nền đó nằm *trong* phạm vi `filter` của `.canvas-bg`, bước `flatten()` phải chạy **trước**
 `applyImageFilters()` để màu nền cũng được chỉnh sáng/tương phản như ở preview.
 
-### 7. Chữ
+### 7. Font
 
-Bản render tự xuống dòng bằng ước lượng bề rộng ký tự, còn trình duyệt dùng metric thật của font, nên
-đây là phần khớp *gần đúng*. Các hằng số phải bám theo CSS:
+Trình duyệt và server phải nạp **cùng một bộ file font**. Chúng nằm ở `public/fonts/`: trình duyệt nạp
+qua `@font-face` trong `public/fonts.css`, còn librsvg (bên trong sharp) nạp qua fontconfig do
+`src/fonts.js` cấu hình. Không dùng Google Fonts cho phía trình duyệt nữa — nếu chỉ một phía có font
+thì mọi lựa chọn trong ô chọn font đều im lặng rơi về font mặc định của hệ thống ở bản render.
+
+`src/fonts.js` phải được `import` **trước** `sharp`, vì fontconfig chỉ đọc biến `FONTCONFIG_FILE`
+một lần cho cả tiến trình. Thêm font mới thì phải cập nhật cả `FONT_FILES`, `public/fonts.css` và
+danh sách `fonts` trong `public/widget.js` — `src/render-fonts.test.js` chốt ba nơi này khớp nhau.
+
+### 8. Chữ
+
+Bản render tự xuống dòng, còn trình duyệt dùng bộ xếp chữ riêng, nên đây là phần khớp *gần đúng*.
+Các hằng số phải bám theo CSS:
 
 - `LINE_HEIGHT` = `.layer{line-height}` trong `stitch-ui.css`
 - Hộp chữ dùng `box-sizing: border-box`: bề rộng chữ khả dụng = `boxWidth − 2·(padding + border)`
