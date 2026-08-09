@@ -79,7 +79,18 @@ Các hằng số phải bám theo CSS:
 - Hộp chữ dùng `box-sizing: border-box`: bề rộng chữ khả dụng = `boxWidth − 2·(padding + border)`
 - `opacity` của lớp chữ áp cho cả hộp lẫn chữ
 
-Nếu cần khớp tuyệt đối phần chữ thì phải đo bề rộng dòng ở trình duyệt rồi gửi kèm khi lưu thiết kế.
+Bề rộng ký tự lấy từ chính file font qua `src/font-metrics.js`, không dùng hệ số ước lượng. Ba điểm
+dễ sai khi sửa phần này:
+
+- **`hmtx` chỉ mô tả instance mặc định.** Với font biến thiên phải cộng delta từ `HVAR`. Trục mặc định
+  không nhất thiết là 400 — Montserrat mặc định 100, TikTok Sans mặc định 300 — nên bỏ qua `HVAR`
+  thì sai ngay cả ở độ đậm thường.
+- **CSS bật `font-optical-sizing: auto`.** Font có trục `opsz` phải được gán trục này theo cỡ chữ.
+- **Họ nhiều file tĩnh** (Poppins) phải chọn file gần với độ đậm đang dùng.
+
+Sai số bề rộng còn lại so với Chromium là dưới ~3,5% (chủ yếu do kerning chưa xử lý), nên ở đúng
+ngưỡng ngắt dòng vẫn có thể lệch một từ. Muốn khớp tuyệt đối thì phải đo ở trình duyệt rồi gửi kèm
+khi lưu thiết kế.
 
 ## Cách kiểm tra thủ công
 

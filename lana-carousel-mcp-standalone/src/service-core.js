@@ -1,8 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-// Phải nạp trước sharp: fontconfig chỉ đọc FONTCONFIG_FILE một lần cho cả tiến trình.
-import "./fonts.js";
+// `fonts.js` phải được nạp trước sharp: fontconfig chỉ đọc FONTCONFIG_FILE một lần cho cả tiến trình.
+import { fontStack } from "./fonts.js";
+import { characterWidth } from "./font-metrics.js";
 import sharp from "sharp";
 import { db, sql } from "./db.js";
 import { config } from "./config.js";
@@ -402,6 +403,10 @@ const xmlEscape = value => String(value).replace(/[<>&"']/g, character => ({ "<"
 // Khớp `.layer{line-height:1.12}` trong stitch-ui.css; ASCENT_RATIO là phần ascent trung bình của font sans/serif.
 const LINE_HEIGHT = 1.12, ASCENT_RATIO = .8;
 
+// Chuỗi font phải trùng chuỗi mà preview đặt vào CSS, nếu không thì ký tự tiếng Việt trong các
+// font thiếu glyph sẽ lấy từ hai font khác nhau ở hai bên.
+const fontFamilyValue = family => fontStack(family).join(", ");
+
 function layerTextSvg(layer, width, height) {
   if (layer.enabled === false || !layer.content?.trim()) return "";
   const number = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -434,7 +439,9 @@ function layerTextSvg(layer, width, height) {
     : Math.max(baseSize * 4, width * .96 - 16);
   const lines = [], tokens = [...content.matchAll(/\n|[^\S\n]+|[^\s\n]+/gu)];
   let line = [], lineWidth = 0;
-  const charWidth = (character, size) => size * (/\s/u.test(character) ? .32 : .55);
+  // Bề rộng lấy từ metric thật của file font (kể cả khi ký tự phải lấy glyph từ font dự phòng),
+  // thay cho hệ số cố định trước đây vốn lệch tới ~28% tùy font.
+  const charWidth = (character, size, family, weight) => characterWidth(character, size, family, weight);
   const pushLine = () => {
     while (line.length && /\s/u.test(line[line.length - 1].character)) line.pop();
     lines.push(line); line = []; lineWidth = 0;
@@ -452,7 +459,7 @@ function layerTextSvg(layer, width, height) {
     let characterIndex = match.index;
     for (const character of match[0]) {
       const style = styleAt(characterIndex);
-      entries.push({ character, ...style, width: charWidth(character, style.size) });
+      entries.push({ character, ...style, width: charWidth(character, style.size, style.font, style.weight) });
       characterIndex += character.length;
     }
     const tokenWidth = entries.reduce((sum, entry) => sum + entry.width, 0);
@@ -480,7 +487,7 @@ function layerTextSvg(layer, width, height) {
   const anchor = layer.align === "left" ? "start" : layer.align === "right" ? "end" : "middle";
   const textInset = paddingX + borderWidth;
   const x = boxEnabled ? (layer.align === "left" ? boxLeft + textInset : layer.align === "right" ? boxLeft + boxWidth - textInset : centerX) : centerX;
-  const font = xmlEscape(layer.font || "TikTok Sans");
+  const font = xmlEscape(fontFamilyValue(layer.font));
   const color = /^#[0-9a-f]{6}$/iu.test(layer.color) ? layer.color : "#FFFFFF";
   const opacity = Math.max(.1, Math.min(1, number(layer.opacity, 1)));
   const rotation = Math.max(-180, Math.min(180, number(layer.rotation, 0)));
@@ -500,7 +507,7 @@ function layerTextSvg(layer, width, height) {
     // Trong ô dòng cao `LINE_HEIGHT × size`, đường baseline nằm ở nửa khoảng cách dòng cộng phần ascent.
     const baseline = cursorY + (LINE_HEIGHT - 1) * item.maxSize / 2 + ASCENT_RATIO * item.maxSize;
     cursorY += item.height;
-    const spans = item.segments.map(segment => `<tspan font-size="${segment.size}" font-family="${xmlEscape(segment.font)}" font-weight="${segment.weight}" fill="${segment.color}" text-decoration="${segment.underline ? "underline" : "none"}">${xmlEscape(segment.text)}</tspan>`).join("");
+    const spans = item.segments.map(segment => `<tspan font-size="${segment.size}" font-family="${xmlEscape(fontFamilyValue(segment.font))}" font-weight="${segment.weight}" fill="${segment.color}" text-decoration="${segment.underline ? "underline" : "none"}">${xmlEscape(segment.text)}</tspan>`).join("");
     return `<text x="${x}" y="${baseline}" text-anchor="${anchor}" font-family="${font}" font-weight="${String(layer.weight || "700")}" fill="${color}" stroke="#000000" stroke-opacity="${boxEnabled ? 0 : .45}" stroke-width="${boxEnabled ? 0 : 5}" paint-order="stroke">${spans}</text>`;
   }).join("");
   // Preview đặt `opacity` lên cả lớp chữ (hộp lẫn chữ), không chỉ riêng phần chữ.

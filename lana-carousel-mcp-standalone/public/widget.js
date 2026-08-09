@@ -2,6 +2,12 @@ const params = new URLSearchParams(location.search);
 const projectId = params.get("projectId");
 const $ = id => document.getElementById(id);
 const fonts = ["TikTok Sans", "Montserrat", "Poppins", "Bebas Neue", "Roboto", "Playfair Display", "Courier New"];
+// Bebas Neue, Poppins và Courier New thiếu glyph tiếng Việt dựng sẵn. Khai báo sẵn font dự phòng
+// để trình duyệt và bản render lấy glyph từ cùng một file — phải trùng FALLBACK_FAMILY trong src/fonts.js.
+const FALLBACK_FONT = "TikTok Sans";
+const fontStack = family => (String(family || FALLBACK_FONT) === FALLBACK_FONT
+  ? `'${FALLBACK_FONT}',sans-serif`
+  : `'${esc(family)}','${FALLBACK_FONT}',sans-serif`);
 let project, assets, view = "content", renderTimer;
 const picks = new Map(), drafts = new Map(), selectedLayers = new Map(), histories = new Map(), redos = new Map(), sectionStates = new Map(), textSelections = new Map(), directEditing = new Set(), designDirty = new Set();
 const esc = (value = "") => String(value).replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" })[char]);
@@ -140,7 +146,7 @@ function richTextHtml(layer, selection = null) {
     if (!next || key(next) !== key(style)) {
       const decoration = style.underline ? "text-decoration:underline;" : "";
       const highlight = style.selected ? "background:#1677ffcc;color:#fff;border-radius:.12em;" : "";
-      html += `<span ${style.selected?'class="text-selection-preview"':""} style="font-size:${style.size/10.8}cqw;font-family:'${esc(style.font)}',sans-serif;font-weight:${style.weight};color:${style.color};${decoration}${highlight}">${esc(content.slice(start,index))}</span>`;
+      html += `<span ${style.selected?'class="text-selection-preview"':""} style="font-size:${style.size/10.8}cqw;font-family:${fontStack(style.font)};font-weight:${style.weight};color:${style.color};${decoration}${highlight}">${esc(content.slice(start,index))}</span>`;
       start = index; style = next;
     }
   }
@@ -162,7 +168,7 @@ function remapSizeRanges(oldContent, newContent, ranges = []) {
 function layerHtml(rawLayer, index, active, selection = null, editing = false) {
   const layer = withTextBox(rawLayer);
   const boxStyle = layer.boxEnabled ? `width:${layer.boxWidth}%;padding:${layer.boxPaddingY/10.8}cqw ${layer.boxPaddingX/10.8}cqw;background:${rgba(layer.boxColor,layer.boxOpacity)};border:${layer.boxBorderWidth/10.8}cqw solid ${rgba(layer.boxBorderColor,layer.boxBorderOpacity)};border-radius:${layer.boxRadius/10.8}cqw;text-shadow:none;` : "";
-  return `<div class="layer${active ? " active" : ""}${editing ? " direct-editing" : ""}" data-layer="${index}" ${editing ? 'contenteditable="true" spellcheck="false"' : ""} style="left:${layer.x}%;top:${layer.y}%;font-family:'${esc(layer.font)}',sans-serif;font-size:${layer.size/10.8}cqw;font-weight:${layer.weight||700};text-decoration:${layer.underline?"underline":"none"};color:${layer.color};text-align:${layer.align};opacity:${layer.opacity};rotate:${layer.rotation}deg;${boxStyle}">${richTextHtml(layer, active ? selection : null)}</div>`;
+  return `<div class="layer${active ? " active" : ""}${editing ? " direct-editing" : ""}" data-layer="${index}" ${editing ? 'contenteditable="true" spellcheck="false"' : ""} style="left:${layer.x}%;top:${layer.y}%;font-family:${fontStack(layer.font)};font-size:${layer.size/10.8}cqw;font-weight:${layer.weight||700};text-decoration:${layer.underline?"underline":"none"};color:${layer.color};text-align:${layer.align};opacity:${layer.opacity};rotate:${layer.rotation}deg;${boxStyle}">${richTextHtml(layer, active ? selection : null)}</div>`;
 }
 function directToolbarHtml(layer, slideId, index) {
   const editing = directEditing.has(`${slideId}:${index}`);

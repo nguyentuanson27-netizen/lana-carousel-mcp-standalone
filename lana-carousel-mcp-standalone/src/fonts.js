@@ -11,6 +11,17 @@ export const FONT_DIRECTORY = fileURLToPath(new URL("../public/fonts/", import.m
 // `Courier New` không có bản tự do; Courier Prime là bản thay thế cùng hình dáng và cùng bề rộng.
 const FONT_ALIASES = [["Courier New", "Courier Prime"]];
 
+// Bebas Neue, Poppins và Courier Prime không có glyph tiếng Việt dựng sẵn (ệ, ấ, ề, ư, ở, ỹ...).
+// Nếu để trình duyệt và server tự chọn font thay thế thì mỗi bên rơi vào một font khác nhau.
+// Khai báo sẵn một chuỗi dự phòng dùng chung để cả hai bên lấy glyph từ cùng một file.
+export const FALLBACK_FAMILY = "TikTok Sans";
+
+/** Chuỗi font cho thuộc tính `font-family`, dùng y hệt ở CSS của preview và ở SVG của bản render. */
+export function fontStack(family) {
+  const primary = String(family || FALLBACK_FAMILY);
+  return primary === FALLBACK_FAMILY ? [primary, "sans-serif"] : [primary, FALLBACK_FAMILY, "sans-serif"];
+}
+
 export const FONT_FILES = Object.freeze({
   "TikTok Sans": ["TikTokSans-Variable.ttf"],
   "Montserrat": ["Montserrat-Variable.ttf"],
