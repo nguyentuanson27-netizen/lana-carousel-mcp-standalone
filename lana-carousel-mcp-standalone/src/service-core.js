@@ -403,20 +403,27 @@ const xmlEscape = value => String(value).replace(/[<>&"']/g, character => ({ "<"
 // Khớp `.layer{line-height:1.12}` trong stitch-ui.css; ASCENT_RATIO là phần ascent trung bình của font sans/serif.
 const LINE_HEIGHT = 1.12, ASCENT_RATIO = .8;
 
+// Preview biểu diễn mọi giá trị tính bằng pixel theo đơn vị `cqw` (phần trăm bề rộng canvas), lấy mốc
+// khung 1080px. Bản render vì thế phải nhân các giá trị đó với width/1080, nếu không thì chỉ đúng
+// ở đúng 1080px và sai tỉ lệ khi render video vuông hoặc ngang.
+const DESIGN_WIDTH = 1080;
+// `.layer{padding}` trong stitch-ui.css, quy về hệ toạ độ thiết kế 1080px.
+const LAYER_PADDING_X = 8;
+
 // Chuỗi font phải trùng chuỗi mà preview đặt vào CSS, nếu không thì ký tự tiếng Việt trong các
 // font thiếu glyph sẽ lấy từ hai font khác nhau ở hai bên.
 const fontFamilyValue = family => fontStack(family).join(", ");
 
-function layerTextSvg(layer, width, height) {
+function layerTextSvg(layer, width, height, scale) {
   if (layer.enabled === false || !layer.content?.trim()) return "";
   const number = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
-  const baseSize = Math.max(24, Math.min(220, number(layer.size, 72)));
+  const baseSize = Math.max(24, Math.min(220, number(layer.size, 72))) * scale;
   const content = String(layer.content || "");
   const legacyRanges = (layer.sizeRanges || []).map(range => ({ ...range, size: range.size }));
   const ranges = [...legacyRanges, ...(layer.styleRanges || [])].map(range => ({
     start: Math.max(0, Math.min(content.length, Math.round(number(range.start, 0)))),
     end: Math.max(0, Math.min(content.length, Math.round(number(range.end, 0)))),
-    ...(range.size == null ? {} : { size: Math.max(24, Math.min(220, number(range.size, baseSize))) }),
+    ...(range.size == null ? {} : { size: Math.max(24, Math.min(220, number(range.size, baseSize / scale))) * scale }),
     ...(range.font ? { font: String(range.font).slice(0, 100) } : {}),
     ...(/^#[0-9a-f]{6}$/iu.test(range.color) ? { color: range.color } : {}),
     ...(range.weight ? { weight: ["400", "500", "600", "700", "800", "900"].includes(String(range.weight)) ? String(range.weight) : "700" } : {}),
@@ -429,14 +436,18 @@ function layerTextSvg(layer, width, height) {
   };
   const boxEnabled = layer.boxEnabled === true;
   const boxWidth = width * Math.max(20, Math.min(96, number(layer.boxWidth, 80))) / 100;
-  const paddingX = Math.max(0, Math.min(120, number(layer.boxPaddingX, 32)));
-  const paddingY = Math.max(0, Math.min(80, number(layer.boxPaddingY, 20)));
-  const borderWidth = Math.max(0, Math.min(40, number(layer.boxBorderWidth, 0)));
+  const paddingX = Math.max(0, Math.min(120, number(layer.boxPaddingX, 32))) * scale;
+  const paddingY = Math.max(0, Math.min(80, number(layer.boxPaddingY, 20))) * scale;
+  const borderWidth = Math.max(0, Math.min(40, number(layer.boxBorderWidth, 0))) * scale;
   // `.layer` trong preview dùng `box-sizing: border-box` (đệm và viền nằm trong chiều rộng hộp)
   // và bị chặn bởi `max-width: 96%` với đệm mặc định 8px khi tắt hộp chữ.
+  // Khi tắt hộp chữ, `.layer` là khối định vị tuyệt đối chỉ đặt `left`, nên bề rộng co giãn của nó
+  // là khoảng trống từ `left` tới mép phải canvas, rồi mới bị `max-width: 96%` chặn lại.
+  const layerX = Math.max(3, Math.min(97, number(layer.x, 50)));
+  const shrinkToFit = Math.min(width * (1 - layerX / 100), width * .96);
   const availableWidth = boxEnabled
     ? Math.max(baseSize * 4, boxWidth - (paddingX + borderWidth) * 2)
-    : Math.max(baseSize * 4, width * .96 - 16);
+    : Math.max(baseSize * 4, shrinkToFit - LAYER_PADDING_X * 2 * scale);
   const lines = [], tokens = [...content.matchAll(/\n|[^\S\n]+|[^\s\n]+/gu)];
   let line = [], lineWidth = 0;
   // Bề rộng lấy từ metric thật của file font (kể cả khi ký tự phải lấy glyph từ font dự phòng),
@@ -497,7 +508,7 @@ function layerTextSvg(layer, width, height) {
     const borderColor = /^#[0-9a-f]{6}$/iu.test(layer.boxBorderColor) ? layer.boxBorderColor : "#333333";
     const boxOpacity = Math.max(0, Math.min(1, number(layer.boxOpacity, .9)));
     const borderOpacity = Math.max(0, Math.min(1, number(layer.boxBorderOpacity, 1)));
-    const radius = Math.max(0, Math.min(120, number(layer.boxRadius, 24)));
+    const radius = Math.max(0, Math.min(120, number(layer.boxRadius, 24))) * scale;
     // Viền CSS nằm phía trong hộp nên tâm nét vẽ lùi vào nửa độ dày viền.
     const inset = borderWidth / 2;
     box = `<rect x="${boxLeft + inset}" y="${boxTop + inset}" width="${Math.max(1, boxWidth - borderWidth)}" height="${Math.max(1, boxHeight - borderWidth)}" rx="${radius}" ry="${radius}" fill="${boxColor}" fill-opacity="${boxOpacity}" stroke="${borderColor}" stroke-opacity="${borderOpacity}" stroke-width="${borderWidth}"/>`;
@@ -508,14 +519,14 @@ function layerTextSvg(layer, width, height) {
     const baseline = cursorY + (LINE_HEIGHT - 1) * item.maxSize / 2 + ASCENT_RATIO * item.maxSize;
     cursorY += item.height;
     const spans = item.segments.map(segment => `<tspan font-size="${segment.size}" font-family="${xmlEscape(fontFamilyValue(segment.font))}" font-weight="${segment.weight}" fill="${segment.color}" text-decoration="${segment.underline ? "underline" : "none"}">${xmlEscape(segment.text)}</tspan>`).join("");
-    return `<text x="${x}" y="${baseline}" text-anchor="${anchor}" font-family="${font}" font-weight="${String(layer.weight || "700")}" fill="${color}" stroke="#000000" stroke-opacity="${boxEnabled ? 0 : .45}" stroke-width="${boxEnabled ? 0 : 5}" paint-order="stroke">${spans}</text>`;
+    return `<text x="${x}" y="${baseline}" text-anchor="${anchor}" font-family="${font}" font-weight="${String(layer.weight || "700")}" fill="${color}" stroke="#000000" stroke-opacity="${boxEnabled ? 0 : .45}" stroke-width="${boxEnabled ? 0 : 5 * scale}" paint-order="stroke">${spans}</text>`;
   }).join("");
   // Preview đặt `opacity` lên cả lớp chữ (hộp lẫn chữ), không chỉ riêng phần chữ.
   return `<g opacity="${opacity}" transform="rotate(${rotation} ${centerX} ${centerY})">${box}${text}</g>`;
 }
-function textOverlaySvg(slide, width, height) {
+function textOverlaySvg(slide, width, height, scale) {
   const layers = slide.textLayers?.length ? slide.textLayers : (slide.textEnabled ? [{ content: slide.overlayText, font: slide.textFont, size: slide.textSize, x: slide.textX, y: slide.textY, color: slide.textColor, align: slide.textAlign, enabled: true }] : []);
-  const content = layers.map(layer => layerTextSvg(layer, width, height)).join("");
+  const content = layers.map(layer => layerTextSvg(layer, width, height, scale)).join("");
   return content ? Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">${content}</svg>`) : null;
 }
 
@@ -559,13 +570,13 @@ const isIdentityMatrix = matrix => matrix.every((row, y) => row.every((value, x)
 // brightness → contrast → saturate → grayscale → hue-rotate → blur.
 // Preview lọc cả khung ảnh nền một lần nên bản render cũng phải lọc sau khi ghép lưới,
 // nếu lọc từng ô thì vệt blur ở mép ô sẽ khác preview.
-function applyImageFilters(pipeline, slide) {
+function applyImageFilters(pipeline, slide, scale) {
   const brightness = clamp(slide.imageBrightness, .3, 2, 1);
   const contrast = clamp(slide.imageContrast, .3, 2, 1);
   const saturation = clamp(slide.imageSaturation, 0, 2, 1);
   const grayscale = clamp(slide.imageGrayscale, 0, 1, 0);
   const hue = clamp(slide.imageHue, -180, 180, 0);
-  const blur = clamp(slide.imageBlur, 0, 20, 0);
+  const blur = clamp(slide.imageBlur, 0, 20, 0) * scale;
   // brightness(b) rồi contrast(c) trên sRGB: out = in·b·c + 128·(1-c)
   if (brightness !== 1 || contrast !== 1) pipeline = pipeline.linear(brightness * contrast, 128 * (1 - contrast));
   const matrix = multiplyMatrix(hueRotateMatrix(hue), saturationMatrix(saturation * (1 - grayscale)));
@@ -592,13 +603,16 @@ async function cropAsset(asset, slide, width, height) {
   return sharp(resized).extract({ left, top, width, height }).toBuffer();
 }
 
-function frameOverlaySvg(slide, width, height) {
-  const frameWidth = Math.max(0, Math.min(80, Number(slide.frameWidth) || 0));
+function frameOverlaySvg(slide, width, height, scale) {
+  const frameWidth = Math.max(0, Math.min(80, Number(slide.frameWidth) || 0)) * scale;
   if (!frameWidth) return null;
-  const inset = Math.max(0, Math.min(Math.floor(Math.min(width, height) / 3), Number(slide.frameInset) || 0));
+  const inset = Math.max(0, Math.min(Math.floor(Math.min(width, height) / 3), (Number(slide.frameInset) || 0) * scale));
+  // Viền CSS nằm bên trong hộp còn nét vẽ SVG nằm giữa đường path, nên lùi vào nửa độ dày.
   const x = inset + frameWidth / 2, y = inset + frameWidth / 2;
   const color = /^#[0-9a-f]{6}$/iu.test(slide.frameColor) ? slide.frameColor : "#FFFFFF";
-  return Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><rect x="${x}" y="${y}" width="${Math.max(1, width - x * 2)}" height="${Math.max(1, height - y * 2)}" rx="${Math.max(0, Math.min(240, Number(slide.frameRadius) || 0))}" fill="none" stroke="${color}" stroke-opacity="${Math.max(0, Math.min(1, Number(slide.frameOpacity) || 0))}" stroke-width="${frameWidth}"/></svg>`);
+  // `border-radius` của CSS đo ở mép ngoài hộp; `rx` của SVG đo ở đường path.
+  const outerRadius = Math.max(0, Math.min(240, Number(slide.frameRadius) || 0)) * scale;
+  return Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><rect x="${x}" y="${y}" width="${Math.max(1, width - x * 2)}" height="${Math.max(1, height - y * 2)}" rx="${Math.max(0, outerRadius - frameWidth / 2)}" fill="none" stroke="${color}" stroke-opacity="${Math.max(0, Math.min(1, Number(slide.frameOpacity) || 0))}" stroke-width="${frameWidth}"/></svg>`);
 }
 
 export async function renderSlideSnapshot(slide, assets, { width = 1080, height = 1920 } = {}) {
@@ -627,12 +641,13 @@ export async function renderSlideSnapshot(slide, assets, { width = 1080, height 
     // Ô trống của lưới hiện màu nền canvas, giống hệt preview.
     base = await sharp({ create: { width, height, channels: 3, background } }).composite(composites).png().toBuffer();
   }
-  const frame = frameOverlaySvg(slide, width, height), overlay = textOverlaySvg(slide, width, height);
+  const scale = width / DESIGN_WIDTH;
+  const frame = frameOverlaySvg(slide, width, height, scale), overlay = textOverlaySvg(slide, width, height, scale);
   // Preview đặt màu nền ở `.canvas-bg`, tức là nằm dưới ảnh, nên vùng trong suốt của PNG/WebP
   // phải được lấp bằng đúng màu đó trước khi lọc — `resize({ background })` chỉ lo phần viền
   // của chế độ `contain`, không đụng tới alpha bên trong ảnh gốc.
   // Preview lọc màu ở lớp `.canvas-bg`, còn khung viền và chữ nằm ngoài bộ lọc — giữ đúng thứ tự đó.
-  const filtered = await applyImageFilters(sharp(base).flatten({ background }), slide).toBuffer();
+  const filtered = await applyImageFilters(sharp(base).flatten({ background }), slide, scale).toBuffer();
   return sharp(filtered).composite([frame, overlay].filter(Boolean).map(input => ({ input, left: 0, top: 0 }))).webp({ quality: 92 }).toBuffer();
 }
 

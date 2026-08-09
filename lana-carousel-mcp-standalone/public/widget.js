@@ -1,45 +1,19 @@
+import { esc, fontStack, FALLBACK_FONT, MAX_ZOOM, selectedIds, withTextBox, imageDefaults, rgba,
+  frameHtml, background, normalizedStyleRanges, normalizedSizeRanges, styleAt, richTextHtml, layerHtml }
+  from "/preview-dom.js";
 const params = new URLSearchParams(location.search);
 const projectId = params.get("projectId");
 const $ = id => document.getElementById(id);
 const fonts = ["TikTok Sans", "Montserrat", "Poppins", "Bebas Neue", "Roboto", "Playfair Display", "Courier New"];
 // Bebas Neue, Poppins và Courier New thiếu glyph tiếng Việt dựng sẵn. Khai báo sẵn font dự phòng
 // để trình duyệt và bản render lấy glyph từ cùng một file — phải trùng FALLBACK_FAMILY trong src/fonts.js.
-const FALLBACK_FONT = "TikTok Sans";
-const fontStack = family => (String(family || FALLBACK_FONT) === FALLBACK_FONT
-  ? `'${FALLBACK_FONT}',sans-serif`
-  : `'${esc(family)}','${FALLBACK_FONT}',sans-serif`);
 let project, assets, view = "content", renderTimer;
 const picks = new Map(), drafts = new Map(), selectedLayers = new Map(), histories = new Map(), redos = new Map(), sectionStates = new Map(), textSelections = new Map(), directEditing = new Set(), designDirty = new Set();
-const esc = (value = "") => String(value).replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" })[char]);
 
-function selectedIds(slide) { return slide.selectedAssetIds?.length ? slide.selectedAssetIds : [slide.selectedAssetId].filter(Boolean); }
 function candidateAssets(slide) { return [...new Set([...(slide.candidateAssetIds || []), slide.selectedAssetId].filter(Boolean))].map(id => assets.get(id)).filter(Boolean); }
-function withTextBox(layer = {}) {
-  return {
-    boxEnabled: false, boxColor: "#FFFFFF", boxOpacity: 0.9,
-    boxBorderColor: "#333333", boxBorderWidth: 0, boxBorderOpacity: 1,
-    boxRadius: 24, boxPaddingX: 32, boxPaddingY: 20, boxWidth: 80, sizeRanges: [], styleRanges: [],
-    ...layer
-  };
-}
 function defaultLayer(slide) { return withTextBox({ id: crypto.randomUUID(), role: "headline", content: slide.headline || slide.overlayText, enabled: slide.textEnabled, font: slide.textFont || "TikTok Sans", size: slide.textSize || 72, x: slide.textX || 50, y: slide.textY || 42, color: slide.textColor || "#FFFFFF", align: slide.textAlign || "center", opacity: 1, rotation: 0 }); }
 function defaultBodyLayer(slide) { return withTextBox({ id: crypto.randomUUID(), role: "body", content: slide.body || "", enabled: Boolean(slide.body), font: slide.textFont || "TikTok Sans", size: 42, x: 50, y: 66, color: slide.textColor || "#FFFFFF", align: "center", opacity: 0.95, rotation: 0 }); }
 function initialLayers(slide) { return [defaultLayer(slide), defaultBodyLayer(slide)]; }
-const MAX_ZOOM = 4;
-function imageDefaults(slide = {}) {
-  return {
-    cropX: slide.cropX ?? 50, cropY: slide.cropY ?? 50, cropZoom: slide.cropZoom ?? 1,
-    imageBrightness: slide.imageBrightness ?? 1, imageContrast: slide.imageContrast ?? 1,
-    imageSaturation: slide.imageSaturation ?? 1, imageBlur: slide.imageBlur ?? 0,
-    imageGrayscale: slide.imageGrayscale ?? 0, imageHue: slide.imageHue ?? 0,
-    imageFit: slide.imageFit === "contain" ? "contain" : "cover",
-    imageBackground: slide.imageBackground || "#181411",
-    imageFlipH: Boolean(slide.imageFlipH), imageFlipV: Boolean(slide.imageFlipV),
-    frameInset: slide.frameInset ?? 40,
-    frameWidth: slide.frameWidth ?? 0, frameColor: slide.frameColor || "#FFFFFF",
-    frameOpacity: slide.frameOpacity ?? 1, frameRadius: slide.frameRadius ?? 0
-  };
-}
 function draft(slide) {
   if (!drafts.has(slide.id)) drafts.set(slide.id, { ...imageDefaults(slide), layers: slide.textLayers?.length ? structuredClone(slide.textLayers).map(withTextBox) : initialLayers(slide) });
   return drafts.get(slide.id);
@@ -90,68 +64,6 @@ function imageCard(slide) {
   const cards = candidateAssets(slide).map(asset => `<article class="candidate${approved.has(asset.id) && slide.imageApproved ? " selected" : ""}"><img src="${esc(asset.publicUrl)}"><div class="candidate-actions"><button data-one="${asset.id}" data-slide="${slide.id}">${approved.size === 1 && approved.has(asset.id) && slide.imageApproved ? "Đã duyệt ✓" : "Duyệt ảnh này"}</button><label class="pick"><input type="checkbox" data-pick="${asset.id}" data-slide="${slide.id}" ${chosen.has(asset.id) ? "checked" : ""}> Chọn ghép lưới</label></div></article>`).join("");
   return `<article class="card"><div class="card-head"><div><div class="number">Slide ${slide.position}</div><h2>${esc(slide.headline)}</h2></div><span class="status${slide.imageApproved ? " done" : ""}">${slide.imageApproved ? "Đã duyệt" : "Chờ duyệt"}</span></div><div class="candidate-grid">${cards}</div><div class="bar"><small class="muted">${candidateAssets(slide).length}/10 ảnh · Chọn lưới: ${chosen.size}</small><button class="action approve-grid" data-slide="${slide.id}" ${chosen.size < 2 ? "disabled" : ""}>Duyệt ghép lưới (${chosen.size})</button></div></article>`;
 }
-function rgba(hex, opacity) {
-  const value = /^#[0-9a-f]{6}$/iu.test(hex) ? hex.slice(1) : "FFFFFF";
-  return `rgba(${parseInt(value.slice(0,2),16)},${parseInt(value.slice(2,4),16)},${parseInt(value.slice(4,6),16)},${opacity})`;
-}
-function frameHtml(data) {
-  if (!data.frameWidth) return "";
-  return `<div class="image-frame" style="inset:${data.frameInset/10.8}cqw;border-width:${Math.max(0.15,data.frameWidth/10.8)}cqw;border-color:${rgba(data.frameColor,data.frameOpacity)};border-radius:${data.frameRadius/10.8}cqw"></div>`;
-}
-// Chuỗi filter và cấu trúc DOM ở đây phải khớp từng bước với renderSlideSnapshot trong src/service-core.js,
-// nếu lệch thì ảnh tải về sẽ khác ảnh preview.
-function background(slide, data) {
-  const ids = selectedIds(slide), columns = ids.length <= 2 ? 1 : ids.length <= 6 ? 2 : 3;
-  const filter = `brightness(${data.imageBrightness}) contrast(${data.imageContrast}) saturate(${data.imageSaturation}) grayscale(${data.imageGrayscale*100}%) hue-rotate(${data.imageHue||0}deg) blur(${data.imageBlur/10.8}cqw)`;
-  // Lật quanh tâm ảnh trước, rồi mới phóng to quanh trọng tâm (cropX, cropY) — đúng thứ tự của bản render.
-  const flip = `scaleX(${data.imageFlipH ? -1 : 1}) scaleY(${data.imageFlipV ? -1 : 1})`;
-  const cells = ids.map(id => `<div><div class="canvas-zoom" style="transform:scale(${data.cropZoom});transform-origin:${data.cropX}% ${data.cropY}%"><img src="${esc(assets.get(id)?.publicUrl || "")}" style="object-fit:${data.imageFit === "contain" ? "contain" : "cover"};transform:${flip}"></div></div>`).join("");
-  return `<div class="canvas-bg" data-canvas-bg style="grid-template-columns:repeat(${columns},1fr);background:${esc(data.imageBackground || "#181411")};filter:${filter}">${cells}</div>${frameHtml(data)}`;
-}
-function normalizedStyleRanges(layer) {
-  const length = String(layer.content || "").length;
-  const legacy = (layer.sizeRanges || []).map(range => ({ ...range, size:range.size }));
-  return [...legacy, ...(layer.styleRanges || [])].map(range => ({
-    start: Math.max(0, Math.min(length, Math.round(Number(range.start) || 0))),
-    end: Math.max(0, Math.min(length, Math.round(Number(range.end) || 0))),
-    ...(range.size == null ? {} : { size:Math.max(24, Math.min(220, Math.round(Number(range.size) || layer.size || 72))) }),
-    ...(range.font ? { font:String(range.font).slice(0,100) } : {}),
-    ...(/^#[0-9a-f]{6}$/iu.test(range.color) ? { color:range.color } : {}),
-    ...(range.weight ? { weight:["400","500","600","700","800","900"].includes(String(range.weight)) ? String(range.weight) : "700" } : {}),
-    ...(range.underline == null ? {} : { underline:Boolean(range.underline) })
-  })).filter(range => range.end > range.start);
-}
-function normalizedSizeRanges(layer) {
-  return normalizedStyleRanges(layer).filter(range => range.size != null);
-}
-function styleAt(layer, index) {
-  const style = { size:layer.size || 72, font:layer.font || "TikTok Sans", color:layer.color || "#FFFFFF", weight:String(layer.weight || "700"), underline:Boolean(layer.underline) };
-  for (const range of normalizedStyleRanges(layer)) if (index >= range.start && index < range.end) Object.assign(style, {
-    ...(range.size == null ? {} : { size:range.size }),
-    ...(range.font ? { font:range.font } : {}),
-    ...(range.color ? { color:range.color } : {}),
-    ...(range.weight ? { weight:range.weight } : {}),
-    ...(range.underline == null ? {} : { underline:range.underline })
-  });
-  return style;
-}
-function richTextHtml(layer, selection = null) {
-  const content = String(layer.content || "");
-  if (!content) return "";
-  const selected = index => Boolean(selection && selection.end > selection.start && index >= selection.start && index < selection.end);
-  let html = "", start = 0, style = { ...styleAt(layer, 0), selected:selected(0) };
-  const key = item => JSON.stringify(item);
-  for (let index = 1; index <= content.length; index += 1) {
-    const next = index < content.length ? { ...styleAt(layer, index), selected:selected(index) } : null;
-    if (!next || key(next) !== key(style)) {
-      const decoration = style.underline ? "text-decoration:underline;" : "";
-      const highlight = style.selected ? "background:#1677ffcc;color:#fff;border-radius:.12em;" : "";
-      html += `<span ${style.selected?'class="text-selection-preview"':""} style="font-size:${style.size/10.8}cqw;font-family:${fontStack(style.font)};font-weight:${style.weight};color:${style.color};${decoration}${highlight}">${esc(content.slice(start,index))}</span>`;
-      start = index; style = next;
-    }
-  }
-  return html;
-}
 function remapSizeRanges(oldContent, newContent, ranges = []) {
   if (oldContent === newContent) return ranges;
   let prefix = 0;
@@ -164,11 +76,6 @@ function remapSizeRanges(oldContent, newContent, ranges = []) {
     if (range.start >= oldTail) return [{ ...range, start:range.start+delta, end:range.end+delta }];
     return [];
   });
-}
-function layerHtml(rawLayer, index, active, selection = null, editing = false) {
-  const layer = withTextBox(rawLayer);
-  const boxStyle = layer.boxEnabled ? `width:${layer.boxWidth}%;padding:${layer.boxPaddingY/10.8}cqw ${layer.boxPaddingX/10.8}cqw;background:${rgba(layer.boxColor,layer.boxOpacity)};border:${layer.boxBorderWidth/10.8}cqw solid ${rgba(layer.boxBorderColor,layer.boxBorderOpacity)};border-radius:${layer.boxRadius/10.8}cqw;text-shadow:none;` : "";
-  return `<div class="layer${active ? " active" : ""}${editing ? " direct-editing" : ""}" data-layer="${index}" ${editing ? 'contenteditable="true" spellcheck="false"' : ""} style="left:${layer.x}%;top:${layer.y}%;font-family:${fontStack(layer.font)};font-size:${layer.size/10.8}cqw;font-weight:${layer.weight||700};text-decoration:${layer.underline?"underline":"none"};color:${layer.color};text-align:${layer.align};opacity:${layer.opacity};rotate:${layer.rotation}deg;${boxStyle}">${richTextHtml(layer, active ? selection : null)}</div>`;
 }
 function directToolbarHtml(layer, slideId, index) {
   const editing = directEditing.has(`${slideId}:${index}`);
@@ -225,7 +132,7 @@ function editCard(slide) {
   const data = draft(slide); let active = selectedLayers.get(slide.id) ?? 0; if (!data.layers[active]) active = 0; selectedLayers.set(slide.id, active);
   const layer = data.layers[active] || defaultLayer(slide);
   const canUndo = (histories.get(slide.id) || []).length > 0, canRedo = (redos.get(slide.id) || []).length > 0;
-  return `<article class="card" data-editor="${slide.id}" data-design-saved="${slide.designSaved && !designDirty.has(slide.id) ? "true" : "false"}"><div class="card-head"><div><div class="number">Slide ${slide.position}</div><h2>${esc(slide.headline)}</h2></div><span class="status">${data.layers.length} lớp chữ</span></div><div class="visual"><div class="preview-column"><div class="canvas" data-canvas="${slide.id}">${background(slide, data)}<div class="safe-zone"></div>${data.layers.map((item, index) => layerHtml(item, index, index === active, textSelections.get(`${slide.id}:${index}`), directEditing.has(`${slide.id}:${index}`))).join("")}</div>${directToolbarHtml(layer,slide.id,active)}</div><div><div class="tools"><button class="tool add-layer">+ Thêm chữ</button><button class="tool remove-layer">Xóa lớp</button><button class="tool undo" ${canUndo ? "" : "disabled"}>Hoàn tác</button><button class="tool redo" ${canRedo ? "" : "disabled"}>Làm lại</button><details class="apply-targets"><summary class="tool">Chọn slide để áp dụng kiểu</summary><div class="apply-target-menu"><div class="apply-target-actions"><button type="button" class="tool select-all-targets">Chọn tất cả</button><button type="button" class="tool clear-all-targets">Bỏ chọn</button></div>${project.slides.map(target=>`<label class="toggle"><input type="checkbox" class="style-target-slide" value="${target.id}" ${target.id===slide.id?"checked":""}> Slide ${target.position}: ${esc(target.headline.slice(0,34))}</label>`).join("")}<button type="button" class="action apply-selected-slides">Áp dụng kiểu</button></div></details></div><label class="field">Lớp chữ<select data-control="layer">${data.layers.map((item,index)=>`<option value="${index}" ${index===active?"selected":""}>${index+1}. ${esc(item.content.slice(0,30)||"Chữ mới")}</option>`).join("")}</select></label><div class="fields"><label class="field wide">Nội dung<textarea data-control="content">${esc(layer.content)}</textarea></label></div><button class="action save-design" data-slide="${slide.id}">Lưu thiết kế</button></div></div></article>`;
+  return `<article class="card" data-editor="${slide.id}" data-design-saved="${slide.designSaved && !designDirty.has(slide.id) ? "true" : "false"}"><div class="card-head"><div><div class="number">Slide ${slide.position}</div><h2>${esc(slide.headline)}</h2></div><span class="status">${data.layers.length} lớp chữ</span></div><div class="visual"><div class="preview-column"><div class="canvas" data-canvas="${slide.id}">${background(slide, data, assets)}<div class="safe-zone"></div>${data.layers.map((item, index) => layerHtml(item, index, index === active, textSelections.get(`${slide.id}:${index}`), directEditing.has(`${slide.id}:${index}`))).join("")}</div>${directToolbarHtml(layer,slide.id,active)}</div><div><div class="tools"><button class="tool add-layer">+ Thêm chữ</button><button class="tool remove-layer">Xóa lớp</button><button class="tool undo" ${canUndo ? "" : "disabled"}>Hoàn tác</button><button class="tool redo" ${canRedo ? "" : "disabled"}>Làm lại</button><details class="apply-targets"><summary class="tool">Chọn slide để áp dụng kiểu</summary><div class="apply-target-menu"><div class="apply-target-actions"><button type="button" class="tool select-all-targets">Chọn tất cả</button><button type="button" class="tool clear-all-targets">Bỏ chọn</button></div>${project.slides.map(target=>`<label class="toggle"><input type="checkbox" class="style-target-slide" value="${target.id}" ${target.id===slide.id?"checked":""}> Slide ${target.position}: ${esc(target.headline.slice(0,34))}</label>`).join("")}<button type="button" class="action apply-selected-slides">Áp dụng kiểu</button></div></details></div><label class="field">Lớp chữ<select data-control="layer">${data.layers.map((item,index)=>`<option value="${index}" ${index===active?"selected":""}>${index+1}. ${esc(item.content.slice(0,30)||"Chữ mới")}</option>`).join("")}</select></label><div class="fields"><label class="field wide">Nội dung<textarea data-control="content">${esc(layer.content)}</textarea></label></div><button class="action save-design" data-slide="${slide.id}">Lưu thiết kế</button></div></div></article>`;
 }
 
 function videoPanelHtml(){
@@ -346,7 +253,7 @@ $("edit").oninput = event => {
     else if (control === "imageHue") output.textContent = `${Math.round(data.imageHue)}°`;
     else output.textContent = `${data[control]}px`;
   }
-  const slide = project.slides.find(item=>item.id===slideId); const canvas = editor.querySelector(".canvas"); canvas.outerHTML = `<div class="canvas" data-canvas="${slide.id}">${background(slide,data)}<div class="safe-zone"></div>${data.layers.map((item,i)=>layerHtml(item,i,i===index,textSelections.get(`${slide.id}:${i}`),directEditing.has(`${slide.id}:${i}`))).join("")}</div>`; bindDrag();
+  const slide = project.slides.find(item=>item.id===slideId); const canvas = editor.querySelector(".canvas"); canvas.outerHTML = `<div class="canvas" data-canvas="${slide.id}">${background(slide, data, assets)}<div class="safe-zone"></div>${data.layers.map((item,i)=>layerHtml(item,i,i===index,textSelections.get(`${slide.id}:${i}`),directEditing.has(`${slide.id}:${i}`))).join("")}</div>`; bindDrag();
 };
 $("edit").ondblclick = event => {
   const layerElement = event.target.closest(".layer"), editor = event.target.closest("[data-editor]");

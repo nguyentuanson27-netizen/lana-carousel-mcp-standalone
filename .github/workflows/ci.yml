@@ -22,5 +22,8 @@ jobs:
           cache: npm
           cache-dependency-path: lana-carousel-mcp-standalone/package-lock.json
       - run: npm ci
+      # Chromium cho test parity giữa preview và ảnh render (src/preview-browser-parity.test.js).
+      # Thiếu bước này thì bộ test đó tự bỏ qua thay vì fail.
+      - run: npx playwright install --with-deps chromium
       - run: npm run check
       - run: npm run test:remotion

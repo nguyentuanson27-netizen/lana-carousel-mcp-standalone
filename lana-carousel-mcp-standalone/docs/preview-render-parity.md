@@ -92,9 +92,32 @@ Sai số bề rộng còn lại so với Chromium là dưới ~3,5% (chủ yếu
 ngưỡng ngắt dòng vẫn có thể lệch một từ. Muốn khớp tuyệt đối thì phải đo ở trình duyệt rồi gửi kèm
 khi lưu thiết kế.
 
-## Cách kiểm tra thủ công
+### 9. Mọi độ dài tính bằng pixel đều thuộc hệ toạ độ 1080px
 
-`src/render-preview-parity.test.js` chạy tự động cùng `npm test`. Khi muốn so trực tiếp bằng mắt, dựng
-một trang HTML lặp lại đúng cấu trúc `.canvas > .canvas-bg > div > .canvas-zoom > img` với cùng chuỗi
-`filter`, chụp màn hình ở 1080×1920 rồi so từng điểm ảnh với kết quả của `renderSlideSnapshot()`.
-Sai lệch trung bình mỗi kênh nên dưới ~2/255 (phần dư đến từ khác biệt thuật toán nội suy).
+Preview biểu diễn chúng bằng `cqw` nên tự co giãn theo bề rộng canvas. Bản render vì thế phải nhân
+với `width / 1080` (hằng `DESIGN_WIDTH`): cỡ chữ, đệm và viền hộp chữ, độ dày và bo góc khung, độ mờ.
+Bỏ bước này thì ảnh chỉ đúng ở đúng 1080px và sai tỉ lệ khi render video vuông hoặc ngang.
+
+Hệ quả: **đừng dùng `px` thô trong CSS cho thứ gì thuộc thiết kế** — nếu không, preview ở canvas
+540px và bản render ở 1080px sẽ khác nhau.
+
+### 10. Bề rộng ngắt dòng khi tắt hộp chữ phụ thuộc vị trí lớp chữ
+
+`.layer` là khối định vị tuyệt đối chỉ đặt `left`, nên bề rộng co giãn của nó là khoảng trống từ
+`left` tới mép phải canvas, rồi mới bị `max-width: 96%` chặn. Tức là lớp chữ ở `x = 50%` chỉ được
+dùng nửa bề rộng canvas. Đây là hành vi có phần bất ngờ của CSS chứ không phải chủ ý thiết kế, nhưng
+sửa nó sẽ làm mọi thiết kế đã lưu xuống dòng lại, nên bản render đang lặp lại đúng công thức này.
+Nếu sau này muốn bỏ ràng buộc đó thì phải sửa đồng thời cả hai phía và chấp nhận thiết kế cũ đổi bố cục.
+
+## Kiểm tra tự động
+
+`src/preview-browser-parity.test.js` mở Chromium, dựng khung xem trước bằng **chính module
+`public/preview-dom.js`** mà studio dùng cùng đúng file `stitch-ui.css`, chụp màn hình rồi so từng
+điểm ảnh với `renderSlideSnapshot()`. Đây là lưới an toàn cho toàn bộ tài liệu này — các bài test
+khác chỉ kiểm tra phía server nên không thấy được sai lệch do CSS.
+
+Ngưỡng: lệch trung bình < 4/255 với ảnh, < 9/255 với ca có chữ (trình duyệt và librsvg khử răng cưa
+khác nhau). Test tự bỏ qua khi máy không có Playwright/Chromium; CI cài Chromium ở bước riêng.
+
+Muốn so bằng mắt thì chạy test với biến `CHROMIUM_PATH` trỏ tới Chromium có sẵn và thêm lệnh ghi
+ảnh ra file trong hàm `compare()`.

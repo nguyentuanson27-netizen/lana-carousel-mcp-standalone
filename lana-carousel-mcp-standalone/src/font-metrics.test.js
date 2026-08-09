@@ -35,9 +35,9 @@ test("characters missing from a font are measured with the fallback that will dr
 });
 
 test("the browser preview declares the same font stack as the renderer", async () => {
-  const widget = await fs.readFile(new URL("../public/widget.js", import.meta.url), "utf8");
-  const declared = widget.match(/const FALLBACK_FONT = "([^"]+)";/u);
-  assert.ok(declared, "không tìm thấy FALLBACK_FONT trong widget.js");
+  const previewDom = await fs.readFile(new URL("../public/preview-dom.js", import.meta.url), "utf8");
+  const declared = previewDom.match(/const FALLBACK_FONT = "([^"]+)";/u);
+  assert.ok(declared, "không tìm thấy FALLBACK_FONT trong preview-dom.js");
   assert.equal(declared[1], FALLBACK_FAMILY, "font dự phòng của preview và của renderer phải trùng nhau");
 });
 
