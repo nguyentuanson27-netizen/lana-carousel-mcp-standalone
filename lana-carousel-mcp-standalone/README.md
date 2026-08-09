@@ -20,6 +20,7 @@ Production:
 - Duyệt một ảnh hoặc ghép nhiều ảnh dạng lưới; crop, zoom, lật ảnh, chọn kiểu vừa khung, filter và tùy chỉnh khung.
 - Sửa ảnh trực tiếp trên khung xem trước: kéo để đổi vị trí, Ctrl/Cmd + lăn chuột để phóng to/thu nhỏ.
 - Ghép lưới cho phép chỉnh crop riêng từng ô: chọn ô rồi kéo hoặc dùng thanh trượt.
+- Nút "Xem ảnh thật" gọi thẳng renderer của server để xem đúng ảnh sắp tải về, kể cả khi thiết kế chưa lưu.
 - Ảnh tải về khớp ảnh preview theo hợp đồng ghi trong [docs/preview-render-parity.md](docs/preview-render-parity.md).
 - Nhiều lớp chữ kéo thả, rich text và animation trong MP4.
 - Font đi kèm repo (`public/fonts/`), dùng chung cho trình duyệt và renderer nên chữ trong ảnh tải về đúng font đã chọn.

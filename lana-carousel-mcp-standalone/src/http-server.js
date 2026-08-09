@@ -24,8 +24,8 @@ import {
   addSlide, approveProjectContent, approveSlideAsset, approveSlideAssets, cloneProject,
   createProject, deleteProject, extendProject, getApprovedAssetFiles, getProject,
   getProjectVersions, importAssetFromUrl, listProjects, purgeExpiredProjects,
-  restoreProjectVersion, updateBrandKit, updateSlideCrop, updateSlideContent, updateSlideDesign,
-  updateProjectVideo, updateSlideVideo
+  renderSlidePreview, restoreProjectVersion, updateBrandKit, updateSlideCrop, updateSlideContent,
+  updateSlideDesign, updateProjectVideo, updateSlideVideo
 } from "./service.js";
 
 const app = express();
@@ -176,8 +176,9 @@ app.patch("/api/projects/:projectId/slides/:slideId/content", handle(async (req,
   res.json(updateSlideContent({ projectId: req.params.projectId, slideId: req.params.slideId, ...body }));
 }));
 
-app.patch("/api/projects/:projectId/slides/:slideId/crop", handle(async (req, res) => {
-  const body = z.object({
+// Hình dạng của một thiết kế slide, dùng chung cho route lưu thiết kế và route render thử,
+// nhờ vậy hai đường này không thể trôi khỏi nhau.
+const slideImageDesignShape = {
     cropX: z.number().min(0).max(100), cropY: z.number().min(0).max(100), cropZoom: z.number().min(1).max(4),
     imageBrightness: z.number().min(.3).max(2).optional(), imageContrast: z.number().min(.3).max(2).optional(),
     imageSaturation: z.number().min(0).max(2).optional(), imageBlur: z.number().min(0).max(20).optional(),
@@ -192,33 +193,37 @@ app.patch("/api/projects/:projectId/slides/:slideId/crop", handle(async (req, re
     frameInset: z.number().int().min(0).max(360).optional(),
     frameWidth: z.number().int().min(0).max(80).optional(), frameColor: z.string().regex(/^#[0-9A-F]{6}$/iu).optional(),
     frameOpacity: z.number().min(0).max(1).optional(), frameRadius: z.number().int().min(0).max(240).optional()
-  }).parse(req.body);
-  res.json(updateSlideCrop({ projectId: req.params.projectId, slideId: req.params.slideId, ...body }));
-}));
-
-app.patch("/api/projects/:projectId/slides/:slideId/design", handle(async (req, res) => {
-  const body = z.object({
-    cropX: z.number().min(0).max(100), cropY: z.number().min(0).max(100), cropZoom: z.number().min(1).max(4),
-    imageBrightness: z.number().min(.3).max(2).optional(), imageContrast: z.number().min(.3).max(2).optional(),
-    imageSaturation: z.number().min(0).max(2).optional(), imageBlur: z.number().min(0).max(20).optional(),
-    imageGrayscale: z.number().min(0).max(1).optional(), imageHue: z.number().min(-180).max(180).optional(),
-    imageFit: z.enum(["cover", "contain"]).optional(), imageBackground: z.string().regex(/^#[0-9A-F]{6}$/iu).optional(),
-    imageFlipH: z.boolean().optional(), imageFlipV: z.boolean().optional(),
-    // Crop riêng cho từng ô lưới; khoá là assetId, thiếu trường nào thì ô kế thừa giá trị cấp slide.
-    assetCrops: z.record(z.string().uuid(), z.object({
-      cropX: z.number().min(0).max(100).nullish(), cropY: z.number().min(0).max(100).nullish(),
-      cropZoom: z.number().min(1).max(4).nullish()
-    })).optional(),
-    frameInset: z.number().int().min(0).max(360).optional(),
-    frameWidth: z.number().int().min(0).max(80).optional(), frameColor: z.string().regex(/^#[0-9A-F]{6}$/iu).optional(),
-    frameOpacity: z.number().min(0).max(1).optional(), frameRadius: z.number().int().min(0).max(240).optional(),
+};
+const slideDesignShape = z.object({
+  ...slideImageDesignShape,
     textEnabled: z.boolean(), overlayText: z.string().max(500), textFont: z.string().min(1).max(100),
     textSize: z.number().min(24).max(220), textPosition: z.enum(["top", "center", "bottom"]),
     textColor: z.string().regex(/^#[0-9A-F]{6}$/iu), textAlign: z.enum(["left", "center", "right"]),
     textX: z.number().min(3).max(97), textY: z.number().min(3).max(97),
     textLayers: z.array(textLayerSchema).max(10).default([])
-  }).parse(req.body);
+});
+
+app.patch("/api/projects/:projectId/slides/:slideId/crop", handle(async (req, res) => {
+  const body = z.object(slideImageDesignShape).parse(req.body);
+  res.json(updateSlideCrop({ projectId: req.params.projectId, slideId: req.params.slideId, ...body }));
+}));
+
+app.patch("/api/projects/:projectId/slides/:slideId/design", handle(async (req, res) => {
+  const body = slideDesignShape.parse(req.body);
   res.json(updateSlideDesign({ projectId: req.params.projectId, slideId: req.params.slideId, ...body }));
+}));
+
+// Render thử một slide theo thiết kế đang sửa và trả thẳng ảnh, không ghi gì vào cơ sở dữ liệu.
+// Nhờ vậy studio hiện được đúng ảnh sắp tải về ngay cả khi thiết kế chưa lưu.
+app.post("/api/projects/:projectId/slides/:slideId/preview-render", handle(async (req, res) => {
+  const body = z.object({
+    design: slideDesignShape.partial().default({}),
+    width: z.number().int().min(180).max(2160).default(1080),
+    height: z.number().int().min(180).max(3840).default(1920)
+  }).parse(req.body || {});
+  consumeApiQuota(req.apiClientId, { mutations: 0, heavy: 1 });
+  const buffer = await renderSlidePreview({ projectId: req.params.projectId, slideId: req.params.slideId, ...body });
+  res.type("image/webp").set("Cache-Control", "no-store").send(buffer);
 }));
 
 app.post("/api/projects/:projectId/slides/:slideId/assets/import-url", handle(async (req, res) => {

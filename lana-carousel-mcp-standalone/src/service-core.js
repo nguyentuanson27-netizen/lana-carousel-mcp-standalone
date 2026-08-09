@@ -689,6 +689,22 @@ export async function renderSlideSnapshot(slide, assets, { width = 1080, height 
   return sharp(filtered).composite([frame, overlay].filter(Boolean).map(input => ({ input, left: 0, top: 0 }))).webp({ quality: 92 }).toBuffer();
 }
 
+/**
+ * Render một slide theo thiết kế đang sửa mà **không** ghi gì vào cơ sở dữ liệu.
+ * Dùng cho nút "Xem ảnh thật" trong studio: người dùng thấy đúng ảnh sắp tải về,
+ * kể cả khi thiết kế chưa được lưu.
+ */
+export async function renderSlidePreview({ projectId, slideId, design = {}, width = 1080, height = 1920 }) {
+  const project = getProject(projectId, { includeStorage: true });
+  const slide = project.slides.find(item => item.id === slideId);
+  if (!slide) throw new AppError("SLIDE_NOT_FOUND", "Không tìm thấy slide.", 404);
+  // Chỉ nhận các trường thuộc thiết kế; id, danh sách ảnh và trạng thái duyệt luôn lấy từ cơ sở dữ liệu.
+  const allowed = [...Object.keys(IMAGE_DESIGN_DEFAULTS), "assetCrops", "textEnabled", "overlayText",
+    "textFont", "textSize", "textColor", "textAlign", "textX", "textY", "textLayers"];
+  const overrides = Object.fromEntries(allowed.filter(key => design[key] !== undefined).map(key => [key, design[key]]));
+  return renderSlideSnapshot({ ...slide, ...overrides }, project.assets, { width, height });
+}
+
 export async function getApprovedAssetFiles(projectId) {
   const project = getProject(projectId, { includeStorage: true });
   if (project.slides.length === 0) throw new AppError("EMPTY_PROJECT", "Carousel chưa có slide để render.", 409);

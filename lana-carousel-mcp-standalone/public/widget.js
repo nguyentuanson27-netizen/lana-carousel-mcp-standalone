@@ -162,7 +162,7 @@ function editCard(slide) {
   const data = draft(slide); let active = selectedLayers.get(slide.id) ?? 0; if (!data.layers[active]) active = 0; selectedLayers.set(slide.id, active);
   const layer = data.layers[active] || defaultLayer(slide);
   const canUndo = (histories.get(slide.id) || []).length > 0, canRedo = (redos.get(slide.id) || []).length > 0;
-  return `<article class="card" data-editor="${slide.id}" data-design-saved="${slide.designSaved && !designDirty.has(slide.id) ? "true" : "false"}"><div class="card-head"><div><div class="number">Slide ${slide.position}</div><h2>${esc(slide.headline)}</h2></div><span class="status">${data.layers.length} lớp chữ</span></div><div class="visual"><div class="preview-column"><div class="canvas" data-canvas="${slide.id}">${background(slide, data, assets, activeCell(slide))}<div class="safe-zone"></div>${data.layers.map((item, index) => layerHtml(item, index, index === active, textSelections.get(`${slide.id}:${index}`), directEditing.has(`${slide.id}:${index}`))).join("")}</div>${directToolbarHtml(layer,slide.id,active)}</div><div><div class="tools"><button class="tool add-layer">+ Thêm chữ</button><button class="tool remove-layer">Xóa lớp</button><button class="tool undo" ${canUndo ? "" : "disabled"}>Hoàn tác</button><button class="tool redo" ${canRedo ? "" : "disabled"}>Làm lại</button><details class="apply-targets"><summary class="tool">Chọn slide để áp dụng kiểu</summary><div class="apply-target-menu"><div class="apply-target-actions"><button type="button" class="tool select-all-targets">Chọn tất cả</button><button type="button" class="tool clear-all-targets">Bỏ chọn</button></div>${project.slides.map(target=>`<label class="toggle"><input type="checkbox" class="style-target-slide" value="${target.id}" ${target.id===slide.id?"checked":""}> Slide ${target.position}: ${esc(target.headline.slice(0,34))}</label>`).join("")}<button type="button" class="action apply-selected-slides">Áp dụng kiểu</button></div></details></div><label class="field">Lớp chữ<select data-control="layer">${data.layers.map((item,index)=>`<option value="${index}" ${index===active?"selected":""}>${index+1}. ${esc(item.content.slice(0,30)||"Chữ mới")}</option>`).join("")}</select></label><div class="fields"><label class="field wide">Nội dung<textarea data-control="content">${esc(layer.content)}</textarea></label></div><button class="action save-design" data-slide="${slide.id}">Lưu thiết kế</button></div></div></article>`;
+  return `<article class="card" data-editor="${slide.id}" data-design-saved="${slide.designSaved && !designDirty.has(slide.id) ? "true" : "false"}"><div class="card-head"><div><div class="number">Slide ${slide.position}</div><h2>${esc(slide.headline)}</h2></div><span class="status">${data.layers.length} lớp chữ</span></div><div class="visual"><div class="preview-column"><div class="canvas" data-canvas="${slide.id}">${background(slide, data, assets, activeCell(slide))}<div class="safe-zone"></div>${data.layers.map((item, index) => layerHtml(item, index, index === active, textSelections.get(`${slide.id}:${index}`), directEditing.has(`${slide.id}:${index}`))).join("")}</div>${directToolbarHtml(layer,slide.id,active)}<div class="proof-bar"><button type="button" class="tool show-proof" data-slide="${slide.id}">Xem ảnh thật</button><small class="muted proof-status" data-proof-status="${slide.id}"></small></div></div><div><div class="tools"><button class="tool add-layer">+ Thêm chữ</button><button class="tool remove-layer">Xóa lớp</button><button class="tool undo" ${canUndo ? "" : "disabled"}>Hoàn tác</button><button class="tool redo" ${canRedo ? "" : "disabled"}>Làm lại</button><details class="apply-targets"><summary class="tool">Chọn slide để áp dụng kiểu</summary><div class="apply-target-menu"><div class="apply-target-actions"><button type="button" class="tool select-all-targets">Chọn tất cả</button><button type="button" class="tool clear-all-targets">Bỏ chọn</button></div>${project.slides.map(target=>`<label class="toggle"><input type="checkbox" class="style-target-slide" value="${target.id}" ${target.id===slide.id?"checked":""}> Slide ${target.position}: ${esc(target.headline.slice(0,34))}</label>`).join("")}<button type="button" class="action apply-selected-slides">Áp dụng kiểu</button></div></details></div><label class="field">Lớp chữ<select data-control="layer">${data.layers.map((item,index)=>`<option value="${index}" ${index===active?"selected":""}>${index+1}. ${esc(item.content.slice(0,30)||"Chữ mới")}</option>`).join("")}</select></label><div class="fields"><label class="field wide">Nội dung<textarea data-control="content">${esc(layer.content)}</textarea></label></div><button class="action save-design" data-slide="${slide.id}">Lưu thiết kế</button></div></div></article>`;
 }
 
 function videoPanelHtml(){
@@ -195,6 +195,22 @@ function render() {
   decorateImageEditors();
   bindDrag();
   if(view==="video"){updateTimelineTotal();const firstVideoRow=document.querySelector(".timeline-scene");if(firstVideoRow)showVideoScene(firstVideoRow);}
+}
+
+// Payload thiết kế của một slide. Nút "Lưu thiết kế" và nút "Xem ảnh thật" dùng chung hàm này
+// để ảnh render thử luôn phản ánh đúng thứ sắp được lưu.
+function designPayload(slide, data) {
+  const primary = data.layers[0] || defaultLayer(slide);
+  return {
+    cropX:data.cropX, cropY:data.cropY, cropZoom:data.cropZoom, assetCrops:data.assetCrops||{},
+    imageBrightness:data.imageBrightness, imageContrast:data.imageContrast, imageSaturation:data.imageSaturation,
+    imageBlur:data.imageBlur, imageGrayscale:data.imageGrayscale, imageHue:data.imageHue,
+    imageFit:data.imageFit, imageBackground:data.imageBackground,
+    imageFlipH:data.imageFlipH, imageFlipV:data.imageFlipV, frameInset:data.frameInset, frameWidth:data.frameWidth,
+    frameColor:data.frameColor, frameOpacity:data.frameOpacity, frameRadius:data.frameRadius,
+    textEnabled:true, overlayText:primary.content, textFont:primary.font, textSize:primary.size, textPosition:"center",
+    textColor:primary.color, textAlign:primary.align, textX:primary.x, textY:primary.y, textLayers:data.layers
+  };
 }
 
 async function json(url, options = {}) { const response = await fetch(url, options); const value = await response.json(); if (!response.ok) throw new Error(value.message || "Yêu cầu thất bại"); return value; }
@@ -357,20 +373,12 @@ $("edit").onclick = async event => {
       }
       render(); return;
     }
+    if (event.target.closest(".show-proof")) { await showProof(slide, data, editor); return; }
+    if (event.target.closest(".close-proof")) { editor.querySelector(".proof-overlay")?.remove(); return; }
     if (event.target.closest(".save-design")) {
-      const primary = data.layers[0] || defaultLayer(slide);
       project = await json(`/api/projects/${projectId}/slides/${slideId}/design`, {
         method:"PATCH", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-          cropX:data.cropX,cropY:data.cropY,cropZoom:data.cropZoom,assetCrops:data.assetCrops||{},
-          imageBrightness:data.imageBrightness,imageContrast:data.imageContrast,imageSaturation:data.imageSaturation,
-          imageBlur:data.imageBlur,imageGrayscale:data.imageGrayscale,imageHue:data.imageHue,
-          imageFit:data.imageFit,imageBackground:data.imageBackground,
-          imageFlipH:data.imageFlipH,imageFlipV:data.imageFlipV,frameInset:data.frameInset,frameWidth:data.frameWidth,
-          frameColor:data.frameColor,frameOpacity:data.frameOpacity,frameRadius:data.frameRadius,
-          textEnabled:true,overlayText:primary.content,textFont:primary.font,textSize:primary.size,textPosition:"center",
-          textColor:primary.color,textAlign:primary.align,textX:primary.x,textY:primary.y,textLayers:data.layers
-        })
+        body:JSON.stringify(designPayload(slide, data))
       });
       designDirty.delete(slideId); drafts.delete(slideId); histories.delete(slideId); redos.delete(slideId); render();
     }
@@ -447,6 +455,33 @@ function bindCanvasPan() {
       wheelTimer = setTimeout(() => { wheelSlideId = null; }, 400);
     };
   });
+}
+
+// Gọi renderer thật của server với đúng thiết kế đang sửa rồi hiện ảnh chồng lên khung xem trước.
+// Đây là cách chắc chắn nhất để thấy ảnh sắp tải về, và cũng để lộ ngay nếu preview lệch bản render.
+async function showProof(slide, data, editor) {
+  const status = editor.querySelector(`[data-proof-status="${slide.id}"]`);
+  const button = editor.querySelector(".show-proof");
+  if (button) button.disabled = true;
+  if (status) status.textContent = "Đang render…";
+  try {
+    const response = await fetch(`/api/projects/${projectId}/slides/${slide.id}/preview-render`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ design: designPayload(slide, data) })
+    });
+    if (!response.ok) throw new Error((await response.json().catch(()=>({}))).message || "Không render được ảnh thật");
+    const url = URL.createObjectURL(await response.blob());
+    editor.querySelector(".proof-overlay")?.remove();
+    const canvas = editor.querySelector(".canvas");
+    canvas.insertAdjacentHTML("afterend", `<div class="proof-overlay"><img src="${url}" alt="Ảnh render thật"><div class="proof-actions"><span>Ảnh render thật · 1080×1920</span><button type="button" class="tool close-proof">Đóng</button></div></div>`);
+    // Ảnh đã nằm trong DOM nên thu hồi được URL tạm.
+    editor.querySelector(".proof-overlay img").onload = () => URL.revokeObjectURL(url);
+    if (status) status.textContent = "";
+  } catch (error) {
+    if (status) status.textContent = error.message;
+  } finally {
+    if (button) button.disabled = false;
+  }
 }
 
 function bindDrag() { bindCanvasPan(); document.querySelectorAll(".canvas").forEach(canvas => canvas.querySelectorAll(".layer").forEach(element => { element.onpointerdown = event => { if (element.isContentEditable) return; const slideId=canvas.dataset.canvas,index=Number(element.dataset.layer),data=drafts.get(slideId),startX=event.clientX,startY=event.clientY;let moved=false;selectedLayers.set(slideId,index);canvas.querySelectorAll(".layer").forEach((item,i)=>item.classList.toggle("active",i===index));element.setPointerCapture(event.pointerId);element.onpointermove=move=>{if(Math.hypot(move.clientX-startX,move.clientY-startY)<4&&!moved)return;if(!moved){remember(slideId);moved=true;}const rect=canvas.getBoundingClientRect(),x=Math.max(3,Math.min(97,(move.clientX-rect.left)/rect.width*100)),y=Math.max(3,Math.min(97,(move.clientY-rect.top)/rect.height*100));data.layers[index].x=Number(x.toFixed(2));data.layers[index].y=Number(y.toFixed(2));element.style.left=`${x}%`;element.style.top=`${y}%`;};element.onpointerup=()=>{element.onpointermove=null;if(moved)render();};}; })); }
