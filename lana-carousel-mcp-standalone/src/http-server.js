@@ -176,10 +176,13 @@ app.patch("/api/projects/:projectId/slides/:slideId/content", handle(async (req,
 
 app.patch("/api/projects/:projectId/slides/:slideId/crop", handle(async (req, res) => {
   const body = z.object({
-    cropX: z.number().min(0).max(100), cropY: z.number().min(0).max(100), cropZoom: z.number().min(1).max(3),
+    cropX: z.number().min(0).max(100), cropY: z.number().min(0).max(100), cropZoom: z.number().min(1).max(4),
     imageBrightness: z.number().min(.3).max(2).optional(), imageContrast: z.number().min(.3).max(2).optional(),
     imageSaturation: z.number().min(0).max(2).optional(), imageBlur: z.number().min(0).max(20).optional(),
-    imageGrayscale: z.number().min(0).max(1).optional(), frameInset: z.number().int().min(0).max(360).optional(),
+    imageGrayscale: z.number().min(0).max(1).optional(), imageHue: z.number().min(-180).max(180).optional(),
+    imageFit: z.enum(["cover", "contain"]).optional(), imageBackground: z.string().regex(/^#[0-9A-F]{6}$/iu).optional(),
+    imageFlipH: z.boolean().optional(), imageFlipV: z.boolean().optional(),
+    frameInset: z.number().int().min(0).max(360).optional(),
     frameWidth: z.number().int().min(0).max(80).optional(), frameColor: z.string().regex(/^#[0-9A-F]{6}$/iu).optional(),
     frameOpacity: z.number().min(0).max(1).optional(), frameRadius: z.number().int().min(0).max(240).optional()
   }).parse(req.body);
@@ -188,10 +191,13 @@ app.patch("/api/projects/:projectId/slides/:slideId/crop", handle(async (req, re
 
 app.patch("/api/projects/:projectId/slides/:slideId/design", handle(async (req, res) => {
   const body = z.object({
-    cropX: z.number().min(0).max(100), cropY: z.number().min(0).max(100), cropZoom: z.number().min(1).max(3),
+    cropX: z.number().min(0).max(100), cropY: z.number().min(0).max(100), cropZoom: z.number().min(1).max(4),
     imageBrightness: z.number().min(.3).max(2).optional(), imageContrast: z.number().min(.3).max(2).optional(),
     imageSaturation: z.number().min(0).max(2).optional(), imageBlur: z.number().min(0).max(20).optional(),
-    imageGrayscale: z.number().min(0).max(1).optional(), frameInset: z.number().int().min(0).max(360).optional(),
+    imageGrayscale: z.number().min(0).max(1).optional(), imageHue: z.number().min(-180).max(180).optional(),
+    imageFit: z.enum(["cover", "contain"]).optional(), imageBackground: z.string().regex(/^#[0-9A-F]{6}$/iu).optional(),
+    imageFlipH: z.boolean().optional(), imageFlipV: z.boolean().optional(),
+    frameInset: z.number().int().min(0).max(360).optional(),
     frameWidth: z.number().int().min(0).max(80).optional(), frameColor: z.string().regex(/^#[0-9A-F]{6}$/iu).optional(),
     frameOpacity: z.number().min(0).max(1).optional(), frameRadius: z.number().int().min(0).max(240).optional(),
     textEnabled: z.boolean(), overlayText: z.string().max(500), textFont: z.string().min(1).max(100),

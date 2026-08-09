@@ -19,12 +19,17 @@ function withTextBox(layer = {}) {
 function defaultLayer(slide) { return withTextBox({ id: crypto.randomUUID(), role: "headline", content: slide.headline || slide.overlayText, enabled: slide.textEnabled, font: slide.textFont || "TikTok Sans", size: slide.textSize || 72, x: slide.textX || 50, y: slide.textY || 42, color: slide.textColor || "#FFFFFF", align: slide.textAlign || "center", opacity: 1, rotation: 0 }); }
 function defaultBodyLayer(slide) { return withTextBox({ id: crypto.randomUUID(), role: "body", content: slide.body || "", enabled: Boolean(slide.body), font: slide.textFont || "TikTok Sans", size: 42, x: 50, y: 66, color: slide.textColor || "#FFFFFF", align: "center", opacity: 0.95, rotation: 0 }); }
 function initialLayers(slide) { return [defaultLayer(slide), defaultBodyLayer(slide)]; }
+const MAX_ZOOM = 4;
 function imageDefaults(slide = {}) {
   return {
     cropX: slide.cropX ?? 50, cropY: slide.cropY ?? 50, cropZoom: slide.cropZoom ?? 1,
     imageBrightness: slide.imageBrightness ?? 1, imageContrast: slide.imageContrast ?? 1,
     imageSaturation: slide.imageSaturation ?? 1, imageBlur: slide.imageBlur ?? 0,
-    imageGrayscale: slide.imageGrayscale ?? 0, frameInset: slide.frameInset ?? 40,
+    imageGrayscale: slide.imageGrayscale ?? 0, imageHue: slide.imageHue ?? 0,
+    imageFit: slide.imageFit === "contain" ? "contain" : "cover",
+    imageBackground: slide.imageBackground || "#181411",
+    imageFlipH: Boolean(slide.imageFlipH), imageFlipV: Boolean(slide.imageFlipV),
+    frameInset: slide.frameInset ?? 40,
     frameWidth: slide.frameWidth ?? 0, frameColor: slide.frameColor || "#FFFFFF",
     frameOpacity: slide.frameOpacity ?? 1, frameRadius: slide.frameRadius ?? 0
   };
@@ -87,11 +92,15 @@ function frameHtml(data) {
   if (!data.frameWidth) return "";
   return `<div class="image-frame" style="inset:${data.frameInset/10.8}cqw;border-width:${Math.max(0.15,data.frameWidth/10.8)}cqw;border-color:${rgba(data.frameColor,data.frameOpacity)};border-radius:${data.frameRadius/10.8}cqw"></div>`;
 }
+// Chuỗi filter và cấu trúc DOM ở đây phải khớp từng bước với renderSlideSnapshot trong src/service-core.js,
+// nếu lệch thì ảnh tải về sẽ khác ảnh preview.
 function background(slide, data) {
   const ids = selectedIds(slide), columns = ids.length <= 2 ? 1 : ids.length <= 6 ? 2 : 3;
-  const filter = `brightness(${data.imageBrightness}) contrast(${data.imageContrast}) saturate(${data.imageSaturation}) grayscale(${data.imageGrayscale*100}%) blur(${data.imageBlur/10.8}cqw)`;
-  return `<div class="canvas-bg" style="grid-template-columns:repeat(${columns},1fr);filter:${filter}">${ids.map(id => `<div><img src="${esc(assets.get(id)?.publicUrl || "")}" style="transform:scale(${data.cropZoom});transform-origin:${data.cropX}% ${data.cropY}%"></div>`).join("")}</div>${frameHtml(data)}`;
-
+  const filter = `brightness(${data.imageBrightness}) contrast(${data.imageContrast}) saturate(${data.imageSaturation}) grayscale(${data.imageGrayscale*100}%) hue-rotate(${data.imageHue||0}deg) blur(${data.imageBlur/10.8}cqw)`;
+  // Lật quanh tâm ảnh trước, rồi mới phóng to quanh trọng tâm (cropX, cropY) — đúng thứ tự của bản render.
+  const flip = `scaleX(${data.imageFlipH ? -1 : 1}) scaleY(${data.imageFlipV ? -1 : 1})`;
+  const cells = ids.map(id => `<div><div class="canvas-zoom" style="transform:scale(${data.cropZoom});transform-origin:${data.cropX}% ${data.cropY}%"><img src="${esc(assets.get(id)?.publicUrl || "")}" style="object-fit:${data.imageFit === "contain" ? "contain" : "cover"};transform:${flip}"></div></div>`).join("");
+  return `<div class="canvas-bg" data-canvas-bg style="grid-template-columns:repeat(${columns},1fr);background:${esc(data.imageBackground || "#181411")};filter:${filter}">${cells}</div>${frameHtml(data)}`;
 }
 function normalizedStyleRanges(layer) {
   const length = String(layer.content || "").length;
@@ -196,7 +205,7 @@ function textBoxControlsHtml(rawLayer, slideId) {
 }
 function imageControlsHtml(data, slideId) {
   const percent = value => Math.round(value * 100), open = sectionIsOpen(slideId, "imageFrame");
-  return `<details class="editor-section image-controls" data-editor-section="imageFrame" data-slide="${slideId}" ${open?"open":""}><summary><strong>Chỉnh ảnh và khung</strong><span class="section-meta">${data.frameWidth>0?"Có khung":"Ảnh cơ bản"}</span></summary><div class="section-body"><div class="control-title"><button type="button" class="tool reset-image">Đặt lại ảnh/khung</button></div><div class="fields"><label class="field">Zoom ảnh <span class="range-value" data-value-for="cropZoom">${data.cropZoom.toFixed(1)}×</span><input type="range" min="1" max="3" step="0.1" data-control="cropZoom" value="${data.cropZoom}"></label><label class="field">Trọng tâm ngang <span class="range-value" data-value-for="cropX">${Math.round(data.cropX)}%</span><input type="range" min="0" max="100" data-control="cropX" value="${data.cropX}"></label><label class="field">Trọng tâm dọc <span class="range-value" data-value-for="cropY">${Math.round(data.cropY)}%</span><input type="range" min="0" max="100" data-control="cropY" value="${data.cropY}"></label><label class="field">Độ sáng <span class="range-value" data-value-for="imageBrightness">${percent(data.imageBrightness)}%</span><input type="range" min="0.3" max="2" step="0.05" data-control="imageBrightness" value="${data.imageBrightness}"></label><label class="field">Tương phản <span class="range-value" data-value-for="imageContrast">${percent(data.imageContrast)}%</span><input type="range" min="0.3" max="2" step="0.05" data-control="imageContrast" value="${data.imageContrast}"></label><label class="field">Bão hòa <span class="range-value" data-value-for="imageSaturation">${percent(data.imageSaturation)}%</span><input type="range" min="0" max="2" step="0.05" data-control="imageSaturation" value="${data.imageSaturation}"></label><label class="field">Đen trắng <span class="range-value" data-value-for="imageGrayscale">${percent(data.imageGrayscale)}%</span><input type="range" min="0" max="100" step="1" data-control="imageGrayscale" value="${percent(data.imageGrayscale)}"></label><label class="field">Làm mờ <span class="range-value" data-value-for="imageBlur">${data.imageBlur}px</span><input type="range" min="0" max="20" step="0.5" data-control="imageBlur" value="${data.imageBlur}"></label><label class="field">Màu viền<input type="color" data-control="frameColor" value="${data.frameColor}"></label><label class="field">Độ dày viền <span class="range-value" data-value-for="frameWidth">${data.frameWidth}px</span><input type="range" min="0" max="80" step="1" data-control="frameWidth" value="${data.frameWidth}"></label><label class="field">Khoảng cách khung <span class="range-value" data-value-for="frameInset">${data.frameInset}px</span><input type="range" min="0" max="360" step="2" data-control="frameInset" value="${data.frameInset}"></label><label class="field">Độ mờ khung <span class="range-value" data-value-for="frameOpacity">${percent(data.frameOpacity)}%</span><input type="range" min="0" max="100" step="1" data-control="frameOpacity" value="${percent(data.frameOpacity)}"></label><label class="field">Bo góc khung <span class="range-value" data-value-for="frameRadius">${data.frameRadius}px</span><input type="range" min="0" max="240" step="2" data-control="frameRadius" value="${data.frameRadius}"></label></div></div></details>`;
+  return `<details class="editor-section image-controls" data-editor-section="imageFrame" data-slide="${slideId}" ${open?"open":""}><summary><strong>Chỉnh ảnh và khung</strong><span class="section-meta">${data.frameWidth>0?"Có khung":"Ảnh cơ bản"}</span></summary><div class="section-body"><div class="control-title"><button type="button" class="tool reset-image">Đặt lại ảnh/khung</button></div><div class="image-quick-tools"><button type="button" class="tool zoom-step" data-zoom-step="-0.2" title="Thu nhỏ">− Thu nhỏ</button><button type="button" class="tool zoom-step" data-zoom-step="0.2" title="Phóng to">+ Phóng to</button><button type="button" class="tool center-image">Về giữa</button><button type="button" class="tool fill-image">Lấp đầy khung</button><button type="button" class="tool fit-image">Vừa cả ảnh</button></div><p class="image-hint">Kéo trực tiếp trên ảnh để đổi vị trí (cần zoom &gt; 1×), giữ Ctrl/Cmd và lăn chuột hoặc chụm hai ngón để phóng to/thu nhỏ.</p><div class="fields"><label class="field">Zoom ảnh <span class="range-value" data-value-for="cropZoom">${data.cropZoom.toFixed(1)}×</span><input type="range" min="1" max="4" step="0.05" data-control="cropZoom" value="${data.cropZoom}"></label><label class="field">Kiểu vừa khung<select data-control="imageFit"><option value="cover" ${data.imageFit!=="contain"?"selected":""}>Lấp đầy (cắt bớt)</option><option value="contain" ${data.imageFit==="contain"?"selected":""}>Vừa cả ảnh (viền nền)</option></select></label><label class="field">Màu nền ảnh<input type="color" data-control="imageBackground" value="${data.imageBackground}"></label><label class="field toggle-field"><span>Lật ảnh</span><span class="flip-row"><label class="toggle"><input type="checkbox" data-control="imageFlipH" ${data.imageFlipH?"checked":""}> Ngang</label><label class="toggle"><input type="checkbox" data-control="imageFlipV" ${data.imageFlipV?"checked":""}> Dọc</label></span></label><label class="field">Trọng tâm ngang <span class="range-value" data-value-for="cropX">${Math.round(data.cropX)}%</span><input type="range" min="0" max="100" data-control="cropX" value="${data.cropX}"></label><label class="field">Trọng tâm dọc <span class="range-value" data-value-for="cropY">${Math.round(data.cropY)}%</span><input type="range" min="0" max="100" data-control="cropY" value="${data.cropY}"></label><label class="field">Độ sáng <span class="range-value" data-value-for="imageBrightness">${percent(data.imageBrightness)}%</span><input type="range" min="0.3" max="2" step="0.05" data-control="imageBrightness" value="${data.imageBrightness}"></label><label class="field">Tương phản <span class="range-value" data-value-for="imageContrast">${percent(data.imageContrast)}%</span><input type="range" min="0.3" max="2" step="0.05" data-control="imageContrast" value="${data.imageContrast}"></label><label class="field">Bão hòa <span class="range-value" data-value-for="imageSaturation">${percent(data.imageSaturation)}%</span><input type="range" min="0" max="2" step="0.05" data-control="imageSaturation" value="${data.imageSaturation}"></label><label class="field">Đen trắng <span class="range-value" data-value-for="imageGrayscale">${percent(data.imageGrayscale)}%</span><input type="range" min="0" max="100" step="1" data-control="imageGrayscale" value="${percent(data.imageGrayscale)}"></label><label class="field">Sắc độ <span class="range-value" data-value-for="imageHue">${Math.round(data.imageHue)}°</span><input type="range" min="-180" max="180" step="1" data-control="imageHue" value="${data.imageHue}"></label><label class="field">Làm mờ <span class="range-value" data-value-for="imageBlur">${data.imageBlur}px</span><input type="range" min="0" max="20" step="0.5" data-control="imageBlur" value="${data.imageBlur}"></label><label class="field">Màu viền<input type="color" data-control="frameColor" value="${data.frameColor}"></label><label class="field">Độ dày viền <span class="range-value" data-value-for="frameWidth">${data.frameWidth}px</span><input type="range" min="0" max="80" step="1" data-control="frameWidth" value="${data.frameWidth}"></label><label class="field">Khoảng cách khung <span class="range-value" data-value-for="frameInset">${data.frameInset}px</span><input type="range" min="0" max="360" step="2" data-control="frameInset" value="${data.frameInset}"></label><label class="field">Độ mờ khung <span class="range-value" data-value-for="frameOpacity">${percent(data.frameOpacity)}%</span><input type="range" min="0" max="100" step="1" data-control="frameOpacity" value="${percent(data.frameOpacity)}"></label><label class="field">Bo góc khung <span class="range-value" data-value-for="frameRadius">${data.frameRadius}px</span><input type="range" min="0" max="240" step="2" data-control="frameRadius" value="${data.frameRadius}"></label></div></div></details>`;
 
 }
 function decorateImageEditors() {
@@ -305,8 +314,11 @@ $("edit").oninput = event => {
   else if (["boxBorderWidth","boxRadius","boxPaddingX","boxPaddingY","boxWidth"].includes(control)) layer[control] = Number(event.target.value);
   else if (["boxOpacity","boxBorderOpacity"].includes(control)) layer[control] = Number(event.target.value)/100;
   else if (["boxColor","boxBorderColor"].includes(control)) layer[control] = event.target.value.toUpperCase();
-  else if (["cropX","cropY","cropZoom","imageBrightness","imageContrast","imageSaturation","imageBlur","frameInset","frameWidth","frameRadius"].includes(control)) data[control] = Number(event.target.value);
+  else if (["cropX","cropY","cropZoom","imageBrightness","imageContrast","imageSaturation","imageBlur","imageHue","frameInset","frameWidth","frameRadius"].includes(control)) data[control] = Number(event.target.value);
   else if (["imageGrayscale","frameOpacity"].includes(control)) data[control] = Number(event.target.value)/100;
+  else if (["imageFlipH","imageFlipV"].includes(control)) data[control] = event.target.checked;
+  else if (control === "imageFit") data.imageFit = event.target.value === "contain" ? "contain" : "cover";
+  else if (control === "imageBackground") data.imageBackground = event.target.value.toUpperCase();
   else if (control === "frameColor") data.frameColor = event.target.value.toUpperCase();
   else if (control === "size" || control === "rotation") layer[control] = Number(event.target.value);
   else if (control === "opacity") layer.opacity = Number(event.target.value)/100;
@@ -325,6 +337,7 @@ $("edit").oninput = event => {
   if (output) {
     if (["imageBrightness","imageContrast","imageSaturation","imageGrayscale","frameOpacity","cropX","cropY"].includes(control)) output.textContent = `${Math.round(data[control]*100)/(["cropX","cropY"].includes(control)?100:1)}%`;
     else if (control === "cropZoom") output.textContent = `${data.cropZoom.toFixed(1)}×`;
+    else if (control === "imageHue") output.textContent = `${Math.round(data.imageHue)}°`;
     else output.textContent = `${data[control]}px`;
   }
   const slide = project.slides.find(item=>item.id===slideId); const canvas = editor.querySelector(".canvas"); canvas.outerHTML = `<div class="canvas" data-canvas="${slide.id}">${background(slide,data)}<div class="safe-zone"></div>${data.layers.map((item,i)=>layerHtml(item,i,i===index,textSelections.get(`${slide.id}:${i}`),directEditing.has(`${slide.id}:${i}`))).join("")}</div>`; bindDrag();
@@ -375,6 +388,11 @@ $("edit").onclick = async event => {
     }
     if (event.target.closest(".reset-text-box")) { remember(slideId); Object.assign(data.layers[index], withTextBox()); render(); return; }
     if (event.target.closest(".reset-image")) { remember(slideId); Object.assign(data, imageDefaults()); render(); return; }
+    const zoomStep = event.target.closest("[data-zoom-step]")?.dataset.zoomStep;
+    if (zoomStep) { remember(slideId); data.cropZoom = Number(Math.max(1, Math.min(MAX_ZOOM, data.cropZoom + Number(zoomStep))).toFixed(2)); render(); return; }
+    if (event.target.closest(".center-image")) { remember(slideId); data.cropX = 50; data.cropY = 50; render(); return; }
+    if (event.target.closest(".fill-image")) { remember(slideId); data.imageFit = "cover"; render(); return; }
+    if (event.target.closest(".fit-image")) { remember(slideId); data.imageFit = "contain"; data.cropZoom = 1; data.cropX = 50; data.cropY = 50; render(); return; }
     if (event.target.closest(".select-all-targets")) { editor.querySelectorAll(".style-target-slide").forEach(input=>input.checked=true); return; }
     if (event.target.closest(".clear-all-targets")) { editor.querySelectorAll(".style-target-slide").forEach(input=>input.checked=false); return; }
     if (event.target.closest(".apply-selected-slides")) {
@@ -397,7 +415,9 @@ $("edit").onclick = async event => {
         body:JSON.stringify({
           cropX:data.cropX,cropY:data.cropY,cropZoom:data.cropZoom,
           imageBrightness:data.imageBrightness,imageContrast:data.imageContrast,imageSaturation:data.imageSaturation,
-          imageBlur:data.imageBlur,imageGrayscale:data.imageGrayscale,frameInset:data.frameInset,frameWidth:data.frameWidth,
+          imageBlur:data.imageBlur,imageGrayscale:data.imageGrayscale,imageHue:data.imageHue,
+          imageFit:data.imageFit,imageBackground:data.imageBackground,
+          imageFlipH:data.imageFlipH,imageFlipV:data.imageFlipV,frameInset:data.frameInset,frameWidth:data.frameWidth,
           frameColor:data.frameColor,frameOpacity:data.frameOpacity,frameRadius:data.frameRadius,
           textEnabled:true,overlayText:primary.content,textFont:primary.font,textSize:primary.size,textPosition:"center",
           textColor:primary.color,textAlign:primary.align,textX:primary.x,textY:primary.y,textLayers:data.layers
@@ -408,7 +428,66 @@ $("edit").onclick = async event => {
   } catch(error){alert(error.message);}
 };
 
-function bindDrag() { document.querySelectorAll(".canvas").forEach(canvas => canvas.querySelectorAll(".layer").forEach(element => { element.onpointerdown = event => { if (element.isContentEditable) return; const slideId=canvas.dataset.canvas,index=Number(element.dataset.layer),data=drafts.get(slideId),startX=event.clientX,startY=event.clientY;let moved=false;selectedLayers.set(slideId,index);canvas.querySelectorAll(".layer").forEach((item,i)=>item.classList.toggle("active",i===index));element.setPointerCapture(event.pointerId);element.onpointermove=move=>{if(Math.hypot(move.clientX-startX,move.clientY-startY)<4&&!moved)return;if(!moved){remember(slideId);moved=true;}const rect=canvas.getBoundingClientRect(),x=Math.max(3,Math.min(97,(move.clientX-rect.left)/rect.width*100)),y=Math.max(3,Math.min(97,(move.clientY-rect.top)/rect.height*100));data.layers[index].x=Number(x.toFixed(2));data.layers[index].y=Number(y.toFixed(2));element.style.left=`${x}%`;element.style.top=`${y}%`;};element.onpointerup=()=>{element.onpointermove=null;if(moved)render();};}; })); }
+// Đồng bộ thanh trượt với thao tác kéo/lăn chuột trên khung xem trước mà không phải render lại cả trang.
+function syncImageControls(slideId) {
+  const editor = document.querySelector(`[data-editor="${slideId}"]`), data = drafts.get(slideId);
+  if (!editor || !data) return;
+  for (const control of ["cropX", "cropY", "cropZoom"]) {
+    const input = editor.querySelector(`[data-control="${control}"]`);
+    if (input) input.value = data[control];
+    const output = editor.querySelector(`[data-value-for="${control}"]`);
+    if (output) output.textContent = control === "cropZoom" ? `${data.cropZoom.toFixed(1)}×` : `${Math.round(data[control])}%`;
+  }
+}
+
+let wheelTimer = null, wheelSlideId = null;
+function bindCanvasPan() {
+  document.querySelectorAll(".canvas").forEach(canvas => {
+    const surface = canvas.querySelector("[data-canvas-bg]"), slideId = canvas.dataset.canvas, data = drafts.get(slideId);
+    if (!surface || !data) return;
+    const applyZoom = () => surface.querySelectorAll(".canvas-zoom").forEach(cell => {
+      cell.style.transform = `scale(${data.cropZoom})`;
+      cell.style.transformOrigin = `${data.cropX}% ${data.cropY}%`;
+    });
+    surface.onpointerdown = event => {
+      if (event.target.closest(".layer")) return;
+      const rect = canvas.getBoundingClientRect(), startX = event.clientX, startY = event.clientY;
+      const originX = data.cropX, originY = data.cropY;
+      let moved = false;
+      surface.setPointerCapture(event.pointerId);
+      surface.classList.add("panning");
+      surface.onpointermove = move => {
+        const dx = move.clientX - startX, dy = move.clientY - startY;
+        if (!moved && Math.hypot(dx, dy) < 4) return;
+        if (!moved) { remember(slideId); moved = true; }
+        // Ở mức zoom z, khung nhìn chỉ trượt được (z-1) lần chiều rộng khung, nên 1px kéo tay
+        // tương ứng 100/(rộng·(z-1)) phần trăm trọng tâm.
+        const span = data.cropZoom - 1;
+        if (span <= .001) return;
+        data.cropX = Number(Math.max(0, Math.min(100, originX - dx / (rect.width * span) * 100)).toFixed(2));
+        data.cropY = Number(Math.max(0, Math.min(100, originY - dy / (rect.height * span) * 100)).toFixed(2));
+        applyZoom(); syncImageControls(slideId);
+      };
+      const finish = () => { surface.onpointermove = null; surface.classList.remove("panning"); if (moved) render(); };
+      surface.onpointerup = finish; surface.onpointercancel = finish;
+    };
+    surface.onwheel = event => {
+      // Chỉ thu phóng khi giữ Ctrl/Cmd (cũng là tín hiệu của thao tác chụm hai ngón trên trackpad),
+      // để lăn chuột thường vẫn cuộn trang như bình thường.
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      const next = Number(Math.max(1, Math.min(MAX_ZOOM, data.cropZoom - event.deltaY * .0015)).toFixed(2));
+      if (next === data.cropZoom) return;
+      if (wheelSlideId !== slideId) { remember(slideId); wheelSlideId = slideId; }
+      data.cropZoom = next;
+      applyZoom(); syncImageControls(slideId);
+      clearTimeout(wheelTimer);
+      wheelTimer = setTimeout(() => { wheelSlideId = null; }, 400);
+    };
+  });
+}
+
+function bindDrag() { bindCanvasPan(); document.querySelectorAll(".canvas").forEach(canvas => canvas.querySelectorAll(".layer").forEach(element => { element.onpointerdown = event => { if (element.isContentEditable) return; const slideId=canvas.dataset.canvas,index=Number(element.dataset.layer),data=drafts.get(slideId),startX=event.clientX,startY=event.clientY;let moved=false;selectedLayers.set(slideId,index);canvas.querySelectorAll(".layer").forEach((item,i)=>item.classList.toggle("active",i===index));element.setPointerCapture(event.pointerId);element.onpointermove=move=>{if(Math.hypot(move.clientX-startX,move.clientY-startY)<4&&!moved)return;if(!moved){remember(slideId);moved=true;}const rect=canvas.getBoundingClientRect(),x=Math.max(3,Math.min(97,(move.clientX-rect.left)/rect.width*100)),y=Math.max(3,Math.min(97,(move.clientY-rect.top)/rect.height*100));data.layers[index].x=Number(x.toFixed(2));data.layers[index].y=Number(y.toFixed(2));element.style.left=`${x}%`;element.style.top=`${y}%`;};element.onpointerup=()=>{element.onpointermove=null;if(moved)render();};}; })); }
 
 $("download").onclick = async event => { if (event.target.id !== "startRender") return; try { const job=await json(`/api/projects/${projectId}/render-jobs`,{method:"POST"});$("jobBox").classList.remove("hidden");pollJob(job.id); } catch(error){alert(error.message);} };
 async function pollJob(id){clearTimeout(renderTimer);try{const job=await json(`/api/render-jobs/${id}`);$("jobText").textContent=`${job.status} · ${job.progress}%`;$("jobProgress").style.width=`${job.progress}%`;if(job.status==="READY"){$("jobDownload").href=job.downloadUrl;$("jobDownload").classList.remove("hidden");return;}if(job.status==="FAILED")throw Error(job.error);renderTimer=setTimeout(()=>pollJob(id),1000);}catch(error){alert(error.message);}}

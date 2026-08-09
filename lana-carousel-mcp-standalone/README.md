@@ -17,7 +17,9 @@ Production:
 - Tự động hết hạn dự án sau 14 ngày; hỗ trợ gia hạn, clone và xóa thủ công.
 - Nhập ảnh/video từ URL với kiểm tra SSRF, redirect, MIME, magic bytes, dung lượng và timeout.
 - Tối đa 10 ảnh ứng viên cho mỗi slide, được bảo vệ bằng invariant SQLite khi có request đồng thời.
-- Duyệt một ảnh hoặc ghép nhiều ảnh dạng lưới; crop, zoom, filter và tùy chỉnh khung.
+- Duyệt một ảnh hoặc ghép nhiều ảnh dạng lưới; crop, zoom, lật ảnh, chọn kiểu vừa khung, filter và tùy chỉnh khung.
+- Sửa ảnh trực tiếp trên khung xem trước: kéo để đổi vị trí, Ctrl/Cmd + lăn chuột để phóng to/thu nhỏ.
+- Ảnh tải về khớp ảnh preview theo hợp đồng ghi trong [docs/preview-render-parity.md](docs/preview-render-parity.md).
 - Nhiều lớp chữ kéo thả, rich text và animation trong MP4.
 - Video 9:16, 1:1 và 16:9; TTS, phụ đề và nhạc nền.
 - Audio upload có lifecycle `STAGED → REFERENCED`; file chưa được lưu vào settings/version bị xóa sau grace period.

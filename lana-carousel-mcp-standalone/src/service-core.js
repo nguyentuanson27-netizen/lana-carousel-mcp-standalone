@@ -31,7 +31,11 @@ function mapSlide(row) {
     cropX: row.crop_x ?? 50, cropY: row.crop_y ?? 50, cropZoom: row.crop_zoom ?? 1,
     imageBrightness: row.image_brightness ?? 1, imageContrast: row.image_contrast ?? 1,
     imageSaturation: row.image_saturation ?? 1, imageBlur: row.image_blur ?? 0,
-    imageGrayscale: row.image_grayscale ?? 0, frameInset: row.frame_inset ?? 40,
+    imageGrayscale: row.image_grayscale ?? 0, imageHue: row.image_hue ?? 0,
+    imageFit: row.image_fit === "contain" ? "contain" : "cover",
+    imageBackground: row.image_background || "#181411",
+    imageFlipH: bool(row.image_flip_h), imageFlipV: bool(row.image_flip_v),
+    frameInset: row.frame_inset ?? 40,
     frameWidth: row.frame_width ?? 0, frameColor: row.frame_color || "#FFFFFF",
     frameOpacity: row.frame_opacity ?? 1, frameRadius: row.frame_radius ?? 0,
     textLayers: json(row.text_layers, []), designSaved: Boolean(row.design_saved_at), designSavedAt: row.design_saved_at || null,
@@ -144,7 +148,7 @@ export async function cloneProject(projectId) {
       for (const slide of source.slides) {
         const newSlideId = slideMap.get(slide.id);
         sql.createSlide.run({ id: newSlideId, project_id: cloneId, position: slide.position, subject: slide.subject, headline: slide.headline, body: slide.body, created_at: timestamp, updated_at: timestamp });
-        sql.updateSlideCrop.run({ id: newSlideId, project_id: cloneId, crop_x: slide.cropX, crop_y: slide.cropY, crop_zoom: slide.cropZoom, image_brightness: slide.imageBrightness, image_contrast: slide.imageContrast, image_saturation: slide.imageSaturation, image_blur: slide.imageBlur, image_grayscale: slide.imageGrayscale, frame_inset: slide.frameInset, frame_width: slide.frameWidth, frame_color: slide.frameColor, frame_opacity: slide.frameOpacity, frame_radius: slide.frameRadius, updated_at: timestamp });
+        sql.updateSlideCrop.run(imageDesignColumns({ id: newSlideId, projectId: cloneId, source: slide, updatedAt: timestamp }));
         sql.updateSlideContent.run({ id: newSlideId, project_id: cloneId, headline: slide.headline, body: slide.body, text_enabled: slide.textEnabled ? 1 : 0, overlay_text: slide.overlayText, text_font: slide.textFont, text_size: slide.textSize, text_position: slide.textPosition, text_color: slide.textColor, text_align: slide.textAlign, text_x: slide.textX, text_y: slide.textY, text_layers: JSON.stringify(slide.textLayers || []), updated_at: timestamp });
         if (slide.designSaved) sql.markSlideDesignSaved.run(timestamp, timestamp, newSlideId, cloneId);
         sql.updateSlideVideo.run(JSON.stringify(slide.video || {}), timestamp, newSlideId, cloneId);
@@ -198,12 +202,35 @@ export function updateBrandKit({ projectId, font, color, applyToAll = false }) {
   return getProject(projectId);
 }
 
+export const IMAGE_DESIGN_DEFAULTS = Object.freeze({
+  cropX: 50, cropY: 50, cropZoom: 1,
+  imageBrightness: 1, imageContrast: 1, imageSaturation: 1, imageBlur: 0, imageGrayscale: 0, imageHue: 0,
+  imageFit: "cover", imageBackground: "#181411", imageFlipH: false, imageFlipV: false,
+  frameInset: 40, frameWidth: 0, frameColor: "#FFFFFF", frameOpacity: 1, frameRadius: 0
+});
+
+function imageDesignColumns({ id, projectId, source = {}, input = {}, updatedAt }) {
+  const pick = key => input[key] ?? source[key] ?? IMAGE_DESIGN_DEFAULTS[key];
+  return {
+    id, project_id: projectId, updated_at: updatedAt,
+    crop_x: pick("cropX"), crop_y: pick("cropY"), crop_zoom: pick("cropZoom"),
+    image_brightness: pick("imageBrightness"), image_contrast: pick("imageContrast"),
+    image_saturation: pick("imageSaturation"), image_blur: pick("imageBlur"),
+    image_grayscale: pick("imageGrayscale"), image_hue: pick("imageHue"),
+    image_fit: pick("imageFit") === "contain" ? "contain" : "cover",
+    image_background: pick("imageBackground"),
+    image_flip_h: pick("imageFlipH") ? 1 : 0, image_flip_v: pick("imageFlipV") ? 1 : 0,
+    frame_inset: pick("frameInset"), frame_width: pick("frameWidth"), frame_color: pick("frameColor"),
+    frame_opacity: pick("frameOpacity"), frame_radius: pick("frameRadius")
+  };
+}
+
 export function updateSlideCrop(input) {
   const row = sql.getSlide.get(input.slideId);
   if (!row || row.project_id !== input.projectId) throw new AppError("SLIDE_NOT_FOUND", "Không tìm thấy slide.", 404);
   const slide = mapSlide(row), timestamp = now();
   db.transaction(() => {
-    sql.updateSlideCrop.run({ id: input.slideId, project_id: input.projectId, crop_x: input.cropX ?? slide.cropX, crop_y: input.cropY ?? slide.cropY, crop_zoom: input.cropZoom ?? slide.cropZoom, image_brightness: input.imageBrightness ?? slide.imageBrightness, image_contrast: input.imageContrast ?? slide.imageContrast, image_saturation: input.imageSaturation ?? slide.imageSaturation, image_blur: input.imageBlur ?? slide.imageBlur, image_grayscale: input.imageGrayscale ?? slide.imageGrayscale, frame_inset: input.frameInset ?? slide.frameInset, frame_width: input.frameWidth ?? slide.frameWidth, frame_color: input.frameColor ?? slide.frameColor, frame_opacity: input.frameOpacity ?? slide.frameOpacity, frame_radius: input.frameRadius ?? slide.frameRadius, updated_at: timestamp });
+    sql.updateSlideCrop.run(imageDesignColumns({ id: input.slideId, projectId: input.projectId, source: slide, input, updatedAt: timestamp }));
     sql.markImagesPending.run(timestamp, input.projectId);
     sql.markSlideImagePending.run(input.slideId);
     saveVersion(input.projectId, "update_image_design");
@@ -216,16 +243,7 @@ export function updateSlideDesign(input) {
   if (!row || row.project_id !== input.projectId) throw new AppError("SLIDE_NOT_FOUND", "Không tìm thấy slide.", 404);
   const project = requireProject(input.projectId), slide = mapSlide(row), timestamp = now();
   db.transaction(() => {
-    sql.updateSlideCrop.run({
-      id: input.slideId, project_id: input.projectId,
-      crop_x: input.cropX ?? slide.cropX, crop_y: input.cropY ?? slide.cropY, crop_zoom: input.cropZoom ?? slide.cropZoom,
-      image_brightness: input.imageBrightness ?? slide.imageBrightness, image_contrast: input.imageContrast ?? slide.imageContrast,
-      image_saturation: input.imageSaturation ?? slide.imageSaturation, image_blur: input.imageBlur ?? slide.imageBlur,
-      image_grayscale: input.imageGrayscale ?? slide.imageGrayscale, frame_inset: input.frameInset ?? slide.frameInset,
-      frame_width: input.frameWidth ?? slide.frameWidth, frame_color: input.frameColor ?? slide.frameColor,
-      frame_opacity: input.frameOpacity ?? slide.frameOpacity, frame_radius: input.frameRadius ?? slide.frameRadius,
-      updated_at: timestamp
-    });
+    sql.updateSlideCrop.run(imageDesignColumns({ id: input.slideId, projectId: input.projectId, source: slide, input, updatedAt: timestamp }));
     sql.updateSlideContent.run({
       id: input.slideId, project_id: input.projectId, headline: slide.headline, body: slide.body,
       text_enabled: input.textEnabled ?? slide.textEnabled ? 1 : 0,
@@ -254,7 +272,7 @@ export function restoreProjectVersion(projectId, versionId) {
   db.transaction(() => {
     for (const oldSlide of snapshot.slides || []) {
       if (!sql.getSlide.get(oldSlide.id)) continue;
-      sql.updateSlideCrop.run({ id: oldSlide.id, project_id: projectId, crop_x: oldSlide.cropX ?? 50, crop_y: oldSlide.cropY ?? 50, crop_zoom: oldSlide.cropZoom ?? 1, image_brightness: oldSlide.imageBrightness ?? 1, image_contrast: oldSlide.imageContrast ?? 1, image_saturation: oldSlide.imageSaturation ?? 1, image_blur: oldSlide.imageBlur ?? 0, image_grayscale: oldSlide.imageGrayscale ?? 0, frame_inset: oldSlide.frameInset ?? 40, frame_width: oldSlide.frameWidth ?? 0, frame_color: oldSlide.frameColor || "#FFFFFF", frame_opacity: oldSlide.frameOpacity ?? 1, frame_radius: oldSlide.frameRadius ?? 0, updated_at: timestamp });
+      sql.updateSlideCrop.run(imageDesignColumns({ id: oldSlide.id, projectId, source: oldSlide, updatedAt: timestamp }));
       sql.updateSlideContent.run({ id: oldSlide.id, project_id: projectId, headline: oldSlide.headline, body: oldSlide.body, text_enabled: oldSlide.textEnabled ? 1 : 0, overlay_text: oldSlide.overlayText, text_font: oldSlide.textFont, text_size: oldSlide.textSize, text_position: oldSlide.textPosition, text_color: oldSlide.textColor, text_align: oldSlide.textAlign, text_x: oldSlide.textX, text_y: oldSlide.textY, text_layers: JSON.stringify(oldSlide.textLayers || []), updated_at: timestamp });
       if (oldSlide.designSaved) sql.markSlideDesignSaved.run(timestamp, timestamp, oldSlide.id, projectId);
       sql.updateSlideVideo.run(JSON.stringify(oldSlide.video || {}), timestamp, oldSlide.id, projectId);
@@ -379,6 +397,9 @@ export function updateSlideContent(input) {
 
 const xmlEscape = value => String(value).replace(/[<>&"']/g, character => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" })[character]);
 
+// Khớp `.layer{line-height:1.12}` trong stitch-ui.css; ASCENT_RATIO là phần ascent trung bình của font sans/serif.
+const LINE_HEIGHT = 1.12, ASCENT_RATIO = .8;
+
 function layerTextSvg(layer, width, height) {
   if (layer.enabled === false || !layer.content?.trim()) return "";
   const number = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -403,7 +424,12 @@ function layerTextSvg(layer, width, height) {
   const boxWidth = width * Math.max(20, Math.min(96, number(layer.boxWidth, 80))) / 100;
   const paddingX = Math.max(0, Math.min(120, number(layer.boxPaddingX, 32)));
   const paddingY = Math.max(0, Math.min(80, number(layer.boxPaddingY, 20)));
-  const availableWidth = boxEnabled ? Math.max(baseSize * 4, boxWidth - paddingX * 2) : 820;
+  const borderWidth = Math.max(0, Math.min(40, number(layer.boxBorderWidth, 0)));
+  // `.layer` trong preview dùng `box-sizing: border-box` (đệm và viền nằm trong chiều rộng hộp)
+  // và bị chặn bởi `max-width: 96%` với đệm mặc định 8px khi tắt hộp chữ.
+  const availableWidth = boxEnabled
+    ? Math.max(baseSize * 4, boxWidth - (paddingX + borderWidth) * 2)
+    : Math.max(baseSize * 4, width * .96 - 16);
   const lines = [], tokens = [...content.matchAll(/\n|[^\S\n]+|[^\s\n]+/gu)];
   let line = [], lineWidth = 0;
   const charWidth = (character, size) => size * (/\s/u.test(character) ? .32 : .55);
@@ -440,16 +466,18 @@ function layerTextSvg(layer, width, height) {
       if (previous?.size === entry.size && previous?.font === entry.font && previous?.color === entry.color && previous?.weight === entry.weight && previous?.underline === entry.underline) previous.text += entry.character;
       else segments.push({ text: entry.character, size: entry.size, font: entry.font, color: entry.color, weight: entry.weight, underline: entry.underline });
     }
-    return { maxSize, height: Math.round(maxSize * 1.18), segments };
+    return { maxSize, height: Math.round(maxSize * LINE_HEIGHT), segments };
   });
   const textHeight = preparedLines.reduce((sum, item) => sum + item.height, 0);
   const centerX = Math.round(width * Math.max(3, Math.min(97, number(layer.x, 50))) / 100);
   const centerY = Math.round(height * Math.max(3, Math.min(97, number(layer.y, 80))) / 100);
-  const boxHeight = textHeight + paddingY * 2;
+  // Preview canh giữa hộp viền (border-box) quanh điểm (x%, y%) nhờ `translate(-50%,-50%)`.
+  const boxHeight = textHeight + (paddingY + borderWidth) * 2;
   const boxLeft = centerX - boxWidth / 2, boxTop = centerY - boxHeight / 2;
-  const textTop = boxEnabled ? boxTop + paddingY : centerY - textHeight / 2;
+  const textTop = boxEnabled ? boxTop + paddingY + borderWidth : centerY - textHeight / 2;
   const anchor = layer.align === "left" ? "start" : layer.align === "right" ? "end" : "middle";
-  const x = boxEnabled ? (layer.align === "left" ? boxLeft + paddingX : layer.align === "right" ? boxLeft + boxWidth - paddingX : centerX) : centerX;
+  const textInset = paddingX + borderWidth;
+  const x = boxEnabled ? (layer.align === "left" ? boxLeft + textInset : layer.align === "right" ? boxLeft + boxWidth - textInset : centerX) : centerX;
   const font = xmlEscape(layer.font || "TikTok Sans");
   const color = /^#[0-9a-f]{6}$/iu.test(layer.color) ? layer.color : "#FFFFFF";
   const opacity = Math.max(.1, Math.min(1, number(layer.opacity, 1)));
@@ -460,18 +488,21 @@ function layerTextSvg(layer, width, height) {
     const borderColor = /^#[0-9a-f]{6}$/iu.test(layer.boxBorderColor) ? layer.boxBorderColor : "#333333";
     const boxOpacity = Math.max(0, Math.min(1, number(layer.boxOpacity, .9)));
     const borderOpacity = Math.max(0, Math.min(1, number(layer.boxBorderOpacity, 1)));
-    const borderWidth = Math.max(0, Math.min(40, number(layer.boxBorderWidth, 0)));
     const radius = Math.max(0, Math.min(120, number(layer.boxRadius, 24)));
-    box = `<rect x="${boxLeft}" y="${boxTop}" width="${boxWidth}" height="${boxHeight}" rx="${radius}" ry="${radius}" fill="${boxColor}" fill-opacity="${boxOpacity}" stroke="${borderColor}" stroke-opacity="${borderOpacity}" stroke-width="${borderWidth}"/>`;
+    // Viền CSS nằm phía trong hộp nên tâm nét vẽ lùi vào nửa độ dày viền.
+    const inset = borderWidth / 2;
+    box = `<rect x="${boxLeft + inset}" y="${boxTop + inset}" width="${Math.max(1, boxWidth - borderWidth)}" height="${Math.max(1, boxHeight - borderWidth)}" rx="${radius}" ry="${radius}" fill="${boxColor}" fill-opacity="${boxOpacity}" stroke="${borderColor}" stroke-opacity="${borderOpacity}" stroke-width="${borderWidth}"/>`;
   }
   let cursorY = textTop;
   const text = preparedLines.map(item => {
-    const baseline = cursorY + item.maxSize;
+    // Trong ô dòng cao `LINE_HEIGHT × size`, đường baseline nằm ở nửa khoảng cách dòng cộng phần ascent.
+    const baseline = cursorY + (LINE_HEIGHT - 1) * item.maxSize / 2 + ASCENT_RATIO * item.maxSize;
     cursorY += item.height;
     const spans = item.segments.map(segment => `<tspan font-size="${segment.size}" font-family="${xmlEscape(segment.font)}" font-weight="${segment.weight}" fill="${segment.color}" text-decoration="${segment.underline ? "underline" : "none"}">${xmlEscape(segment.text)}</tspan>`).join("");
-    return `<text x="${x}" y="${baseline}" text-anchor="${anchor}" font-family="${font}" font-weight="${String(layer.weight || "700")}" fill="${color}" fill-opacity="${opacity}" stroke="#000000" stroke-opacity="${boxEnabled ? 0 : .45}" stroke-width="${boxEnabled ? 0 : 5}" paint-order="stroke">${spans}</text>`;
+    return `<text x="${x}" y="${baseline}" text-anchor="${anchor}" font-family="${font}" font-weight="${String(layer.weight || "700")}" fill="${color}" stroke="#000000" stroke-opacity="${boxEnabled ? 0 : .45}" stroke-width="${boxEnabled ? 0 : 5}" paint-order="stroke">${spans}</text>`;
   }).join("");
-  return `<g transform="rotate(${rotation} ${centerX} ${centerY})">${box}${text}</g>`;
+  // Preview đặt `opacity` lên cả lớp chữ (hộp lẫn chữ), không chỉ riêng phần chữ.
+  return `<g opacity="${opacity}" transform="rotate(${rotation} ${centerX} ${centerY})">${box}${text}</g>`;
 }
 function textOverlaySvg(slide, width, height) {
   const layers = slide.textLayers?.length ? slide.textLayers : (slide.textEnabled ? [{ content: slide.overlayText, font: slide.textFont, size: slide.textSize, x: slide.textX, y: slide.textY, color: slide.textColor, align: slide.textAlign, enabled: true }] : []);
@@ -485,23 +516,71 @@ function assetPath(asset) {
   return path.join(config.assetDirectory, key);
 }
 
-async function cropAsset(asset, slide, width, height) {
-  const zoom = Math.max(1, Math.min(3, Number(slide.cropZoom) || 1));
-  const scaledWidth = Math.ceil(width * zoom), scaledHeight = Math.ceil(height * zoom);
-  const resized = await sharp(assetPath(asset)).resize(scaledWidth, scaledHeight, { fit: "cover", position: "attention" }).toBuffer();
-  const left = Math.round((scaledWidth - width) * Math.max(0, Math.min(100, Number(slide.cropX) || 50)) / 100);
-  const top = Math.round((scaledHeight - height) * Math.max(0, Math.min(100, Number(slide.cropY) || 50)) / 100);
-  const cropped = await sharp(resized).extract({ left, top, width, height }).toBuffer();
-  const number = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
-  const brightness = Math.max(.3, Math.min(2, number(slide.imageBrightness, 1)));
-  const contrast = Math.max(.3, Math.min(2, number(slide.imageContrast, 1)));
-  const saturation = Math.max(0, Math.min(2, number(slide.imageSaturation, 1)));
-  const grayscale = Math.max(0, Math.min(1, number(slide.imageGrayscale, 0)));
-  const blur = Math.max(0, Math.min(20, number(slide.imageBlur, 0)));
-  let pipeline = sharp(cropped).modulate({ brightness, saturation }).linear(contrast, 128 * (1 - contrast));
-  if (grayscale > 0) pipeline = pipeline.recomb([[1 - grayscale + .2126 * grayscale, .7152 * grayscale, .0722 * grayscale], [.2126 * grayscale, 1 - grayscale + .7152 * grayscale, .0722 * grayscale], [.2126 * grayscale, .7152 * grayscale, 1 - grayscale + .0722 * grayscale]]);
+const clamp = (value, min, max, fallback) => {
+  const parsed = Number(value);
+  return Math.max(min, Math.min(max, Number.isFinite(parsed) ? parsed : fallback));
+};
+const hexColor = (value, fallback) => (/^#[0-9a-f]{6}$/iu.test(value) ? value : fallback);
+
+// Ma trận bão hòa của CSS `saturate()` (filter-effects spec). `grayscale(g)` chính là `saturate(1-g)`
+// và tích của hai ma trận bão hòa là ma trận bão hòa của tích hệ số, nên chỉ cần một phép nhân.
+function saturationMatrix(amount) {
+  const [lr, lg, lb] = [.213, .715, .072];
+  return [
+    [lr + (1 - lr) * amount, lg - lg * amount, lb - lb * amount],
+    [lr - lr * amount, lg + (1 - lg) * amount, lb - lb * amount],
+    [lr - lr * amount, lg - lg * amount, lb + (1 - lb) * amount]
+  ];
+}
+
+// Ma trận `hue-rotate()` của CSS, cùng hệ số luma với saturate.
+function hueRotateMatrix(degrees) {
+  const radians = degrees * Math.PI / 180, cos = Math.cos(radians), sin = Math.sin(radians);
+  return [
+    [.213 + cos * .787 - sin * .213, .715 - cos * .715 - sin * .715, .072 - cos * .072 + sin * .928],
+    [.213 - cos * .213 + sin * .143, .715 + cos * .285 + sin * .140, .072 - cos * .072 - sin * .283],
+    [.213 - cos * .213 - sin * .787, .715 - cos * .715 + sin * .715, .072 + cos * .928 + sin * .072]
+  ];
+}
+
+const multiplyMatrix = (a, b) => a.map(row => b[0].map((_, column) => row.reduce((sum, value, index) => sum + value * b[index][column], 0)));
+const isIdentityMatrix = matrix => matrix.every((row, y) => row.every((value, x) => Math.abs(value - (x === y ? 1 : 0)) < 1e-6));
+
+// Áp dụng đúng thứ tự và đúng công thức của chuỗi CSS filter dùng trong preview:
+// brightness → contrast → saturate → grayscale → hue-rotate → blur.
+// Preview lọc cả khung ảnh nền một lần nên bản render cũng phải lọc sau khi ghép lưới,
+// nếu lọc từng ô thì vệt blur ở mép ô sẽ khác preview.
+function applyImageFilters(pipeline, slide) {
+  const brightness = clamp(slide.imageBrightness, .3, 2, 1);
+  const contrast = clamp(slide.imageContrast, .3, 2, 1);
+  const saturation = clamp(slide.imageSaturation, 0, 2, 1);
+  const grayscale = clamp(slide.imageGrayscale, 0, 1, 0);
+  const hue = clamp(slide.imageHue, -180, 180, 0);
+  const blur = clamp(slide.imageBlur, 0, 20, 0);
+  // brightness(b) rồi contrast(c) trên sRGB: out = in·b·c + 128·(1-c)
+  if (brightness !== 1 || contrast !== 1) pipeline = pipeline.linear(brightness * contrast, 128 * (1 - contrast));
+  const matrix = multiplyMatrix(hueRotateMatrix(hue), saturationMatrix(saturation * (1 - grayscale)));
+  if (!isIdentityMatrix(matrix)) pipeline = pipeline.recomb(matrix);
   if (blur >= .3) pipeline = pipeline.blur(blur);
-  return pipeline.toBuffer();
+  return pipeline;
+}
+
+// Hình học trùng khớp với preview: ảnh phủ (hoặc lọt) ô theo `object-fit`, rồi
+// `transform: scale(zoom)` với `transform-origin: cropX% cropY%`.
+async function cropAsset(asset, slide, width, height) {
+  const zoom = clamp(slide.cropZoom, 1, 4, 1);
+  const scaledWidth = Math.ceil(width * zoom), scaledHeight = Math.ceil(height * zoom);
+  const background = hexColor(slide.imageBackground, IMAGE_DESIGN_DEFAULTS.imageBackground);
+  const fit = slide.imageFit === "contain" ? "contain" : "cover";
+  let source = sharp(assetPath(asset)).rotate();
+  if (slide.imageFlipH) source = source.flop();
+  if (slide.imageFlipV) source = source.flip();
+  // `position: "centre"` là điều kiện bắt buộc để khớp preview: `object-fit: cover` của trình duyệt
+  // luôn cắt ở tâm, còn "attention"/"entropy" chọn vùng theo nội dung nên ra khung hình khác hẳn.
+  const resized = await source.resize(scaledWidth, scaledHeight, { fit, position: "centre", background }).toBuffer();
+  const left = Math.round((scaledWidth - width) * clamp(slide.cropX, 0, 100, 50) / 100);
+  const top = Math.round((scaledHeight - height) * clamp(slide.cropY, 0, 100, 50) / 100);
+  return sharp(resized).extract({ left, top, width, height }).toBuffer();
 }
 
 function frameOverlaySvg(slide, width, height) {
@@ -519,17 +598,33 @@ export async function renderSlideSnapshot(slide, assets, { width = 1080, height 
   if (!ids.length) throw new AppError("SLIDE_HAS_NO_IMAGE", "Slide chưa có ảnh được chọn.", 409);
   const selectedAssets = ids.map(id => assetMap.get(id)).filter(Boolean);
   if (selectedAssets.length !== ids.length) throw new AppError("ASSET_NOT_FOUND", "Thiếu asset của slide.", 404);
+  const background = hexColor(slide.imageBackground, IMAGE_DESIGN_DEFAULTS.imageBackground);
   let base;
   if (slide.compositionMode !== "grid" || selectedAssets.length === 1) base = await cropAsset(selectedAssets[0], slide, width, height);
   else {
+    // Cùng công thức lưới với preview: `grid-template-columns: repeat(columns, 1fr)` và số hàng suy ra từ số ảnh.
     const columns = selectedAssets.length <= 2 ? 1 : selectedAssets.length <= 6 ? 2 : 3;
     const rows = Math.ceil(selectedAssets.length / columns);
-    const cellWidth = Math.floor(width / columns), cellHeight = Math.floor(height / rows);
-    const composites = await Promise.all(selectedAssets.map(async (asset, index) => ({ input: await cropAsset(asset, slide, cellWidth, cellHeight), left: (index % columns) * cellWidth, top: Math.floor(index / columns) * cellHeight })));
-    base = await sharp({ create: { width, height, channels: 3, background: "#f3eee7" } }).composite(composites).png().toBuffer();
+    // Ô cuối mỗi hàng/cột nuốt phần dư để không còn vệt nền do làm tròn.
+    const columnWidth = index => Math.floor(width / columns) + (index === columns - 1 ? width % columns : 0);
+    const rowHeight = index => Math.floor(height / rows) + (index === rows - 1 ? height % rows : 0);
+    const composites = await Promise.all(selectedAssets.map(async (asset, index) => {
+      const column = index % columns, row = Math.floor(index / columns);
+      return {
+        input: await cropAsset(asset, slide, columnWidth(column), rowHeight(row)),
+        left: column * Math.floor(width / columns), top: row * Math.floor(height / rows)
+      };
+    }));
+    // Ô trống của lưới hiện màu nền canvas, giống hệt preview.
+    base = await sharp({ create: { width, height, channels: 3, background } }).composite(composites).png().toBuffer();
   }
   const frame = frameOverlaySvg(slide, width, height), overlay = textOverlaySvg(slide, width, height);
-  return sharp(base).composite([frame, overlay].filter(Boolean).map(input => ({ input, left: 0, top: 0 }))).webp({ quality: 92 }).toBuffer();
+  // Preview đặt màu nền ở `.canvas-bg`, tức là nằm dưới ảnh, nên vùng trong suốt của PNG/WebP
+  // phải được lấp bằng đúng màu đó trước khi lọc — `resize({ background })` chỉ lo phần viền
+  // của chế độ `contain`, không đụng tới alpha bên trong ảnh gốc.
+  // Preview lọc màu ở lớp `.canvas-bg`, còn khung viền và chữ nằm ngoài bộ lọc — giữ đúng thứ tự đó.
+  const filtered = await applyImageFilters(sharp(base).flatten({ background }), slide).toBuffer();
+  return sharp(filtered).composite([frame, overlay].filter(Boolean).map(input => ({ input, left: 0, top: 0 }))).webp({ quality: 92 }).toBuffer();
 }
 
 export async function getApprovedAssetFiles(projectId) {
