@@ -1,6 +1,7 @@
 import { esc, fontStack, FALLBACK_FONT, MAX_ZOOM, selectedIds, withTextBox, imageDefaults, rgba,
   frameHtml, background, cropFor, normalizedStyleRanges, normalizedSizeRanges, styleAt, richTextHtml, layerHtml }
   from "/preview-dom.js";
+import { cellPickerHtml, imageControlsHtml, textBoxControlsHtml, textStyleControlsHtml } from "/editor-controls.js";
 const params = new URLSearchParams(location.search);
 const projectId = params.get("projectId");
 const $ = id => document.getElementById(id);
@@ -67,12 +68,30 @@ function markDesignDirty(slideId) {
   const editor = document.querySelector(`[data-editor="${slideId}"]`);
   if (editor) editor.dataset.designSaved = "false";
 }
+// Lịch sử hoàn tác được giữ trong sessionStorage nên không mất khi tải lại trang hay khi lưu thiết kế.
+const HISTORY_LIMIT = 30;
+const historyKey = slideId => `lana-history:${projectId}:${slideId}`;
+function loadHistory(slideId) {
+  if (histories.has(slideId)) return { history: histories.get(slideId), redo: redos.get(slideId) || [] };
+  let stored = null;
+  try { stored = JSON.parse(sessionStorage.getItem(historyKey(slideId)) || "null"); } catch { stored = null; }
+  const history = Array.isArray(stored?.history) ? stored.history : [];
+  const redo = Array.isArray(stored?.redo) ? stored.redo : [];
+  histories.set(slideId, history); redos.set(slideId, redo);
+  return { history, redo };
+}
+function persistHistory(slideId) {
+  // Bộ nhớ phiên có hạn; hỏng thì bỏ qua chứ không chặn thao tác sửa.
+  try { sessionStorage.setItem(historyKey(slideId), JSON.stringify({ history: histories.get(slideId) || [], redo: redos.get(slideId) || [] })); }
+  catch { /* hết dung lượng thì chỉ giữ lịch sử trong bộ nhớ */ }
+}
 function remember(slideId, markDirty = true) {
-  const history = histories.get(slideId) || [];
+  const { history } = loadHistory(slideId);
   history.push(JSON.stringify(drafts.get(slideId)));
-  if (history.length > 30) history.shift();
+  while (history.length > HISTORY_LIMIT) history.shift();
   histories.set(slideId, history);
   redos.set(slideId, []);
+  persistHistory(slideId);
   if (markDirty) markDesignDirty(slideId);
 }
 
@@ -124,44 +143,29 @@ function applyDirectStyle(slideId, index, patch) {
   render();
 }
 function sectionIsOpen(slideId, section) { return sectionStates.get(`${slideId}:${section}`) === true; }
-function textStyleControlsHtml(layer, slideId) {
-  const open = sectionIsOpen(slideId, "textStyle"), styledCount = normalizedStyleRanges(layer).length;
-  return `<details class="editor-section text-style-controls" data-editor-section="textStyle" data-slide="${slideId}" ${open?"open":""}><summary><strong>Kiểu chữ</strong><span class="section-meta">${esc(layer.font)} · ${layer.size}px${styledCount?` · ${styledCount} đoạn riêng`:""}</span></summary><div class="section-body"><div class="fields"><label class="field">Font<select data-control="font">${fonts.map(font=>`<option ${font===layer.font?"selected":""}>${font}</option>`).join("")}</select></label><label class="field">Màu<input type="color" data-control="color" value="${layer.color}"></label><label class="field">Cỡ mặc định <span class="range-value">${layer.size}</span><input type="range" min="24" max="220" data-control="size" value="${layer.size}"></label><label class="field">Xoay <span class="range-value">${layer.rotation}°</span><input type="range" min="-180" max="180" data-control="rotation" value="${layer.rotation}"></label><label class="field">Độ trong <span class="range-value">${Math.round(layer.opacity*100)}%</span><input type="range" min="10" max="100" data-control="opacity" value="${layer.opacity*100}"></label><label class="field">Căn<select data-control="align"><option value="left" ${layer.align==="left"?"selected":""}>Trái</option><option value="center" ${layer.align==="center"?"selected":""}>Giữa</option><option value="right" ${layer.align==="right"?"selected":""}>Phải</option></select></label><div class="field wide selection-size-tools"><span>Bôi đen một đoạn trong ô Nội dung, chọn định dạng rồi áp dụng.</span><div class="selection-format-grid"><label>Font<select data-selection-font><option value="">Giữ nguyên</option>${fonts.map(font=>`<option>${font}</option>`).join("")}</select></label><label>Cỡ<input type="number" min="24" max="220" placeholder="Giữ nguyên" data-selection-size></label><label>Độ đậm<select data-selection-weight><option value="">Giữ nguyên</option><option value="400">Thường</option><option value="500">Vừa</option><option value="600">Hơi đậm</option><option value="700">Đậm</option><option value="800">Rất đậm</option><option value="900">Đen</option></select></label><label class="toggle"><input type="checkbox" data-selection-underline> Gạch chân</label></div><div class="selection-size-row"><button type="button" class="tool apply-selected-style">Áp dụng cho đoạn chọn</button><button type="button" class="tool clear-selected-styles" ${styledCount?"":"disabled"}>Xóa định dạng riêng</button></div></div></div></div></details>`;
-}
-
-function textBoxControlsHtml(rawLayer, slideId) {
-  const layer = withTextBox(rawLayer), percent = value => Math.round(value * 100), open = sectionIsOpen(slideId, "textBox");
-  return `<details class="editor-section text-box-controls" data-editor-section="textBox" data-slide="${slideId}" ${open?"open":""}><summary><strong>Hộp chữ</strong><span class="section-meta">${layer.boxEnabled?"Đang bật":"Đang tắt"}</span></summary><div class="section-body"><div class="control-title"><label class="toggle"><input type="checkbox" data-control="boxEnabled" ${layer.boxEnabled?"checked":""}> Bật hộp chữ</label></div><div class="box-presets"><button type="button" class="tool" data-box-preset="white">Hộp trắng</button><button type="button" class="tool" data-box-preset="dark">Hộp tối</button><button type="button" class="tool" data-box-preset="transparent">Trong suốt</button><button type="button" class="tool reset-text-box">Đặt lại hộp</button></div><div class="fields"><label class="field">Màu nền<input type="color" data-control="boxColor" value="${layer.boxColor}"></label><label class="field">Độ mờ nền <span class="range-value" data-layer-value-for="boxOpacity">${percent(layer.boxOpacity)}%</span><input type="range" min="0" max="100" data-control="boxOpacity" value="${percent(layer.boxOpacity)}"></label><label class="field">Màu viền<input type="color" data-control="boxBorderColor" value="${layer.boxBorderColor}"></label><label class="field">Độ dày viền <span class="range-value" data-layer-value-for="boxBorderWidth">${layer.boxBorderWidth}px</span><input type="range" min="0" max="40" step="1" data-control="boxBorderWidth" value="${layer.boxBorderWidth}"></label><label class="field">Độ mờ viền <span class="range-value" data-layer-value-for="boxBorderOpacity">${percent(layer.boxBorderOpacity)}%</span><input type="range" min="0" max="100" data-control="boxBorderOpacity" value="${percent(layer.boxBorderOpacity)}"></label><label class="field">Bo góc <span class="range-value" data-layer-value-for="boxRadius">${layer.boxRadius}px</span><input type="range" min="0" max="120" step="2" data-control="boxRadius" value="${layer.boxRadius}"></label><label class="field">Chiều rộng hộp <span class="range-value" data-layer-value-for="boxWidth">${layer.boxWidth}%</span><input type="range" min="20" max="96" step="1" data-control="boxWidth" value="${layer.boxWidth}"></label><label class="field">Đệm ngang <span class="range-value" data-layer-value-for="boxPaddingX">${layer.boxPaddingX}px</span><input type="range" min="0" max="120" step="2" data-control="boxPaddingX" value="${layer.boxPaddingX}"></label><label class="field">Đệm dọc <span class="range-value" data-layer-value-for="boxPaddingY">${layer.boxPaddingY}px</span><input type="range" min="0" max="80" step="2" data-control="boxPaddingY" value="${layer.boxPaddingY}"></label></div></div></details>`;
-
-}
-function cellPickerHtml(slide, data) {
-  const ids = selectedIds(slide);
-  if (ids.length <= 1) return "";
-  const current = activeCell(slide);
-  const buttons = ids.map((id, index) => {
-    const custom = data.assetCrops?.[id] ? " ·" : "";
-    return `<button type="button" class="tool pick-cell${id === current ? " active" : ""}" data-cell-pick="${esc(id)}">Ô ${index + 1}${custom}</button>`;
-  }).join("");
-  return `<div class="control-title"><span class="section-meta">Chọn ô để chỉnh riêng</span></div><div class="image-quick-tools">${buttons}<button type="button" class="tool reset-cell-crops">Bỏ chỉnh riêng</button></div>`;
-}
-function imageControlsHtml(data, slideId) {
+/** Bối cảnh mà các bảng điều khiển cần; gom một chỗ để chữ ký hàm không phình ra. */
+function controlContext(slideId, data) {
   const slide = project.slides.find(item => item.id === slideId);
-  const crop = activeCrop(slide, data);
-  const percent = value => Math.round(value * 100), open = sectionIsOpen(slideId, "imageFrame");
-  return `<details class="editor-section image-controls" data-editor-section="imageFrame" data-slide="${slideId}" ${open?"open":""}><summary><strong>Chỉnh ảnh và khung</strong><span class="section-meta">${data.frameWidth>0?"Có khung":"Ảnh cơ bản"}</span></summary><div class="section-body"><div class="control-title"><button type="button" class="tool reset-image">Đặt lại ảnh/khung</button></div>${cellPickerHtml(slide, data)}<div class="image-quick-tools"><button type="button" class="tool zoom-step" data-zoom-step="-0.2" title="Thu nhỏ">− Thu nhỏ</button><button type="button" class="tool zoom-step" data-zoom-step="0.2" title="Phóng to">+ Phóng to</button><button type="button" class="tool center-image">Về giữa</button><button type="button" class="tool fill-image">Lấp đầy khung</button><button type="button" class="tool fit-image">Vừa cả ảnh</button></div><p class="image-hint">Kéo trực tiếp trên ảnh để đổi vị trí (cần zoom &gt; 1×), giữ Ctrl/Cmd và lăn chuột hoặc chụm hai ngón để phóng to/thu nhỏ.</p><div class="fields"><label class="field">Zoom ảnh <span class="range-value" data-value-for="cropZoom">${crop.cropZoom.toFixed(1)}×</span><input type="range" min="1" max="4" step="0.05" data-control="cropZoom" value="${crop.cropZoom}"></label><label class="field">Kiểu vừa khung<select data-control="imageFit"><option value="cover" ${data.imageFit!=="contain"?"selected":""}>Lấp đầy (cắt bớt)</option><option value="contain" ${data.imageFit==="contain"?"selected":""}>Vừa cả ảnh (viền nền)</option></select></label><label class="field">Màu nền ảnh<input type="color" data-control="imageBackground" value="${data.imageBackground}"></label><label class="field toggle-field"><span>Lật ảnh</span><span class="flip-row"><label class="toggle"><input type="checkbox" data-control="imageFlipH" ${data.imageFlipH?"checked":""}> Ngang</label><label class="toggle"><input type="checkbox" data-control="imageFlipV" ${data.imageFlipV?"checked":""}> Dọc</label></span></label><label class="field">Trọng tâm ngang <span class="range-value" data-value-for="cropX">${Math.round(crop.cropX)}%</span><input type="range" min="0" max="100" data-control="cropX" value="${crop.cropX}"></label><label class="field">Trọng tâm dọc <span class="range-value" data-value-for="cropY">${Math.round(crop.cropY)}%</span><input type="range" min="0" max="100" data-control="cropY" value="${crop.cropY}"></label><label class="field">Độ sáng <span class="range-value" data-value-for="imageBrightness">${percent(data.imageBrightness)}%</span><input type="range" min="0.3" max="2" step="0.05" data-control="imageBrightness" value="${data.imageBrightness}"></label><label class="field">Tương phản <span class="range-value" data-value-for="imageContrast">${percent(data.imageContrast)}%</span><input type="range" min="0.3" max="2" step="0.05" data-control="imageContrast" value="${data.imageContrast}"></label><label class="field">Bão hòa <span class="range-value" data-value-for="imageSaturation">${percent(data.imageSaturation)}%</span><input type="range" min="0" max="2" step="0.05" data-control="imageSaturation" value="${data.imageSaturation}"></label><label class="field">Đen trắng <span class="range-value" data-value-for="imageGrayscale">${percent(data.imageGrayscale)}%</span><input type="range" min="0" max="100" step="1" data-control="imageGrayscale" value="${percent(data.imageGrayscale)}"></label><label class="field">Sắc độ <span class="range-value" data-value-for="imageHue">${Math.round(data.imageHue)}°</span><input type="range" min="-180" max="180" step="1" data-control="imageHue" value="${data.imageHue}"></label><label class="field">Làm mờ <span class="range-value" data-value-for="imageBlur">${data.imageBlur}px</span><input type="range" min="0" max="20" step="0.5" data-control="imageBlur" value="${data.imageBlur}"></label><label class="field">Màu viền<input type="color" data-control="frameColor" value="${data.frameColor}"></label><label class="field">Độ dày viền <span class="range-value" data-value-for="frameWidth">${data.frameWidth}px</span><input type="range" min="0" max="80" step="1" data-control="frameWidth" value="${data.frameWidth}"></label><label class="field">Khoảng cách khung <span class="range-value" data-value-for="frameInset">${data.frameInset}px</span><input type="range" min="0" max="360" step="2" data-control="frameInset" value="${data.frameInset}"></label><label class="field">Độ mờ khung <span class="range-value" data-value-for="frameOpacity">${percent(data.frameOpacity)}%</span><input type="range" min="0" max="100" step="1" data-control="frameOpacity" value="${percent(data.frameOpacity)}"></label><label class="field">Bo góc khung <span class="range-value" data-value-for="frameRadius">${data.frameRadius}px</span><input type="range" min="0" max="240" step="2" data-control="frameRadius" value="${data.frameRadius}"></label></div></div></details>`;
-
+  return { fonts, sectionIsOpen, selectedIds, activeCell, slide, crop: activeCrop(slide, data) };
 }
 function decorateImageEditors() {
   document.querySelectorAll("[data-editor]").forEach(editor => {
     const data = drafts.get(editor.dataset.editor), fields = editor.querySelector(".fields");
     const index = selectedLayers.get(editor.dataset.editor) || 0, layer = data?.layers[index];
-    if (data && fields && layer) fields.insertAdjacentHTML("afterend", textStyleControlsHtml(layer, editor.dataset.editor) + textBoxControlsHtml(layer, editor.dataset.editor) + imageControlsHtml(data, editor.dataset.editor));
+    if (data && fields && layer) {
+      const context = controlContext(editor.dataset.editor, data);
+      fields.insertAdjacentHTML("afterend",
+        textStyleControlsHtml(layer, editor.dataset.editor, context)
+        + textBoxControlsHtml(layer, editor.dataset.editor, context)
+        + imageControlsHtml(data, editor.dataset.editor, context));
+    }
   });
 }
 function editCard(slide) {
   const data = draft(slide); let active = selectedLayers.get(slide.id) ?? 0; if (!data.layers[active]) active = 0; selectedLayers.set(slide.id, active);
   const layer = data.layers[active] || defaultLayer(slide);
-  const canUndo = (histories.get(slide.id) || []).length > 0, canRedo = (redos.get(slide.id) || []).length > 0;
+  const { history: undoStack, redo: redoStack } = loadHistory(slide.id);
+  const canUndo = undoStack.length > 0, canRedo = redoStack.length > 0;
   return `<article class="card" data-editor="${slide.id}" data-design-saved="${slide.designSaved && !designDirty.has(slide.id) ? "true" : "false"}"><div class="card-head"><div><div class="number">Slide ${slide.position}</div><h2>${esc(slide.headline)}</h2></div><span class="status">${data.layers.length} lớp chữ</span></div><div class="visual"><div class="preview-column"><div class="canvas" data-canvas="${slide.id}">${background(slide, data, assets, activeCell(slide))}<div class="safe-zone"></div>${data.layers.map((item, index) => layerHtml(item, index, index === active, textSelections.get(`${slide.id}:${index}`), directEditing.has(`${slide.id}:${index}`))).join("")}</div>${directToolbarHtml(layer,slide.id,active)}<div class="proof-bar"><button type="button" class="tool show-proof" data-slide="${slide.id}">Xem ảnh thật</button><small class="muted proof-status" data-proof-status="${slide.id}"></small></div></div><div><div class="tools"><button class="tool add-layer">+ Thêm chữ</button><button class="tool remove-layer">Xóa lớp</button><button class="tool undo" ${canUndo ? "" : "disabled"}>Hoàn tác</button><button class="tool redo" ${canRedo ? "" : "disabled"}>Làm lại</button><details class="apply-targets"><summary class="tool">Chọn slide để áp dụng kiểu</summary><div class="apply-target-menu"><div class="apply-target-actions"><button type="button" class="tool select-all-targets">Chọn tất cả</button><button type="button" class="tool clear-all-targets">Bỏ chọn</button></div>${project.slides.map(target=>`<label class="toggle"><input type="checkbox" class="style-target-slide" value="${target.id}" ${target.id===slide.id?"checked":""}> Slide ${target.position}: ${esc(target.headline.slice(0,34))}</label>`).join("")}<button type="button" class="action apply-selected-slides">Áp dụng kiểu</button></div></details></div><label class="field">Lớp chữ<select data-control="layer">${data.layers.map((item,index)=>`<option value="${index}" ${index===active?"selected":""}>${index+1}. ${esc(item.content.slice(0,30)||"Chữ mới")}</option>`).join("")}</select></label><div class="fields"><label class="field wide">Nội dung<textarea data-control="content">${esc(layer.content)}</textarea></label></div><button class="action save-design" data-slide="${slide.id}">Lưu thiết kế</button></div></div></article>`;
 }
 
@@ -322,8 +326,21 @@ $("edit").onclick = async event => {
     if (event.target.closest(".direct-box")) { remember(slideId); data.layers[index].boxEnabled=!data.layers[index].boxEnabled; render(); return; }
     if (event.target.closest(".add-layer")) { remember(slideId); data.layers.push(withTextBox({ id:crypto.randomUUID(), role:"custom", content:"Chữ mới", enabled:true, font:project.brandKit?.font||"TikTok Sans", size:72, x:50, y:50, color:project.brandKit?.color||"#FFFFFF", align:"center", opacity:1, rotation:0 })); selectedLayers.set(slideId,data.layers.length-1); render(); return; }
     if (event.target.closest(".remove-layer")) { if (data.layers.length > 1) { remember(slideId); data.layers.splice(index,1); selectedLayers.set(slideId,Math.max(0,index-1)); render(); } return; }
-    if (event.target.closest(".undo")) { const history=histories.get(slideId)||[], redo=redos.get(slideId)||[]; if(history.length){redo.push(JSON.stringify(data));redos.set(slideId,redo);drafts.set(slideId,JSON.parse(history.pop()));render();} return; }
-    if (event.target.closest(".redo")) { const redo=redos.get(slideId)||[], history=histories.get(slideId)||[]; if(redo.length){history.push(JSON.stringify(data));histories.set(slideId,history);drafts.set(slideId,JSON.parse(redo.pop()));render();} return; }
+    if (event.target.closest(".undo")) {
+      const { history, redo } = loadHistory(slideId);
+      if (!history.length) return;
+      redo.push(JSON.stringify(data)); redos.set(slideId, redo);
+      drafts.set(slideId, JSON.parse(history.pop()));
+      // Hoàn tác đưa thiết kế về trạng thái khác bản đã lưu, nên phải đánh dấu là chưa lưu.
+      markDesignDirty(slideId); persistHistory(slideId); render(); return;
+    }
+    if (event.target.closest(".redo")) {
+      const { history, redo } = loadHistory(slideId);
+      if (!redo.length) return;
+      history.push(JSON.stringify(data)); histories.set(slideId, history);
+      drafts.set(slideId, JSON.parse(redo.pop()));
+      markDesignDirty(slideId); persistHistory(slideId); render(); return;
+    }
     if (event.target.closest(".apply-selected-style")) {
       const input = editor.querySelector('[data-control="content"]'), selection = textSelections.get(`${slideId}:${index}`) || { start:input.selectionStart, end:input.selectionEnd };
       if (!selection || selection.end <= selection.start) { alert("Hãy bôi đen đoạn chữ cần định dạng trong ô Nội dung."); return; }
@@ -380,7 +397,8 @@ $("edit").onclick = async event => {
         method:"PATCH", headers:{"Content-Type":"application/json"},
         body:JSON.stringify(designPayload(slide, data))
       });
-      designDirty.delete(slideId); drafts.delete(slideId); histories.delete(slideId); redos.delete(slideId); render();
+      // Giữ lịch sử để vẫn hoàn tác được sau khi lưu; chỉ bỏ bản nháp để đọc lại từ dữ liệu vừa lưu.
+      designDirty.delete(slideId); drafts.delete(slideId); render();
     }
   } catch(error){alert(error.message);}
 };
