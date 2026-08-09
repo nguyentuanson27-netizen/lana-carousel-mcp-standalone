@@ -184,6 +184,11 @@ app.patch("/api/projects/:projectId/slides/:slideId/crop", handle(async (req, re
     imageGrayscale: z.number().min(0).max(1).optional(), imageHue: z.number().min(-180).max(180).optional(),
     imageFit: z.enum(["cover", "contain"]).optional(), imageBackground: z.string().regex(/^#[0-9A-F]{6}$/iu).optional(),
     imageFlipH: z.boolean().optional(), imageFlipV: z.boolean().optional(),
+    // Crop riêng cho từng ô lưới; khoá là assetId, thiếu trường nào thì ô kế thừa giá trị cấp slide.
+    assetCrops: z.record(z.string().uuid(), z.object({
+      cropX: z.number().min(0).max(100).nullish(), cropY: z.number().min(0).max(100).nullish(),
+      cropZoom: z.number().min(1).max(4).nullish()
+    })).optional(),
     frameInset: z.number().int().min(0).max(360).optional(),
     frameWidth: z.number().int().min(0).max(80).optional(), frameColor: z.string().regex(/^#[0-9A-F]{6}$/iu).optional(),
     frameOpacity: z.number().min(0).max(1).optional(), frameRadius: z.number().int().min(0).max(240).optional()
@@ -199,6 +204,11 @@ app.patch("/api/projects/:projectId/slides/:slideId/design", handle(async (req, 
     imageGrayscale: z.number().min(0).max(1).optional(), imageHue: z.number().min(-180).max(180).optional(),
     imageFit: z.enum(["cover", "contain"]).optional(), imageBackground: z.string().regex(/^#[0-9A-F]{6}$/iu).optional(),
     imageFlipH: z.boolean().optional(), imageFlipV: z.boolean().optional(),
+    // Crop riêng cho từng ô lưới; khoá là assetId, thiếu trường nào thì ô kế thừa giá trị cấp slide.
+    assetCrops: z.record(z.string().uuid(), z.object({
+      cropX: z.number().min(0).max(100).nullish(), cropY: z.number().min(0).max(100).nullish(),
+      cropZoom: z.number().min(1).max(4).nullish()
+    })).optional(),
     frameInset: z.number().int().min(0).max(360).optional(),
     frameWidth: z.number().int().min(0).max(80).optional(), frameColor: z.string().regex(/^#[0-9A-F]{6}$/iu).optional(),
     frameOpacity: z.number().min(0).max(1).optional(), frameRadius: z.number().int().min(0).max(240).optional(),

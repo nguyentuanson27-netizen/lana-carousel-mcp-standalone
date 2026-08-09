@@ -19,6 +19,7 @@ Production:
 - Tối đa 10 ảnh ứng viên cho mỗi slide, được bảo vệ bằng invariant SQLite khi có request đồng thời.
 - Duyệt một ảnh hoặc ghép nhiều ảnh dạng lưới; crop, zoom, lật ảnh, chọn kiểu vừa khung, filter và tùy chỉnh khung.
 - Sửa ảnh trực tiếp trên khung xem trước: kéo để đổi vị trí, Ctrl/Cmd + lăn chuột để phóng to/thu nhỏ.
+- Ghép lưới cho phép chỉnh crop riêng từng ô: chọn ô rồi kéo hoặc dùng thanh trượt.
 - Ảnh tải về khớp ảnh preview theo hợp đồng ghi trong [docs/preview-render-parity.md](docs/preview-render-parity.md).
 - Nhiều lớp chữ kéo thả, rich text và animation trong MP4.
 - Font đi kèm repo (`public/fonts/`), dùng chung cho trình duyệt và renderer nên chữ trong ảnh tải về đúng font đã chọn.

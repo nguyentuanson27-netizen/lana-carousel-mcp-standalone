@@ -193,4 +193,16 @@ describe("preview and download stay pixel-comparable", { skip: skipReason }, () 
     assert.ok(meanDelta < 4, `lệch trung bình ${meanDelta.toFixed(2)}/255`);
     assert.ok(offRatio < .04, `${(offRatio * 100).toFixed(2)}% kênh lệch quá 32`);
   });
+
+  test("lưới có crop riêng cho từng ô", async () => {
+    const slide = baseSlide({
+      selectedAssetIds: ["__parity-a.png", "__parity-b.png"], compositionMode: "grid",
+      cropZoom: 1.6, cropX: 50, cropY: 50,
+      // Ô đầu kéo hẳn sang trái, ô sau kéo hẳn sang phải và phóng to hơn.
+      assetCrops: { "__parity-a.png": { cropX: 0, cropY: 20 }, "__parity-b.png": { cropX: 100, cropZoom: 2.4 } }
+    });
+    const { meanDelta, offRatio } = await compare(browser, origin, slide, [asset, secondAsset]);
+    assert.ok(meanDelta < 4, `lệch trung bình ${meanDelta.toFixed(2)}/255`);
+    assert.ok(offRatio < .04, `${(offRatio * 100).toFixed(2)}% kênh lệch quá 32`);
+  });
 });

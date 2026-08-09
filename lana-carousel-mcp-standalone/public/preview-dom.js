@@ -26,6 +26,7 @@ export function imageDefaults(slide = {}) {
     imageFit: slide.imageFit === "contain" ? "contain" : "cover",
     imageBackground: slide.imageBackground || "#181411",
     imageFlipH: Boolean(slide.imageFlipH), imageFlipV: Boolean(slide.imageFlipV),
+    assetCrops: structuredClone(slide.assetCrops || {}),
     frameInset: slide.frameInset ?? 40,
     frameWidth: slide.frameWidth ?? 0, frameColor: slide.frameColor || "#FFFFFF",
     frameOpacity: slide.frameOpacity ?? 1, frameRadius: slide.frameRadius ?? 0
@@ -41,12 +42,26 @@ export function frameHtml(data) {
 }
 // Chuỗi filter và cấu trúc DOM ở đây phải khớp từng bước với renderSlideSnapshot trong src/service-core.js,
 // nếu lệch thì ảnh tải về sẽ khác ảnh preview.
-export function background(slide, data, assets) {
+/** Crop hiệu lực của một ô: giá trị riêng của ô đè lên giá trị cấp slide. */
+export function cropFor(data, assetId) {
+  const override = data.assetCrops?.[assetId];
+  return {
+    cropX: override?.cropX ?? data.cropX,
+    cropY: override?.cropY ?? data.cropY,
+    cropZoom: override?.cropZoom ?? data.cropZoom
+  };
+}
+
+export function background(slide, data, assets, activeAssetId = null) {
   const ids = selectedIds(slide), columns = ids.length <= 2 ? 1 : ids.length <= 6 ? 2 : 3;
   const filter = `brightness(${data.imageBrightness}) contrast(${data.imageContrast}) saturate(${data.imageSaturation}) grayscale(${data.imageGrayscale*100}%) hue-rotate(${data.imageHue||0}deg) blur(${data.imageBlur/10.8}cqw)`;
   // Lật quanh tâm ảnh trước, rồi mới phóng to quanh trọng tâm (cropX, cropY) — đúng thứ tự của bản render.
   const flip = `scaleX(${data.imageFlipH ? -1 : 1}) scaleY(${data.imageFlipV ? -1 : 1})`;
-  const cells = ids.map(id => `<div><div class="canvas-zoom" style="transform:scale(${data.cropZoom});transform-origin:${data.cropX}% ${data.cropY}%"><img src="${esc(assets.get(id)?.publicUrl || "")}" style="object-fit:${data.imageFit === "contain" ? "contain" : "cover"};transform:${flip}"></div></div>`).join("");
+  const cells = ids.map(id => {
+    const crop = cropFor(data, id);
+    const active = ids.length > 1 && id === activeAssetId ? " active-cell" : "";
+    return `<div class="canvas-cell${active}" data-cell="${esc(id)}"><div class="canvas-zoom" style="transform:scale(${crop.cropZoom});transform-origin:${crop.cropX}% ${crop.cropY}%"><img src="${esc(assets.get(id)?.publicUrl || "")}" style="object-fit:${data.imageFit === "contain" ? "contain" : "cover"};transform:${flip}"></div></div>`;
+  }).join("");
   return `<div class="canvas-bg" data-canvas-bg style="grid-template-columns:repeat(${columns},1fr);background:${esc(data.imageBackground || "#181411")};filter:${filter}">${cells}</div>${frameHtml(data)}`;
 }
 export function normalizedStyleRanges(layer) {

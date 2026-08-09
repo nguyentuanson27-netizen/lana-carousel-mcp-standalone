@@ -1,5 +1,5 @@
 import { esc, fontStack, FALLBACK_FONT, MAX_ZOOM, selectedIds, withTextBox, imageDefaults, rgba,
-  frameHtml, background, normalizedStyleRanges, normalizedSizeRanges, styleAt, richTextHtml, layerHtml }
+  frameHtml, background, cropFor, normalizedStyleRanges, normalizedSizeRanges, styleAt, richTextHtml, layerHtml }
   from "/preview-dom.js";
 const params = new URLSearchParams(location.search);
 const projectId = params.get("projectId");
@@ -8,7 +8,7 @@ const fonts = ["TikTok Sans", "Montserrat", "Poppins", "Bebas Neue", "Roboto", "
 // Bebas Neue, Poppins và Courier New thiếu glyph tiếng Việt dựng sẵn. Khai báo sẵn font dự phòng
 // để trình duyệt và bản render lấy glyph từ cùng một file — phải trùng FALLBACK_FAMILY trong src/fonts.js.
 let project, assets, view = "content", renderTimer;
-const picks = new Map(), drafts = new Map(), selectedLayers = new Map(), histories = new Map(), redos = new Map(), sectionStates = new Map(), textSelections = new Map(), directEditing = new Set(), designDirty = new Set();
+const picks = new Map(), drafts = new Map(), selectedLayers = new Map(), activeCells = new Map(), histories = new Map(), redos = new Map(), sectionStates = new Map(), textSelections = new Map(), directEditing = new Set(), designDirty = new Set();
 
 function candidateAssets(slide) { return [...new Set([...(slide.candidateAssetIds || []), slide.selectedAssetId].filter(Boolean))].map(id => assets.get(id)).filter(Boolean); }
 function defaultLayer(slide) { return withTextBox({ id: crypto.randomUUID(), role: "headline", content: slide.headline || slide.overlayText, enabled: slide.textEnabled, font: slide.textFont || "TikTok Sans", size: slide.textSize || 72, x: slide.textX || 50, y: slide.textY || 42, color: slide.textColor || "#FFFFFF", align: slide.textAlign || "center", opacity: 1, rotation: 0 }); }
@@ -44,6 +44,24 @@ function syncContentLayers(slide, headline, body) {
   data.layers = layers;
   return layers;
 }
+// Ô lưới đang được chỉnh. Thanh trượt crop và thao tác kéo tác động lên ô này;
+// slide chỉ có một ảnh thì luôn là ảnh đó.
+function activeCell(slide) {
+  const ids = selectedIds(slide);
+  const chosen = activeCells.get(slide.id);
+  return ids.includes(chosen) ? chosen : ids[0] || null;
+}
+/** Đọc crop hiệu lực của ô đang chỉnh để đổ vào thanh trượt. */
+function activeCrop(slide, data) { return cropFor(data, activeCell(slide)); }
+/** Ghi một giá trị crop: slide nhiều ảnh thì ghi riêng cho ô, một ảnh thì ghi thẳng cấp slide. */
+function setCrop(slide, data, patch) {
+  const ids = selectedIds(slide);
+  if (ids.length <= 1) { Object.assign(data, patch); return; }
+  const id = activeCell(slide);
+  if (!id) return;
+  data.assetCrops = { ...data.assetCrops, [id]: { ...cropFor(data, id), ...patch } };
+}
+
 function markDesignDirty(slideId) {
   designDirty.add(slideId);
   const editor = document.querySelector(`[data-editor="${slideId}"]`);
@@ -116,9 +134,21 @@ function textBoxControlsHtml(rawLayer, slideId) {
   return `<details class="editor-section text-box-controls" data-editor-section="textBox" data-slide="${slideId}" ${open?"open":""}><summary><strong>Hộp chữ</strong><span class="section-meta">${layer.boxEnabled?"Đang bật":"Đang tắt"}</span></summary><div class="section-body"><div class="control-title"><label class="toggle"><input type="checkbox" data-control="boxEnabled" ${layer.boxEnabled?"checked":""}> Bật hộp chữ</label></div><div class="box-presets"><button type="button" class="tool" data-box-preset="white">Hộp trắng</button><button type="button" class="tool" data-box-preset="dark">Hộp tối</button><button type="button" class="tool" data-box-preset="transparent">Trong suốt</button><button type="button" class="tool reset-text-box">Đặt lại hộp</button></div><div class="fields"><label class="field">Màu nền<input type="color" data-control="boxColor" value="${layer.boxColor}"></label><label class="field">Độ mờ nền <span class="range-value" data-layer-value-for="boxOpacity">${percent(layer.boxOpacity)}%</span><input type="range" min="0" max="100" data-control="boxOpacity" value="${percent(layer.boxOpacity)}"></label><label class="field">Màu viền<input type="color" data-control="boxBorderColor" value="${layer.boxBorderColor}"></label><label class="field">Độ dày viền <span class="range-value" data-layer-value-for="boxBorderWidth">${layer.boxBorderWidth}px</span><input type="range" min="0" max="40" step="1" data-control="boxBorderWidth" value="${layer.boxBorderWidth}"></label><label class="field">Độ mờ viền <span class="range-value" data-layer-value-for="boxBorderOpacity">${percent(layer.boxBorderOpacity)}%</span><input type="range" min="0" max="100" data-control="boxBorderOpacity" value="${percent(layer.boxBorderOpacity)}"></label><label class="field">Bo góc <span class="range-value" data-layer-value-for="boxRadius">${layer.boxRadius}px</span><input type="range" min="0" max="120" step="2" data-control="boxRadius" value="${layer.boxRadius}"></label><label class="field">Chiều rộng hộp <span class="range-value" data-layer-value-for="boxWidth">${layer.boxWidth}%</span><input type="range" min="20" max="96" step="1" data-control="boxWidth" value="${layer.boxWidth}"></label><label class="field">Đệm ngang <span class="range-value" data-layer-value-for="boxPaddingX">${layer.boxPaddingX}px</span><input type="range" min="0" max="120" step="2" data-control="boxPaddingX" value="${layer.boxPaddingX}"></label><label class="field">Đệm dọc <span class="range-value" data-layer-value-for="boxPaddingY">${layer.boxPaddingY}px</span><input type="range" min="0" max="80" step="2" data-control="boxPaddingY" value="${layer.boxPaddingY}"></label></div></div></details>`;
 
 }
+function cellPickerHtml(slide, data) {
+  const ids = selectedIds(slide);
+  if (ids.length <= 1) return "";
+  const current = activeCell(slide);
+  const buttons = ids.map((id, index) => {
+    const custom = data.assetCrops?.[id] ? " ·" : "";
+    return `<button type="button" class="tool pick-cell${id === current ? " active" : ""}" data-cell-pick="${esc(id)}">Ô ${index + 1}${custom}</button>`;
+  }).join("");
+  return `<div class="control-title"><span class="section-meta">Chọn ô để chỉnh riêng</span></div><div class="image-quick-tools">${buttons}<button type="button" class="tool reset-cell-crops">Bỏ chỉnh riêng</button></div>`;
+}
 function imageControlsHtml(data, slideId) {
+  const slide = project.slides.find(item => item.id === slideId);
+  const crop = activeCrop(slide, data);
   const percent = value => Math.round(value * 100), open = sectionIsOpen(slideId, "imageFrame");
-  return `<details class="editor-section image-controls" data-editor-section="imageFrame" data-slide="${slideId}" ${open?"open":""}><summary><strong>Chỉnh ảnh và khung</strong><span class="section-meta">${data.frameWidth>0?"Có khung":"Ảnh cơ bản"}</span></summary><div class="section-body"><div class="control-title"><button type="button" class="tool reset-image">Đặt lại ảnh/khung</button></div><div class="image-quick-tools"><button type="button" class="tool zoom-step" data-zoom-step="-0.2" title="Thu nhỏ">− Thu nhỏ</button><button type="button" class="tool zoom-step" data-zoom-step="0.2" title="Phóng to">+ Phóng to</button><button type="button" class="tool center-image">Về giữa</button><button type="button" class="tool fill-image">Lấp đầy khung</button><button type="button" class="tool fit-image">Vừa cả ảnh</button></div><p class="image-hint">Kéo trực tiếp trên ảnh để đổi vị trí (cần zoom &gt; 1×), giữ Ctrl/Cmd và lăn chuột hoặc chụm hai ngón để phóng to/thu nhỏ.</p><div class="fields"><label class="field">Zoom ảnh <span class="range-value" data-value-for="cropZoom">${data.cropZoom.toFixed(1)}×</span><input type="range" min="1" max="4" step="0.05" data-control="cropZoom" value="${data.cropZoom}"></label><label class="field">Kiểu vừa khung<select data-control="imageFit"><option value="cover" ${data.imageFit!=="contain"?"selected":""}>Lấp đầy (cắt bớt)</option><option value="contain" ${data.imageFit==="contain"?"selected":""}>Vừa cả ảnh (viền nền)</option></select></label><label class="field">Màu nền ảnh<input type="color" data-control="imageBackground" value="${data.imageBackground}"></label><label class="field toggle-field"><span>Lật ảnh</span><span class="flip-row"><label class="toggle"><input type="checkbox" data-control="imageFlipH" ${data.imageFlipH?"checked":""}> Ngang</label><label class="toggle"><input type="checkbox" data-control="imageFlipV" ${data.imageFlipV?"checked":""}> Dọc</label></span></label><label class="field">Trọng tâm ngang <span class="range-value" data-value-for="cropX">${Math.round(data.cropX)}%</span><input type="range" min="0" max="100" data-control="cropX" value="${data.cropX}"></label><label class="field">Trọng tâm dọc <span class="range-value" data-value-for="cropY">${Math.round(data.cropY)}%</span><input type="range" min="0" max="100" data-control="cropY" value="${data.cropY}"></label><label class="field">Độ sáng <span class="range-value" data-value-for="imageBrightness">${percent(data.imageBrightness)}%</span><input type="range" min="0.3" max="2" step="0.05" data-control="imageBrightness" value="${data.imageBrightness}"></label><label class="field">Tương phản <span class="range-value" data-value-for="imageContrast">${percent(data.imageContrast)}%</span><input type="range" min="0.3" max="2" step="0.05" data-control="imageContrast" value="${data.imageContrast}"></label><label class="field">Bão hòa <span class="range-value" data-value-for="imageSaturation">${percent(data.imageSaturation)}%</span><input type="range" min="0" max="2" step="0.05" data-control="imageSaturation" value="${data.imageSaturation}"></label><label class="field">Đen trắng <span class="range-value" data-value-for="imageGrayscale">${percent(data.imageGrayscale)}%</span><input type="range" min="0" max="100" step="1" data-control="imageGrayscale" value="${percent(data.imageGrayscale)}"></label><label class="field">Sắc độ <span class="range-value" data-value-for="imageHue">${Math.round(data.imageHue)}°</span><input type="range" min="-180" max="180" step="1" data-control="imageHue" value="${data.imageHue}"></label><label class="field">Làm mờ <span class="range-value" data-value-for="imageBlur">${data.imageBlur}px</span><input type="range" min="0" max="20" step="0.5" data-control="imageBlur" value="${data.imageBlur}"></label><label class="field">Màu viền<input type="color" data-control="frameColor" value="${data.frameColor}"></label><label class="field">Độ dày viền <span class="range-value" data-value-for="frameWidth">${data.frameWidth}px</span><input type="range" min="0" max="80" step="1" data-control="frameWidth" value="${data.frameWidth}"></label><label class="field">Khoảng cách khung <span class="range-value" data-value-for="frameInset">${data.frameInset}px</span><input type="range" min="0" max="360" step="2" data-control="frameInset" value="${data.frameInset}"></label><label class="field">Độ mờ khung <span class="range-value" data-value-for="frameOpacity">${percent(data.frameOpacity)}%</span><input type="range" min="0" max="100" step="1" data-control="frameOpacity" value="${percent(data.frameOpacity)}"></label><label class="field">Bo góc khung <span class="range-value" data-value-for="frameRadius">${data.frameRadius}px</span><input type="range" min="0" max="240" step="2" data-control="frameRadius" value="${data.frameRadius}"></label></div></div></details>`;
+  return `<details class="editor-section image-controls" data-editor-section="imageFrame" data-slide="${slideId}" ${open?"open":""}><summary><strong>Chỉnh ảnh và khung</strong><span class="section-meta">${data.frameWidth>0?"Có khung":"Ảnh cơ bản"}</span></summary><div class="section-body"><div class="control-title"><button type="button" class="tool reset-image">Đặt lại ảnh/khung</button></div>${cellPickerHtml(slide, data)}<div class="image-quick-tools"><button type="button" class="tool zoom-step" data-zoom-step="-0.2" title="Thu nhỏ">− Thu nhỏ</button><button type="button" class="tool zoom-step" data-zoom-step="0.2" title="Phóng to">+ Phóng to</button><button type="button" class="tool center-image">Về giữa</button><button type="button" class="tool fill-image">Lấp đầy khung</button><button type="button" class="tool fit-image">Vừa cả ảnh</button></div><p class="image-hint">Kéo trực tiếp trên ảnh để đổi vị trí (cần zoom &gt; 1×), giữ Ctrl/Cmd và lăn chuột hoặc chụm hai ngón để phóng to/thu nhỏ.</p><div class="fields"><label class="field">Zoom ảnh <span class="range-value" data-value-for="cropZoom">${crop.cropZoom.toFixed(1)}×</span><input type="range" min="1" max="4" step="0.05" data-control="cropZoom" value="${crop.cropZoom}"></label><label class="field">Kiểu vừa khung<select data-control="imageFit"><option value="cover" ${data.imageFit!=="contain"?"selected":""}>Lấp đầy (cắt bớt)</option><option value="contain" ${data.imageFit==="contain"?"selected":""}>Vừa cả ảnh (viền nền)</option></select></label><label class="field">Màu nền ảnh<input type="color" data-control="imageBackground" value="${data.imageBackground}"></label><label class="field toggle-field"><span>Lật ảnh</span><span class="flip-row"><label class="toggle"><input type="checkbox" data-control="imageFlipH" ${data.imageFlipH?"checked":""}> Ngang</label><label class="toggle"><input type="checkbox" data-control="imageFlipV" ${data.imageFlipV?"checked":""}> Dọc</label></span></label><label class="field">Trọng tâm ngang <span class="range-value" data-value-for="cropX">${Math.round(crop.cropX)}%</span><input type="range" min="0" max="100" data-control="cropX" value="${crop.cropX}"></label><label class="field">Trọng tâm dọc <span class="range-value" data-value-for="cropY">${Math.round(crop.cropY)}%</span><input type="range" min="0" max="100" data-control="cropY" value="${crop.cropY}"></label><label class="field">Độ sáng <span class="range-value" data-value-for="imageBrightness">${percent(data.imageBrightness)}%</span><input type="range" min="0.3" max="2" step="0.05" data-control="imageBrightness" value="${data.imageBrightness}"></label><label class="field">Tương phản <span class="range-value" data-value-for="imageContrast">${percent(data.imageContrast)}%</span><input type="range" min="0.3" max="2" step="0.05" data-control="imageContrast" value="${data.imageContrast}"></label><label class="field">Bão hòa <span class="range-value" data-value-for="imageSaturation">${percent(data.imageSaturation)}%</span><input type="range" min="0" max="2" step="0.05" data-control="imageSaturation" value="${data.imageSaturation}"></label><label class="field">Đen trắng <span class="range-value" data-value-for="imageGrayscale">${percent(data.imageGrayscale)}%</span><input type="range" min="0" max="100" step="1" data-control="imageGrayscale" value="${percent(data.imageGrayscale)}"></label><label class="field">Sắc độ <span class="range-value" data-value-for="imageHue">${Math.round(data.imageHue)}°</span><input type="range" min="-180" max="180" step="1" data-control="imageHue" value="${data.imageHue}"></label><label class="field">Làm mờ <span class="range-value" data-value-for="imageBlur">${data.imageBlur}px</span><input type="range" min="0" max="20" step="0.5" data-control="imageBlur" value="${data.imageBlur}"></label><label class="field">Màu viền<input type="color" data-control="frameColor" value="${data.frameColor}"></label><label class="field">Độ dày viền <span class="range-value" data-value-for="frameWidth">${data.frameWidth}px</span><input type="range" min="0" max="80" step="1" data-control="frameWidth" value="${data.frameWidth}"></label><label class="field">Khoảng cách khung <span class="range-value" data-value-for="frameInset">${data.frameInset}px</span><input type="range" min="0" max="360" step="2" data-control="frameInset" value="${data.frameInset}"></label><label class="field">Độ mờ khung <span class="range-value" data-value-for="frameOpacity">${percent(data.frameOpacity)}%</span><input type="range" min="0" max="100" step="1" data-control="frameOpacity" value="${percent(data.frameOpacity)}"></label><label class="field">Bo góc khung <span class="range-value" data-value-for="frameRadius">${data.frameRadius}px</span><input type="range" min="0" max="240" step="2" data-control="frameRadius" value="${data.frameRadius}"></label></div></div></details>`;
 
 }
 function decorateImageEditors() {
@@ -132,7 +162,7 @@ function editCard(slide) {
   const data = draft(slide); let active = selectedLayers.get(slide.id) ?? 0; if (!data.layers[active]) active = 0; selectedLayers.set(slide.id, active);
   const layer = data.layers[active] || defaultLayer(slide);
   const canUndo = (histories.get(slide.id) || []).length > 0, canRedo = (redos.get(slide.id) || []).length > 0;
-  return `<article class="card" data-editor="${slide.id}" data-design-saved="${slide.designSaved && !designDirty.has(slide.id) ? "true" : "false"}"><div class="card-head"><div><div class="number">Slide ${slide.position}</div><h2>${esc(slide.headline)}</h2></div><span class="status">${data.layers.length} lớp chữ</span></div><div class="visual"><div class="preview-column"><div class="canvas" data-canvas="${slide.id}">${background(slide, data, assets)}<div class="safe-zone"></div>${data.layers.map((item, index) => layerHtml(item, index, index === active, textSelections.get(`${slide.id}:${index}`), directEditing.has(`${slide.id}:${index}`))).join("")}</div>${directToolbarHtml(layer,slide.id,active)}</div><div><div class="tools"><button class="tool add-layer">+ Thêm chữ</button><button class="tool remove-layer">Xóa lớp</button><button class="tool undo" ${canUndo ? "" : "disabled"}>Hoàn tác</button><button class="tool redo" ${canRedo ? "" : "disabled"}>Làm lại</button><details class="apply-targets"><summary class="tool">Chọn slide để áp dụng kiểu</summary><div class="apply-target-menu"><div class="apply-target-actions"><button type="button" class="tool select-all-targets">Chọn tất cả</button><button type="button" class="tool clear-all-targets">Bỏ chọn</button></div>${project.slides.map(target=>`<label class="toggle"><input type="checkbox" class="style-target-slide" value="${target.id}" ${target.id===slide.id?"checked":""}> Slide ${target.position}: ${esc(target.headline.slice(0,34))}</label>`).join("")}<button type="button" class="action apply-selected-slides">Áp dụng kiểu</button></div></details></div><label class="field">Lớp chữ<select data-control="layer">${data.layers.map((item,index)=>`<option value="${index}" ${index===active?"selected":""}>${index+1}. ${esc(item.content.slice(0,30)||"Chữ mới")}</option>`).join("")}</select></label><div class="fields"><label class="field wide">Nội dung<textarea data-control="content">${esc(layer.content)}</textarea></label></div><button class="action save-design" data-slide="${slide.id}">Lưu thiết kế</button></div></div></article>`;
+  return `<article class="card" data-editor="${slide.id}" data-design-saved="${slide.designSaved && !designDirty.has(slide.id) ? "true" : "false"}"><div class="card-head"><div><div class="number">Slide ${slide.position}</div><h2>${esc(slide.headline)}</h2></div><span class="status">${data.layers.length} lớp chữ</span></div><div class="visual"><div class="preview-column"><div class="canvas" data-canvas="${slide.id}">${background(slide, data, assets, activeCell(slide))}<div class="safe-zone"></div>${data.layers.map((item, index) => layerHtml(item, index, index === active, textSelections.get(`${slide.id}:${index}`), directEditing.has(`${slide.id}:${index}`))).join("")}</div>${directToolbarHtml(layer,slide.id,active)}</div><div><div class="tools"><button class="tool add-layer">+ Thêm chữ</button><button class="tool remove-layer">Xóa lớp</button><button class="tool undo" ${canUndo ? "" : "disabled"}>Hoàn tác</button><button class="tool redo" ${canRedo ? "" : "disabled"}>Làm lại</button><details class="apply-targets"><summary class="tool">Chọn slide để áp dụng kiểu</summary><div class="apply-target-menu"><div class="apply-target-actions"><button type="button" class="tool select-all-targets">Chọn tất cả</button><button type="button" class="tool clear-all-targets">Bỏ chọn</button></div>${project.slides.map(target=>`<label class="toggle"><input type="checkbox" class="style-target-slide" value="${target.id}" ${target.id===slide.id?"checked":""}> Slide ${target.position}: ${esc(target.headline.slice(0,34))}</label>`).join("")}<button type="button" class="action apply-selected-slides">Áp dụng kiểu</button></div></details></div><label class="field">Lớp chữ<select data-control="layer">${data.layers.map((item,index)=>`<option value="${index}" ${index===active?"selected":""}>${index+1}. ${esc(item.content.slice(0,30)||"Chữ mới")}</option>`).join("")}</select></label><div class="fields"><label class="field wide">Nội dung<textarea data-control="content">${esc(layer.content)}</textarea></label></div><button class="action save-design" data-slide="${slide.id}">Lưu thiết kế</button></div></div></article>`;
 }
 
 function videoPanelHtml(){
@@ -227,7 +257,8 @@ $("edit").oninput = event => {
   else if (["boxBorderWidth","boxRadius","boxPaddingX","boxPaddingY","boxWidth"].includes(control)) layer[control] = Number(event.target.value);
   else if (["boxOpacity","boxBorderOpacity"].includes(control)) layer[control] = Number(event.target.value)/100;
   else if (["boxColor","boxBorderColor"].includes(control)) layer[control] = event.target.value.toUpperCase();
-  else if (["cropX","cropY","cropZoom","imageBrightness","imageContrast","imageSaturation","imageBlur","imageHue","frameInset","frameWidth","frameRadius"].includes(control)) data[control] = Number(event.target.value);
+  else if (["cropX","cropY","cropZoom"].includes(control)) setCrop(project.slides.find(item=>item.id===slideId), data, { [control]: Number(event.target.value) });
+  else if (["imageBrightness","imageContrast","imageSaturation","imageBlur","imageHue","frameInset","frameWidth","frameRadius"].includes(control)) data[control] = Number(event.target.value);
   else if (["imageGrayscale","frameOpacity"].includes(control)) data[control] = Number(event.target.value)/100;
   else if (["imageFlipH","imageFlipV"].includes(control)) data[control] = event.target.checked;
   else if (control === "imageFit") data.imageFit = event.target.value === "contain" ? "contain" : "cover";
@@ -248,12 +279,14 @@ $("edit").oninput = event => {
   }
   const output = editor.querySelector(`[data-value-for="${control}"]`);
   if (output) {
-    if (["imageBrightness","imageContrast","imageSaturation","imageGrayscale","frameOpacity","cropX","cropY"].includes(control)) output.textContent = `${Math.round(data[control]*100)/(["cropX","cropY"].includes(control)?100:1)}%`;
-    else if (control === "cropZoom") output.textContent = `${data.cropZoom.toFixed(1)}×`;
+    const slideForCrop = project.slides.find(item=>item.id===slideId), currentCrop = activeCrop(slideForCrop, data);
+    if (["cropX","cropY"].includes(control)) output.textContent = `${Math.round(currentCrop[control])}%`;
+    else if (control === "cropZoom") output.textContent = `${currentCrop.cropZoom.toFixed(1)}×`;
+    else if (["imageBrightness","imageContrast","imageSaturation","imageGrayscale","frameOpacity"].includes(control)) output.textContent = `${Math.round(data[control]*100)}%`;
     else if (control === "imageHue") output.textContent = `${Math.round(data.imageHue)}°`;
     else output.textContent = `${data[control]}px`;
   }
-  const slide = project.slides.find(item=>item.id===slideId); const canvas = editor.querySelector(".canvas"); canvas.outerHTML = `<div class="canvas" data-canvas="${slide.id}">${background(slide, data, assets)}<div class="safe-zone"></div>${data.layers.map((item,i)=>layerHtml(item,i,i===index,textSelections.get(`${slide.id}:${i}`),directEditing.has(`${slide.id}:${i}`))).join("")}</div>`; bindDrag();
+  const slide = project.slides.find(item=>item.id===slideId); const canvas = editor.querySelector(".canvas"); canvas.outerHTML = `<div class="canvas" data-canvas="${slide.id}">${background(slide, data, assets, activeCell(slide))}<div class="safe-zone"></div>${data.layers.map((item,i)=>layerHtml(item,i,i===index,textSelections.get(`${slide.id}:${i}`),directEditing.has(`${slide.id}:${i}`))).join("")}</div>`; bindDrag();
 };
 $("edit").ondblclick = event => {
   const layerElement = event.target.closest(".layer"), editor = event.target.closest("[data-editor]");
@@ -301,11 +334,14 @@ $("edit").onclick = async event => {
     }
     if (event.target.closest(".reset-text-box")) { remember(slideId); Object.assign(data.layers[index], withTextBox()); render(); return; }
     if (event.target.closest(".reset-image")) { remember(slideId); Object.assign(data, imageDefaults()); render(); return; }
+    const cellPick = event.target.closest("[data-cell-pick]")?.dataset.cellPick;
+    if (cellPick) { activeCells.set(slideId, cellPick); render(); return; }
+    if (event.target.closest(".reset-cell-crops")) { remember(slideId); data.assetCrops = {}; render(); return; }
     const zoomStep = event.target.closest("[data-zoom-step]")?.dataset.zoomStep;
-    if (zoomStep) { remember(slideId); data.cropZoom = Number(Math.max(1, Math.min(MAX_ZOOM, data.cropZoom + Number(zoomStep))).toFixed(2)); render(); return; }
-    if (event.target.closest(".center-image")) { remember(slideId); data.cropX = 50; data.cropY = 50; render(); return; }
+    if (zoomStep) { remember(slideId); setCrop(slide, data, { cropZoom: Number(Math.max(1, Math.min(MAX_ZOOM, activeCrop(slide, data).cropZoom + Number(zoomStep))).toFixed(2)) }); render(); return; }
+    if (event.target.closest(".center-image")) { remember(slideId); setCrop(slide, data, { cropX: 50, cropY: 50 }); render(); return; }
     if (event.target.closest(".fill-image")) { remember(slideId); data.imageFit = "cover"; render(); return; }
-    if (event.target.closest(".fit-image")) { remember(slideId); data.imageFit = "contain"; data.cropZoom = 1; data.cropX = 50; data.cropY = 50; render(); return; }
+    if (event.target.closest(".fit-image")) { remember(slideId); data.imageFit = "contain"; setCrop(slide, data, { cropZoom: 1, cropX: 50, cropY: 50 }); render(); return; }
     if (event.target.closest(".select-all-targets")) { editor.querySelectorAll(".style-target-slide").forEach(input=>input.checked=true); return; }
     if (event.target.closest(".clear-all-targets")) { editor.querySelectorAll(".style-target-slide").forEach(input=>input.checked=false); return; }
     if (event.target.closest(".apply-selected-slides")) {
@@ -326,7 +362,7 @@ $("edit").onclick = async event => {
       project = await json(`/api/projects/${projectId}/slides/${slideId}/design`, {
         method:"PATCH", headers:{"Content-Type":"application/json"},
         body:JSON.stringify({
-          cropX:data.cropX,cropY:data.cropY,cropZoom:data.cropZoom,
+          cropX:data.cropX,cropY:data.cropY,cropZoom:data.cropZoom,assetCrops:data.assetCrops||{},
           imageBrightness:data.imageBrightness,imageContrast:data.imageContrast,imageSaturation:data.imageSaturation,
           imageBlur:data.imageBlur,imageGrayscale:data.imageGrayscale,imageHue:data.imageHue,
           imageFit:data.imageFit,imageBackground:data.imageBackground,
@@ -344,12 +380,14 @@ $("edit").onclick = async event => {
 // Đồng bộ thanh trượt với thao tác kéo/lăn chuột trên khung xem trước mà không phải render lại cả trang.
 function syncImageControls(slideId) {
   const editor = document.querySelector(`[data-editor="${slideId}"]`), data = drafts.get(slideId);
-  if (!editor || !data) return;
+  const slide = project.slides.find(item => item.id === slideId);
+  if (!editor || !data || !slide) return;
+  const crop = activeCrop(slide, data);
   for (const control of ["cropX", "cropY", "cropZoom"]) {
     const input = editor.querySelector(`[data-control="${control}"]`);
-    if (input) input.value = data[control];
+    if (input) input.value = crop[control];
     const output = editor.querySelector(`[data-value-for="${control}"]`);
-    if (output) output.textContent = control === "cropZoom" ? `${data.cropZoom.toFixed(1)}×` : `${Math.round(data[control])}%`;
+    if (output) output.textContent = control === "cropZoom" ? `${crop.cropZoom.toFixed(1)}×` : `${Math.round(crop[control])}%`;
   }
 }
 
@@ -357,15 +395,23 @@ let wheelTimer = null, wheelSlideId = null;
 function bindCanvasPan() {
   document.querySelectorAll(".canvas").forEach(canvas => {
     const surface = canvas.querySelector("[data-canvas-bg]"), slideId = canvas.dataset.canvas, data = drafts.get(slideId);
-    if (!surface || !data) return;
-    const applyZoom = () => surface.querySelectorAll(".canvas-zoom").forEach(cell => {
-      cell.style.transform = `scale(${data.cropZoom})`;
-      cell.style.transformOrigin = `${data.cropX}% ${data.cropY}%`;
-    });
+    const slide = project.slides.find(item => item.id === slideId);
+    if (!surface || !data || !slide) return;
+    // Chỉ vẽ lại ô đang chỉnh, các ô khác giữ nguyên.
+    const applyZoom = () => {
+      const crop = activeCrop(slide, data), id = activeCell(slide);
+      const cell = surface.querySelector(`[data-cell="${CSS.escape(id)}"] .canvas-zoom`);
+      if (!cell) return;
+      cell.style.transform = `scale(${crop.cropZoom})`;
+      cell.style.transformOrigin = `${crop.cropX}% ${crop.cropY}%`;
+    };
     surface.onpointerdown = event => {
       if (event.target.closest(".layer")) return;
+      // Kéo trên một ô khác thì chuyển sang chỉnh ô đó.
+      const cellId = event.target.closest("[data-cell]")?.dataset.cell;
+      if (cellId && cellId !== activeCell(slide)) { activeCells.set(slideId, cellId); render(); return; }
       const rect = canvas.getBoundingClientRect(), startX = event.clientX, startY = event.clientY;
-      const originX = data.cropX, originY = data.cropY;
+      const origin = activeCrop(slide, data), originX = origin.cropX, originY = origin.cropY;
       let moved = false;
       surface.setPointerCapture(event.pointerId);
       surface.classList.add("panning");
@@ -375,10 +421,12 @@ function bindCanvasPan() {
         if (!moved) { remember(slideId); moved = true; }
         // Ở mức zoom z, khung nhìn chỉ trượt được (z-1) lần chiều rộng khung, nên 1px kéo tay
         // tương ứng 100/(rộng·(z-1)) phần trăm trọng tâm.
-        const span = data.cropZoom - 1;
+        const span = activeCrop(slide, data).cropZoom - 1;
         if (span <= .001) return;
-        data.cropX = Number(Math.max(0, Math.min(100, originX - dx / (rect.width * span) * 100)).toFixed(2));
-        data.cropY = Number(Math.max(0, Math.min(100, originY - dy / (rect.height * span) * 100)).toFixed(2));
+        setCrop(slide, data, {
+          cropX: Number(Math.max(0, Math.min(100, originX - dx / (rect.width * span) * 100)).toFixed(2)),
+          cropY: Number(Math.max(0, Math.min(100, originY - dy / (rect.height * span) * 100)).toFixed(2))
+        });
         applyZoom(); syncImageControls(slideId);
       };
       const finish = () => { surface.onpointermove = null; surface.classList.remove("panning"); if (moved) render(); };
@@ -389,10 +437,11 @@ function bindCanvasPan() {
       // để lăn chuột thường vẫn cuộn trang như bình thường.
       if (!event.ctrlKey && !event.metaKey) return;
       event.preventDefault();
-      const next = Number(Math.max(1, Math.min(MAX_ZOOM, data.cropZoom - event.deltaY * .0015)).toFixed(2));
-      if (next === data.cropZoom) return;
+      const current = activeCrop(slide, data).cropZoom;
+      const next = Number(Math.max(1, Math.min(MAX_ZOOM, current - event.deltaY * .0015)).toFixed(2));
+      if (next === current) return;
       if (wheelSlideId !== slideId) { remember(slideId); wheelSlideId = slideId; }
-      data.cropZoom = next;
+      setCrop(slide, data, { cropZoom: next });
       applyZoom(); syncImageControls(slideId);
       clearTimeout(wheelTimer);
       wheelTimer = setTimeout(() => { wheelSlideId = null; }, 400);

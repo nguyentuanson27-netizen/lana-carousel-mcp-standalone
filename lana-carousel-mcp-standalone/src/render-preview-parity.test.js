@@ -173,6 +173,36 @@ test("transparent pixels inside a grid cell also use the slide background", asyn
   assert.ok(near(red, 0) && near(green, 0) && near(blue, 255), `ô lưới có alpha phải hiện màu nền, nhận ${red},${green},${blue}`);
 });
 
+test("each grid cell can carry its own crop", async () => {
+  const first = await bandedAsset("cell-a.png"), second = await bandedAsset("cell-b.png");
+  const base = {
+    selectedAssetIds: [first.id, second.id], compositionMode: "grid", textEnabled: false, textLayers: [],
+    cropZoom: 2, cropX: 50, cropY: 50
+  };
+  // Ô trên kéo về dải đỏ, ô dưới kéo về dải lam; crop cấp slide vẫn ở giữa.
+  const slide = { ...base, assetCrops: { [first.id]: { cropX: 0 }, [second.id]: { cropX: 100 } } };
+  const pixel = await renderPixels(slide, [first, second]);
+  assert.equal(dominant(pixel(3, HEIGHT / 4)), 0, "ô trên phải theo crop riêng của nó");
+  assert.equal(dominant(pixel(WIDTH - 4, HEIGHT * 3 / 4)), 2, "ô dưới phải theo crop riêng của nó");
+
+  // Ô không khai báo riêng thì kế thừa crop cấp slide.
+  const inherited = await renderPixels({ ...base, assetCrops: { [first.id]: { cropX: 0 } } }, [first, second]);
+  const slideLevel = await renderPixels(base, [first, second]);
+  assert.deepEqual(inherited(WIDTH / 2, HEIGHT * 3 / 4), slideLevel(WIDTH / 2, HEIGHT * 3 / 4));
+});
+
+test("per-cell crops are ignored for assets the slide has not selected", () => {
+  const project = service.createProject({ title: "Cell crops" });
+  const slide = service.addSlide({ projectId: project.id, position: 1, subject: "S", headline: "H", body: "B" });
+  // Slide chưa chọn ảnh nào, nên crop riêng gửi lên phải bị bỏ qua thay vì tạo hàng rác.
+  const saved = service.updateSlideCrop({
+    projectId: project.id, slideId: slide.id, cropX: 40,
+    assetCrops: { "11111111-1111-4111-8111-111111111111": { cropX: 10 } }
+  });
+  assert.deepEqual(saved.slides[0].assetCrops, {});
+  assert.equal(saved.slides[0].cropX, 40, "crop cấp slide vẫn được ghi bình thường");
+});
+
 test("new image controls survive a design save round trip", () => {
   const project = service.createProject({ title: "Parity" });
   const slide = service.addSlide({ projectId: project.id, position: 1, subject: "Subject", headline: "Headline", body: "Body" });

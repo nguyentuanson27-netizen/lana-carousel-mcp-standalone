@@ -92,7 +92,13 @@ Sai số bề rộng còn lại so với Chromium là dưới ~3,5% (chủ yếu
 ngưỡng ngắt dòng vẫn có thể lệch một từ. Muốn khớp tuyệt đối thì phải đo ở trình duyệt rồi gửi kèm
 khi lưu thiết kế.
 
-### 9. Mọi độ dài tính bằng pixel đều thuộc hệ toạ độ 1080px
+### 9. Crop riêng của từng ô lưới đè lên crop cấp slide
+
+`slide.assetCrops[assetId]` chứa `cropX`/`cropY`/`cropZoom` riêng cho một ô; trường nào thiếu thì ô
+kế thừa giá trị cấp slide. Preview dùng `cropFor()` trong `preview-dom.js`, bản render dùng
+`cropSettingsFor()` — hai hàm này phải cùng công thức.
+
+### 10. Mọi độ dài tính bằng pixel đều thuộc hệ toạ độ 1080px
 
 Preview biểu diễn chúng bằng `cqw` nên tự co giãn theo bề rộng canvas. Bản render vì thế phải nhân
 với `width / 1080` (hằng `DESIGN_WIDTH`): cỡ chữ, đệm và viền hộp chữ, độ dày và bo góc khung, độ mờ.
@@ -101,7 +107,7 @@ Bỏ bước này thì ảnh chỉ đúng ở đúng 1080px và sai tỉ lệ kh
 Hệ quả: **đừng dùng `px` thô trong CSS cho thứ gì thuộc thiết kế** — nếu không, preview ở canvas
 540px và bản render ở 1080px sẽ khác nhau.
 
-### 10. Bề rộng ngắt dòng khi tắt hộp chữ phụ thuộc vị trí lớp chữ
+### 11. Bề rộng ngắt dòng khi tắt hộp chữ phụ thuộc vị trí lớp chữ
 
 `.layer` là khối định vị tuyệt đối chỉ đặt `left`, nên bề rộng co giãn của nó là khoảng trống từ
 `left` tới mép phải canvas, rồi mới bị `max-width: 96%` chặn. Tức là lớp chữ ở `x = 50%` chỉ được

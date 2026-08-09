@@ -20,10 +20,15 @@ function json(value, fallback) {
 
 function mapSlide(row) {
   if (!row) return null;
+  const selections = sql.getSelections.all(row.id);
   return {
     id: row.id, projectId: row.project_id, position: row.position, subject: row.subject,
     headline: row.headline, body: row.body, selectedAssetId: row.selected_asset_id,
-    selectedAssetIds: sql.getSelections.all(row.id).map(item => item.asset_id),
+    selectedAssetIds: selections.map(item => item.asset_id),
+    // Chỉ những ô đã chỉnh riêng mới có mặt; ô còn lại kế thừa crop cấp slide.
+    assetCrops: Object.fromEntries(selections
+      .filter(item => item.crop_x != null || item.crop_y != null || item.crop_zoom != null)
+      .map(item => [item.asset_id, { cropX: item.crop_x, cropY: item.crop_y, cropZoom: item.crop_zoom }])),
     candidateAssetIds: sql.getCandidates.all(row.id).map(item => item.asset_id),
     compositionMode: row.composition_mode || "crop", isLocked: bool(row.is_locked),
     imageApproved: bool(row.image_approved), renderStatus: row.render_status,
@@ -166,9 +171,14 @@ export async function cloneProject(projectId) {
           const mapped = assetMap.get(oldAssetId);
           if (mapped) sql.addCandidate.run(newSlideId, mapped.id, timestamp);
         }
-        const selected = (slide.selectedAssetIds?.length ? slide.selectedAssetIds : [slide.selectedAssetId]).filter(Boolean).map(id => assetMap.get(id)?.id).filter(Boolean);
+        const sourceSelected = (slide.selectedAssetIds?.length ? slide.selectedAssetIds : [slide.selectedAssetId]).filter(Boolean);
+        const selected = sourceSelected.map(id => assetMap.get(id)?.id).filter(Boolean);
         if (selected.length) {
           selected.forEach((assetId, index) => sql.addSelection.run(newSlideId, assetId, index));
+          for (const oldAssetId of sourceSelected) {
+            const crop = slide.assetCrops?.[oldAssetId], mappedId = assetMap.get(oldAssetId)?.id;
+            if (crop && mappedId) sql.setSelectionCrop.run({ slide_id: newSlideId, asset_id: mappedId, crop_x: crop.cropX ?? null, crop_y: crop.cropY ?? null, crop_zoom: crop.cropZoom ?? null });
+          }
           sql.approveSlideAsset.run(selected[0], slide.compositionMode, timestamp, newSlideId);
           if (!slide.imageApproved) sql.markSlideImagePending.run(newSlideId);
         }
@@ -234,11 +244,25 @@ export function updateSlideCrop(input) {
   const slide = mapSlide(row), timestamp = now();
   db.transaction(() => {
     sql.updateSlideCrop.run(imageDesignColumns({ id: input.slideId, projectId: input.projectId, source: slide, input, updatedAt: timestamp }));
+    writeAssetCrops(input.slideId, slide.selectedAssetIds, input.assetCrops);
     sql.markImagesPending.run(timestamp, input.projectId);
     sql.markSlideImagePending.run(input.slideId);
     saveVersion(input.projectId, "update_image_design");
   })();
   return getProject(input.projectId);
+}
+
+/** Ghi crop riêng cho từng ô lưới; giá trị null/thiếu nghĩa là ô đó quay về kế thừa crop cấp slide. */
+function writeAssetCrops(slideId, selectedIds, assetCrops) {
+  if (!assetCrops) return;
+  sql.clearSelectionCrops.run(slideId);
+  for (const [assetId, crop] of Object.entries(assetCrops)) {
+    if (!selectedIds.includes(assetId) || !crop) continue;
+    sql.setSelectionCrop.run({
+      slide_id: slideId, asset_id: assetId,
+      crop_x: crop.cropX ?? null, crop_y: crop.cropY ?? null, crop_zoom: crop.cropZoom ?? null
+    });
+  }
 }
 
 export function updateSlideDesign(input) {
@@ -247,6 +271,7 @@ export function updateSlideDesign(input) {
   const project = requireProject(input.projectId), slide = mapSlide(row), timestamp = now();
   db.transaction(() => {
     sql.updateSlideCrop.run(imageDesignColumns({ id: input.slideId, projectId: input.projectId, source: slide, input, updatedAt: timestamp }));
+    writeAssetCrops(input.slideId, slide.selectedAssetIds, input.assetCrops);
     sql.updateSlideContent.run({
       id: input.slideId, project_id: input.projectId, headline: slide.headline, body: slide.body,
       text_enabled: input.textEnabled ?? slide.textEnabled ? 1 : 0,
@@ -587,7 +612,20 @@ function applyImageFilters(pipeline, slide, scale) {
 
 // Hình học trùng khớp với preview: ảnh phủ (hoặc lọt) ô theo `object-fit`, rồi
 // `transform: scale(zoom)` với `transform-origin: cropX% cropY%`.
-async function cropAsset(asset, slide, width, height) {
+/** Gộp crop riêng của một ô lưới lên trên crop cấp slide. */
+function cropSettingsFor(slide, assetId) {
+  const override = slide.assetCrops?.[assetId];
+  if (!override) return slide;
+  return {
+    ...slide,
+    cropX: override.cropX ?? slide.cropX,
+    cropY: override.cropY ?? slide.cropY,
+    cropZoom: override.cropZoom ?? slide.cropZoom
+  };
+}
+
+async function cropAsset(asset, rawSlide, width, height) {
+  const slide = cropSettingsFor(rawSlide, asset.id);
   const zoom = clamp(slide.cropZoom, 1, 4, 1);
   const scaledWidth = Math.ceil(width * zoom), scaledHeight = Math.ceil(height * zoom);
   const background = hexColor(slide.imageBackground, IMAGE_DESIGN_DEFAULTS.imageBackground);
