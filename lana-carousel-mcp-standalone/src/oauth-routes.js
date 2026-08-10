@@ -208,6 +208,17 @@ function pageShell(title, body) {
   return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>${escapeHtml(title)}</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:#f5f1eb;color:#2b221d;font:15px/1.5 system-ui,sans-serif}main{width:min(520px,100%);padding:30px;border:1px solid #ded4ca;border-radius:24px;background:#fffdf9;box-shadow:0 24px 80px #39261b1f}h1{margin:0 0 8px;font:500 31px Georgia,serif}p{color:#796d64}.client{padding:14px 16px;border:1px solid #ded4ca;border-radius:14px;background:#faf6f1;margin:18px 0}.warning{padding:12px 14px;border:1px solid #d8a948;border-radius:12px;background:#fff8df;color:#6e5415;font-weight:650}.redirect{display:block;margin-top:8px;padding:10px 12px;border-radius:10px;background:#fff;color:#493f38;font:12px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere}.actions{display:flex;gap:10px;margin-top:22px}.actions button,.actions a{flex:1;padding:12px;border-radius:999px;border:1px solid #8d3f3d;font:700 14px system-ui;cursor:pointer;text-align:center;text-decoration:none}.approve{background:#8d3f3d;color:#fff}.deny{background:#fff;color:#8d3f3d}</style></head><body><main>${body}</main></body></html>`;
 }
 
+function oauthSameSiteBridgeHtml(returnTo) {
+  const destination = safeReturnTo(returnTo, "/projects");
+  const escapedDestination = escapeHtml(destination);
+  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><meta http-equiv="refresh" content="0;url=${escapedDestination}"><title>Tiếp tục kết nối Lana MCP</title></head><body><p>Đang tiếp tục kết nối Lana MCP…</p><a rel="noreferrer" href="${escapedDestination}">Tiếp tục</a></body></html>`;
+}
+
+function needsOAuthSameSiteBridge(returnTo) {
+  const destination = safeReturnTo(returnTo, "/projects");
+  return destination === "/oauth/authorize" || destination.startsWith("/oauth/authorize?");
+}
+
 export function consentHtml({ clientName, scope, consentToken, redirectUri }) {
   let redirectHost = "không xác định";
   try { redirectHost = new URL(redirectUri).host; } catch { /* validated upstream */ }
@@ -274,6 +285,11 @@ export function registerOAuthRoutes(app) {
       const identity = assertAllowedGoogleIdentity(ticket.getPayload() || {});
       const session = createBrowserAdminSession(principalForGoogleSubject(identity.subject));
       setAdminSessionCookie(res, session.sessionToken);
+      if (needsOAuthSameSiteBridge(returnTo)) {
+        setOAuthHtmlSecurityHeaders(res);
+        res.setHeader("Referrer-Policy", "no-referrer");
+        return res.status(200).send(oauthSameSiteBridgeHtml(returnTo));
+      }
       res.setHeader("Cache-Control", "no-store");
       return res.redirect(302, returnTo);
     } catch (error) {
