@@ -49,7 +49,7 @@ test("Facebook Page can be provisioned internally without Facebook Login", async
   assert.equal(JSON.stringify(browserSafe).includes("internal-page-token"), false, "Page token must never be returned in account listings");
 });
 
-test("env-managed Facebook Page cannot be disconnected through Social Publisher", async () => {
+test("active env-managed Facebook Page cannot be disconnected through Social Publisher", async () => {
   const account = oauthModule.ensureConfiguredFacebookPageAccount();
   const { disconnectSocialAccount } = await import("./social-service.js");
   assert.throws(
@@ -57,6 +57,16 @@ test("env-managed Facebook Page cannot be disconnected through Social Publisher"
     error => error?.code === "SOCIAL_ACCOUNT_MANAGED_BY_ENV" && error?.status === 409
   );
   assert.ok(storeModule.getSocialAccount(account.id));
+});
+
+test("stale env-managed Facebook account becomes removable after env ownership ends", async () => {
+  const service = await read("src/social-service.js");
+  assert.match(service, /function isActiveEnvFacebookAccount\(account, feature = socialFeatureStatus\(\)\)/u);
+  assert.match(service, /feature\.facebookPageReady === true/u);
+  assert.match(service, /account\.externalAccountId === socialConfig\.facebookPageId/u);
+  assert.match(service, /staleManagedByEnv:\s*true/u);
+  assert.match(service, /if \(isActiveEnvFacebookAccount\(account\)\)/u);
+  assert.doesNotMatch(service, /if \(account\.metadata\?\.managedByEnv === true\) \{/u);
 });
 
 test("Instagram uses Business Login for Instagram instead of Facebook Login", () => {
