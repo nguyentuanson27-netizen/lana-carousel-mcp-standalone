@@ -1,1 +1,0 @@
-Draft checkpoint 2.
