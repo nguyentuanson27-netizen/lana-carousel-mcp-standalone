@@ -16,11 +16,13 @@ const pageHtml = `<!doctype html><html><head><meta charset="utf-8"><link rel="st
   <aside id="studioSidebar"><div class="sidebar-brand"><div>Carousel</div></div></aside>
   <div id="workflow"><button class="step active" data-view="edit">Edit</button></div>
   <header class="workspace-header">
+    <div><span>Bước 3 · Carousel</span><h1>Sửa thiết kế</h1></div>
     <div class="brand-kit">
       <label class="field">Font<select id="brandFont"><option>TikTok Sans</option><option>Poppins</option></select></label>
       <label class="field">Màu<input id="brandColor" type="color" value="#ffffff"></label>
       <button id="saveBrand" type="button">Lưu và áp dụng tất cả</button>
     </div>
+    <div id="workspaceStats"></div>
   </header>
   <section id="edit">
     <article data-editor="slide-1">
