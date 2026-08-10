@@ -19,8 +19,11 @@ Production:
 - Tối đa 10 ảnh ứng viên cho mỗi slide, được bảo vệ bằng invariant SQLite khi có request đồng thời.
 - Duyệt một ảnh hoặc ghép nhiều ảnh dạng lưới; crop, zoom, lật ảnh, chọn kiểu vừa khung, filter và tùy chỉnh khung.
 - Sửa ảnh trực tiếp trên khung xem trước: kéo để đổi vị trí, Ctrl/Cmd + lăn chuột để phóng to/thu nhỏ.
+- Ghép lưới cho phép chỉnh crop riêng từng ô: chọn ô rồi kéo hoặc dùng thanh trượt.
+- Nút "Xem ảnh thật" gọi thẳng renderer của server để xem đúng ảnh sắp tải về, kể cả khi thiết kế chưa lưu.
 - Ảnh tải về khớp ảnh preview theo hợp đồng ghi trong [docs/preview-render-parity.md](docs/preview-render-parity.md).
 - Nhiều lớp chữ kéo thả, rich text và animation trong MP4.
+- Font đi kèm repo (`public/fonts/`), dùng chung cho trình duyệt và renderer nên chữ trong ảnh tải về đúng font đã chọn.
 - Video 9:16, 1:1 và 16:9; TTS, phụ đề và nhạc nền.
 - Audio upload có lifecycle `STAGED → REFERENCED`; file chưa được lưu vào settings/version bị xóa sau grace period.
 - Giới hạn số file và tổng byte audio theo project để bảo vệ dung lượng ổ đĩa.

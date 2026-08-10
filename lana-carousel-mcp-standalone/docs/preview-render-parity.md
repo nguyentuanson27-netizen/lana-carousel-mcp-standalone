@@ -59,20 +59,90 @@ preview hiện màu nền, vì trình duyệt vẽ `background` của `.canvas-b
 Vì màu nền đó nằm *trong* phạm vi `filter` của `.canvas-bg`, bước `flatten()` phải chạy **trước**
 `applyImageFilters()` để màu nền cũng được chỉnh sáng/tương phản như ở preview.
 
-### 7. Chữ
+### 7. Font
 
-Bản render tự xuống dòng bằng ước lượng bề rộng ký tự, còn trình duyệt dùng metric thật của font, nên
-đây là phần khớp *gần đúng*. Các hằng số phải bám theo CSS:
+Trình duyệt và server phải nạp **cùng một bộ file font**. Chúng nằm ở `public/fonts/`: trình duyệt nạp
+qua `@font-face` trong `public/fonts.css`, còn librsvg (bên trong sharp) nạp qua fontconfig do
+`src/fonts.js` cấu hình. Không dùng Google Fonts cho phía trình duyệt nữa — nếu chỉ một phía có font
+thì mọi lựa chọn trong ô chọn font đều im lặng rơi về font mặc định của hệ thống ở bản render.
+
+`src/fonts.js` phải được `import` **trước** `sharp`, vì fontconfig chỉ đọc biến `FONTCONFIG_FILE`
+một lần cho cả tiến trình. Thêm font mới thì phải cập nhật cả `FONT_FILES`, `public/fonts.css` và
+danh sách `fonts` trong `public/widget.js` — `src/render-fonts.test.js` chốt ba nơi này khớp nhau.
+
+### 8. Chữ
+
+Bản render tự xuống dòng, còn trình duyệt dùng bộ xếp chữ riêng, nên đây là phần khớp *gần đúng*.
+Các hằng số phải bám theo CSS:
 
 - `LINE_HEIGHT` = `.layer{line-height}` trong `stitch-ui.css`
 - Hộp chữ dùng `box-sizing: border-box`: bề rộng chữ khả dụng = `boxWidth − 2·(padding + border)`
 - `opacity` của lớp chữ áp cho cả hộp lẫn chữ
 
-Nếu cần khớp tuyệt đối phần chữ thì phải đo bề rộng dòng ở trình duyệt rồi gửi kèm khi lưu thiết kế.
+Bề rộng ký tự lấy từ chính file font qua `src/font-metrics.js`, không dùng hệ số ước lượng. Ba điểm
+dễ sai khi sửa phần này:
 
-## Cách kiểm tra thủ công
+- **`hmtx` chỉ mô tả instance mặc định.** Với font biến thiên phải cộng delta từ `HVAR`. Trục mặc định
+  không nhất thiết là 400 — Montserrat mặc định 100, TikTok Sans mặc định 300 — nên bỏ qua `HVAR`
+  thì sai ngay cả ở độ đậm thường.
+- **CSS bật `font-optical-sizing: auto`.** Font có trục `opsz` phải được gán trục này theo cỡ chữ.
+- **Họ nhiều file tĩnh** (Poppins) phải chọn file gần với độ đậm đang dùng.
 
-`src/render-preview-parity.test.js` chạy tự động cùng `npm test`. Khi muốn so trực tiếp bằng mắt, dựng
-một trang HTML lặp lại đúng cấu trúc `.canvas > .canvas-bg > div > .canvas-zoom > img` với cùng chuỗi
-`filter`, chụp màn hình ở 1080×1920 rồi so từng điểm ảnh với kết quả của `renderSlideSnapshot()`.
-Sai lệch trung bình mỗi kênh nên dưới ~2/255 (phần dư đến từ khác biệt thuật toán nội suy).
+Sai số bề rộng còn lại so với Chromium là dưới ~3,5% (chủ yếu do kerning chưa xử lý), nên ở đúng
+ngưỡng ngắt dòng vẫn có thể lệch một từ. Muốn khớp tuyệt đối thì phải đo ở trình duyệt rồi gửi kèm
+khi lưu thiết kế.
+
+### 9. Crop riêng của từng ô lưới đè lên crop cấp slide
+
+`slide.assetCrops[assetId]` chứa `cropX`/`cropY`/`cropZoom` riêng cho một ô; trường nào thiếu thì ô
+kế thừa giá trị cấp slide. Preview dùng `cropFor()` trong `preview-dom.js`, bản render dùng
+`cropSettingsFor()` — hai hàm này phải cùng công thức. Mọi đường ghi thiết kế đều phải xử lý chúng:
+lưu, nhân bản dự án **và khôi phục phiên bản** (khôi phục còn phải xoá những ô được chỉnh riêng sau
+thời điểm chụp).
+
+Thao tác kéo trên khung xem trước phải chuẩn hoá theo kích thước **ô đang chỉnh**, không phải cả
+canvas: ở zoom `z`, khung nhìn chỉ trượt được `(z−1)` lần kích thước ô. Dùng kích thước canvas sẽ
+làm thao tác kéo chậm đi đúng bằng số cột/số hàng của lưới.
+
+Hai cái bẫy khi sửa phần kéo này, cả hai đều làm thao tác chết sau vài pixel:
+
+- **Ảnh mặc định kéo–thả được.** Không chặn thì trình duyệt khởi động thao tác kéo ảnh gốc và bắn
+  `pointercancel`. Cần `draggable="false"`, `-webkit-user-drag: none` và `preventDefault()`.
+- **Đổi DOM giữa lúc kéo.** `stitch-ui.js` theo dõi `childList` toàn trang cùng các thuộc tính
+  `class`/`disabled`/`data-design-saved`; observer chạy giữa chừng có thể cướp mất pointer capture.
+  Vì vậy thao tác kéo chỉ đổi `style`, cập nhật số hiển thị qua `nodeValue`, và chỉ ghi lịch sử
+  hoàn tác lúc thả chuột.
+
+Trọng tâm mới luôn tính từ vị trí lúc **bấm chuột** cộng tổng độ dời, nhưng phép kiểm tra "không có
+gì đổi" phải so với giá trị **đang áp dụng**. So với vị trí lúc bấm chuột thì lúc kéo đi rồi kéo về
+đúng chỗ cũ, phép so sẽ thấy trùng và bỏ qua, khiến bản nháp kẹt ở vị trí trung gian cuối cùng.
+
+### 10. Mọi độ dài tính bằng pixel đều thuộc hệ toạ độ 1080px
+
+Preview biểu diễn chúng bằng `cqw` nên tự co giãn theo bề rộng canvas. Bản render vì thế phải nhân
+với `width / 1080` (hằng `DESIGN_WIDTH`): cỡ chữ, đệm và viền hộp chữ, độ dày và bo góc khung, độ mờ.
+Bỏ bước này thì ảnh chỉ đúng ở đúng 1080px và sai tỉ lệ khi render video vuông hoặc ngang.
+
+Hệ quả: **đừng dùng `px` thô trong CSS cho thứ gì thuộc thiết kế** — nếu không, preview ở canvas
+540px và bản render ở 1080px sẽ khác nhau.
+
+### 11. Bề rộng ngắt dòng khi tắt hộp chữ phụ thuộc vị trí lớp chữ
+
+`.layer` là khối định vị tuyệt đối chỉ đặt `left`, nên bề rộng co giãn của nó là khoảng trống từ
+`left` tới mép phải canvas, rồi mới bị `max-width: 96%` chặn. Tức là lớp chữ ở `x = 50%` chỉ được
+dùng nửa bề rộng canvas. Đây là hành vi có phần bất ngờ của CSS chứ không phải chủ ý thiết kế, nhưng
+sửa nó sẽ làm mọi thiết kế đã lưu xuống dòng lại, nên bản render đang lặp lại đúng công thức này.
+Nếu sau này muốn bỏ ràng buộc đó thì phải sửa đồng thời cả hai phía và chấp nhận thiết kế cũ đổi bố cục.
+
+## Kiểm tra tự động
+
+`src/preview-browser-parity.test.js` mở Chromium, dựng khung xem trước bằng **chính module
+`public/preview-dom.js`** mà studio dùng cùng đúng file `stitch-ui.css`, chụp màn hình rồi so từng
+điểm ảnh với `renderSlideSnapshot()`. Đây là lưới an toàn cho toàn bộ tài liệu này — các bài test
+khác chỉ kiểm tra phía server nên không thấy được sai lệch do CSS.
+
+Ngưỡng: lệch trung bình < 4/255 với ảnh, < 9/255 với ca có chữ (trình duyệt và librsvg khử răng cưa
+khác nhau). Test tự bỏ qua khi máy không có Playwright/Chromium; CI cài Chromium ở bước riêng.
+
+Muốn so bằng mắt thì chạy test với biến `CHROMIUM_PATH` trỏ tới Chromium có sẵn và thêm lệnh ghi
+ảnh ra file trong hàm `compare()`.

@@ -120,6 +120,12 @@ for (const [name, definition] of Object.entries({
   video_settings: "TEXT"
 })) if (!projectColumns.has(name)) db.exec(`ALTER TABLE projects ADD COLUMN ${name} ${definition}`);
 
+const selectionColumns = new Set(db.prepare(`PRAGMA table_info(slide_asset_selections)`).all().map(column => column.name));
+// Crop riêng cho từng ô lưới. NULL nghĩa là kế thừa giá trị cấp slide.
+for (const name of ["crop_x", "crop_y", "crop_zoom"]) {
+  if (!selectionColumns.has(name)) db.exec(`ALTER TABLE slide_asset_selections ADD COLUMN ${name} REAL`);
+}
+
 const slideColumns = new Set(db.prepare(`PRAGMA table_info(slides)`).all().map(column => column.name));
 if (!slideColumns.has("image_approved")) db.exec(`ALTER TABLE slides ADD COLUMN image_approved INTEGER NOT NULL DEFAULT 0`);
 if (!slideColumns.has("composition_mode")) db.exec(`ALTER TABLE slides ADD COLUMN composition_mode TEXT NOT NULL DEFAULT 'crop'`);
@@ -224,9 +230,11 @@ export const sql = {
   getAsset: db.prepare(`SELECT * FROM assets WHERE id = ?`),
   getCandidates: db.prepare(`SELECT asset_id FROM slide_asset_candidates WHERE slide_id=? ORDER BY created_at ASC`),
   countCandidates: db.prepare(`SELECT COUNT(*) AS count FROM slide_asset_candidates WHERE slide_id=?`),
-  getSelections: db.prepare(`SELECT asset_id FROM slide_asset_selections WHERE slide_id=? ORDER BY position ASC`),
+  getSelections: db.prepare(`SELECT asset_id, crop_x, crop_y, crop_zoom FROM slide_asset_selections WHERE slide_id=? ORDER BY position ASC`),
   clearSelections: db.prepare(`DELETE FROM slide_asset_selections WHERE slide_id=?`),
   addSelection: db.prepare(`INSERT INTO slide_asset_selections (slide_id,asset_id,position) VALUES (?,?,?)`),
+  setSelectionCrop: db.prepare(`UPDATE slide_asset_selections SET crop_x=@crop_x,crop_y=@crop_y,crop_zoom=@crop_zoom WHERE slide_id=@slide_id AND asset_id=@asset_id`),
+  clearSelectionCrops: db.prepare(`UPDATE slide_asset_selections SET crop_x=NULL,crop_y=NULL,crop_zoom=NULL WHERE slide_id=?`),
   addCandidate: db.prepare(`INSERT OR IGNORE INTO slide_asset_candidates (slide_id,asset_id,created_at) VALUES (?,?,?)`),
   findAssetByHash: db.prepare(`SELECT * FROM assets WHERE project_id=? AND sha256=?`),
   createAsset: db.prepare(`INSERT INTO assets (id,project_id,storage_key,public_url,mime_type,file_size,width,height,sha256,source_image_url,source_page_url,source_title,source_publisher,source_type,alt_text,created_at) VALUES (@id,@project_id,@storage_key,@public_url,@mime_type,@file_size,@width,@height,@sha256,@source_image_url,@source_page_url,@source_title,@source_publisher,@source_type,@alt_text,@created_at)`),

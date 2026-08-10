@@ -1,39 +1,20 @@
+import { esc, fontStack, FALLBACK_FONT, MAX_ZOOM, selectedIds, withTextBox, imageDefaults, rgba,
+  frameHtml, background, cropFor, panCrop, normalizedStyleRanges, normalizedSizeRanges, styleAt, richTextHtml, layerHtml }
+  from "/preview-dom.js";
+import { cellPickerHtml, imageControlsHtml, textBoxControlsHtml, textStyleControlsHtml } from "/editor-controls.js";
 const params = new URLSearchParams(location.search);
 const projectId = params.get("projectId");
 const $ = id => document.getElementById(id);
 const fonts = ["TikTok Sans", "Montserrat", "Poppins", "Bebas Neue", "Roboto", "Playfair Display", "Courier New"];
+// Bebas Neue, Poppins và Courier New thiếu glyph tiếng Việt dựng sẵn. Khai báo sẵn font dự phòng
+// để trình duyệt và bản render lấy glyph từ cùng một file — phải trùng FALLBACK_FAMILY trong src/fonts.js.
 let project, assets, view = "content", renderTimer;
-const picks = new Map(), drafts = new Map(), selectedLayers = new Map(), histories = new Map(), redos = new Map(), sectionStates = new Map(), textSelections = new Map(), directEditing = new Set(), designDirty = new Set();
-const esc = (value = "") => String(value).replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" })[char]);
+const picks = new Map(), drafts = new Map(), selectedLayers = new Map(), activeCells = new Map(), histories = new Map(), redos = new Map(), sectionStates = new Map(), textSelections = new Map(), directEditing = new Set(), designDirty = new Set();
 
-function selectedIds(slide) { return slide.selectedAssetIds?.length ? slide.selectedAssetIds : [slide.selectedAssetId].filter(Boolean); }
 function candidateAssets(slide) { return [...new Set([...(slide.candidateAssetIds || []), slide.selectedAssetId].filter(Boolean))].map(id => assets.get(id)).filter(Boolean); }
-function withTextBox(layer = {}) {
-  return {
-    boxEnabled: false, boxColor: "#FFFFFF", boxOpacity: 0.9,
-    boxBorderColor: "#333333", boxBorderWidth: 0, boxBorderOpacity: 1,
-    boxRadius: 24, boxPaddingX: 32, boxPaddingY: 20, boxWidth: 80, sizeRanges: [], styleRanges: [],
-    ...layer
-  };
-}
 function defaultLayer(slide) { return withTextBox({ id: crypto.randomUUID(), role: "headline", content: slide.headline || slide.overlayText, enabled: slide.textEnabled, font: slide.textFont || "TikTok Sans", size: slide.textSize || 72, x: slide.textX || 50, y: slide.textY || 42, color: slide.textColor || "#FFFFFF", align: slide.textAlign || "center", opacity: 1, rotation: 0 }); }
 function defaultBodyLayer(slide) { return withTextBox({ id: crypto.randomUUID(), role: "body", content: slide.body || "", enabled: Boolean(slide.body), font: slide.textFont || "TikTok Sans", size: 42, x: 50, y: 66, color: slide.textColor || "#FFFFFF", align: "center", opacity: 0.95, rotation: 0 }); }
 function initialLayers(slide) { return [defaultLayer(slide), defaultBodyLayer(slide)]; }
-const MAX_ZOOM = 4;
-function imageDefaults(slide = {}) {
-  return {
-    cropX: slide.cropX ?? 50, cropY: slide.cropY ?? 50, cropZoom: slide.cropZoom ?? 1,
-    imageBrightness: slide.imageBrightness ?? 1, imageContrast: slide.imageContrast ?? 1,
-    imageSaturation: slide.imageSaturation ?? 1, imageBlur: slide.imageBlur ?? 0,
-    imageGrayscale: slide.imageGrayscale ?? 0, imageHue: slide.imageHue ?? 0,
-    imageFit: slide.imageFit === "contain" ? "contain" : "cover",
-    imageBackground: slide.imageBackground || "#181411",
-    imageFlipH: Boolean(slide.imageFlipH), imageFlipV: Boolean(slide.imageFlipV),
-    frameInset: slide.frameInset ?? 40,
-    frameWidth: slide.frameWidth ?? 0, frameColor: slide.frameColor || "#FFFFFF",
-    frameOpacity: slide.frameOpacity ?? 1, frameRadius: slide.frameRadius ?? 0
-  };
-}
 function draft(slide) {
   if (!drafts.has(slide.id)) drafts.set(slide.id, { ...imageDefaults(slide), layers: slide.textLayers?.length ? structuredClone(slide.textLayers).map(withTextBox) : initialLayers(slide) });
   return drafts.get(slide.id);
@@ -64,17 +45,68 @@ function syncContentLayers(slide, headline, body) {
   data.layers = layers;
   return layers;
 }
+// Ô lưới đang được chỉnh. Thanh trượt crop và thao tác kéo tác động lên ô này;
+// slide chỉ có một ảnh thì luôn là ảnh đó.
+function activeCell(slide) {
+  const ids = selectedIds(slide);
+  const chosen = activeCells.get(slide.id);
+  return ids.includes(chosen) ? chosen : ids[0] || null;
+}
+/** Đọc crop hiệu lực của ô đang chỉnh để đổ vào thanh trượt. */
+function activeCrop(slide, data) { return cropFor(data, activeCell(slide)); }
+/** Ghi một giá trị crop: slide nhiều ảnh thì ghi riêng cho ô, một ảnh thì ghi thẳng cấp slide. */
+function setCrop(slide, data, patch) {
+  const ids = selectedIds(slide);
+  if (ids.length <= 1) { Object.assign(data, patch); return; }
+  const id = activeCell(slide);
+  if (!id) return;
+  data.assetCrops = { ...data.assetCrops, [id]: { ...cropFor(data, id), ...patch } };
+}
+
 function markDesignDirty(slideId) {
   designDirty.add(slideId);
   const editor = document.querySelector(`[data-editor="${slideId}"]`);
   if (editor) editor.dataset.designSaved = "false";
 }
-function remember(slideId, markDirty = true) {
-  const history = histories.get(slideId) || [];
-  history.push(JSON.stringify(drafts.get(slideId)));
-  if (history.length > 30) history.shift();
+// Lịch sử hoàn tác được giữ trong sessionStorage nên không mất khi tải lại trang hay khi lưu thiết kế.
+const HISTORY_LIMIT = 30;
+const historyKey = slideId => `lana-history:${projectId}:${slideId}`;
+function loadHistory(slideId) {
+  if (histories.has(slideId)) return { history: histories.get(slideId), redo: redos.get(slideId) || [] };
+  let stored = null;
+  try { stored = JSON.parse(sessionStorage.getItem(historyKey(slideId)) || "null"); } catch { stored = null; }
+  const history = Array.isArray(stored?.history) ? stored.history : [];
+  const redo = Array.isArray(stored?.redo) ? stored.redo : [];
+  histories.set(slideId, history); redos.set(slideId, redo);
+  return { history, redo };
+}
+function persistHistory(slideId) {
+  // Bộ nhớ phiên có hạn; hỏng thì bỏ qua chứ không chặn thao tác sửa.
+  try { sessionStorage.setItem(historyKey(slideId), JSON.stringify({ history: histories.get(slideId) || [], redo: redos.get(slideId) || [] })); }
+  catch { /* hết dung lượng thì chỉ giữ lịch sử trong bộ nhớ */ }
+}
+/**
+ * Ghi một ảnh chụp bản nháp vào lịch sử. Tách khỏi `remember()` để thao tác kéo có thể chụp
+ * trạng thái ngay khi bấm chuột nhưng chỉ ghi vào lịch sử lúc thả — `markDesignDirty()` đổi DOM,
+ * mà mọi thay đổi DOM giữa lúc kéo đều làm MutationObserver của stitch-ui.js chạy và cướp mất
+ * pointer capture, khiến thao tác kéo đứt sau vài pixel.
+ */
+function commitHistory(slideId, snapshot, markDirty = true) {
+  const { history } = loadHistory(slideId);
+  history.push(snapshot);
+  while (history.length > HISTORY_LIMIT) history.shift();
   histories.set(slideId, history);
   redos.set(slideId, []);
+  persistHistory(slideId);
+  if (markDirty) markDesignDirty(slideId);
+}
+function remember(slideId, markDirty = true) {
+  const { history } = loadHistory(slideId);
+  history.push(JSON.stringify(drafts.get(slideId)));
+  while (history.length > HISTORY_LIMIT) history.shift();
+  histories.set(slideId, history);
+  redos.set(slideId, []);
+  persistHistory(slideId);
   if (markDirty) markDesignDirty(slideId);
 }
 
@@ -83,68 +115,6 @@ function imageCard(slide) {
   const approved = new Set(selectedIds(slide)), chosen = picks.get(slide.id) || new Set();
   const cards = candidateAssets(slide).map(asset => `<article class="candidate${approved.has(asset.id) && slide.imageApproved ? " selected" : ""}"><img src="${esc(asset.publicUrl)}"><div class="candidate-actions"><button data-one="${asset.id}" data-slide="${slide.id}">${approved.size === 1 && approved.has(asset.id) && slide.imageApproved ? "Đã duyệt ✓" : "Duyệt ảnh này"}</button><label class="pick"><input type="checkbox" data-pick="${asset.id}" data-slide="${slide.id}" ${chosen.has(asset.id) ? "checked" : ""}> Chọn ghép lưới</label></div></article>`).join("");
   return `<article class="card"><div class="card-head"><div><div class="number">Slide ${slide.position}</div><h2>${esc(slide.headline)}</h2></div><span class="status${slide.imageApproved ? " done" : ""}">${slide.imageApproved ? "Đã duyệt" : "Chờ duyệt"}</span></div><div class="candidate-grid">${cards}</div><div class="bar"><small class="muted">${candidateAssets(slide).length}/10 ảnh · Chọn lưới: ${chosen.size}</small><button class="action approve-grid" data-slide="${slide.id}" ${chosen.size < 2 ? "disabled" : ""}>Duyệt ghép lưới (${chosen.size})</button></div></article>`;
-}
-function rgba(hex, opacity) {
-  const value = /^#[0-9a-f]{6}$/iu.test(hex) ? hex.slice(1) : "FFFFFF";
-  return `rgba(${parseInt(value.slice(0,2),16)},${parseInt(value.slice(2,4),16)},${parseInt(value.slice(4,6),16)},${opacity})`;
-}
-function frameHtml(data) {
-  if (!data.frameWidth) return "";
-  return `<div class="image-frame" style="inset:${data.frameInset/10.8}cqw;border-width:${Math.max(0.15,data.frameWidth/10.8)}cqw;border-color:${rgba(data.frameColor,data.frameOpacity)};border-radius:${data.frameRadius/10.8}cqw"></div>`;
-}
-// Chuỗi filter và cấu trúc DOM ở đây phải khớp từng bước với renderSlideSnapshot trong src/service-core.js,
-// nếu lệch thì ảnh tải về sẽ khác ảnh preview.
-function background(slide, data) {
-  const ids = selectedIds(slide), columns = ids.length <= 2 ? 1 : ids.length <= 6 ? 2 : 3;
-  const filter = `brightness(${data.imageBrightness}) contrast(${data.imageContrast}) saturate(${data.imageSaturation}) grayscale(${data.imageGrayscale*100}%) hue-rotate(${data.imageHue||0}deg) blur(${data.imageBlur/10.8}cqw)`;
-  // Lật quanh tâm ảnh trước, rồi mới phóng to quanh trọng tâm (cropX, cropY) — đúng thứ tự của bản render.
-  const flip = `scaleX(${data.imageFlipH ? -1 : 1}) scaleY(${data.imageFlipV ? -1 : 1})`;
-  const cells = ids.map(id => `<div><div class="canvas-zoom" style="transform:scale(${data.cropZoom});transform-origin:${data.cropX}% ${data.cropY}%"><img src="${esc(assets.get(id)?.publicUrl || "")}" style="object-fit:${data.imageFit === "contain" ? "contain" : "cover"};transform:${flip}"></div></div>`).join("");
-  return `<div class="canvas-bg" data-canvas-bg style="grid-template-columns:repeat(${columns},1fr);background:${esc(data.imageBackground || "#181411")};filter:${filter}">${cells}</div>${frameHtml(data)}`;
-}
-function normalizedStyleRanges(layer) {
-  const length = String(layer.content || "").length;
-  const legacy = (layer.sizeRanges || []).map(range => ({ ...range, size:range.size }));
-  return [...legacy, ...(layer.styleRanges || [])].map(range => ({
-    start: Math.max(0, Math.min(length, Math.round(Number(range.start) || 0))),
-    end: Math.max(0, Math.min(length, Math.round(Number(range.end) || 0))),
-    ...(range.size == null ? {} : { size:Math.max(24, Math.min(220, Math.round(Number(range.size) || layer.size || 72))) }),
-    ...(range.font ? { font:String(range.font).slice(0,100) } : {}),
-    ...(/^#[0-9a-f]{6}$/iu.test(range.color) ? { color:range.color } : {}),
-    ...(range.weight ? { weight:["400","500","600","700","800","900"].includes(String(range.weight)) ? String(range.weight) : "700" } : {}),
-    ...(range.underline == null ? {} : { underline:Boolean(range.underline) })
-  })).filter(range => range.end > range.start);
-}
-function normalizedSizeRanges(layer) {
-  return normalizedStyleRanges(layer).filter(range => range.size != null);
-}
-function styleAt(layer, index) {
-  const style = { size:layer.size || 72, font:layer.font || "TikTok Sans", color:layer.color || "#FFFFFF", weight:String(layer.weight || "700"), underline:Boolean(layer.underline) };
-  for (const range of normalizedStyleRanges(layer)) if (index >= range.start && index < range.end) Object.assign(style, {
-    ...(range.size == null ? {} : { size:range.size }),
-    ...(range.font ? { font:range.font } : {}),
-    ...(range.color ? { color:range.color } : {}),
-    ...(range.weight ? { weight:range.weight } : {}),
-    ...(range.underline == null ? {} : { underline:range.underline })
-  });
-  return style;
-}
-function richTextHtml(layer, selection = null) {
-  const content = String(layer.content || "");
-  if (!content) return "";
-  const selected = index => Boolean(selection && selection.end > selection.start && index >= selection.start && index < selection.end);
-  let html = "", start = 0, style = { ...styleAt(layer, 0), selected:selected(0) };
-  const key = item => JSON.stringify(item);
-  for (let index = 1; index <= content.length; index += 1) {
-    const next = index < content.length ? { ...styleAt(layer, index), selected:selected(index) } : null;
-    if (!next || key(next) !== key(style)) {
-      const decoration = style.underline ? "text-decoration:underline;" : "";
-      const highlight = style.selected ? "background:#1677ffcc;color:#fff;border-radius:.12em;" : "";
-      html += `<span ${style.selected?'class="text-selection-preview"':""} style="font-size:${style.size/10.8}cqw;font-family:'${esc(style.font)}',sans-serif;font-weight:${style.weight};color:${style.color};${decoration}${highlight}">${esc(content.slice(start,index))}</span>`;
-      start = index; style = next;
-    }
-  }
-  return html;
 }
 function remapSizeRanges(oldContent, newContent, ranges = []) {
   if (oldContent === newContent) return ranges;
@@ -158,11 +128,6 @@ function remapSizeRanges(oldContent, newContent, ranges = []) {
     if (range.start >= oldTail) return [{ ...range, start:range.start+delta, end:range.end+delta }];
     return [];
   });
-}
-function layerHtml(rawLayer, index, active, selection = null, editing = false) {
-  const layer = withTextBox(rawLayer);
-  const boxStyle = layer.boxEnabled ? `width:${layer.boxWidth}%;padding:${layer.boxPaddingY/10.8}cqw ${layer.boxPaddingX/10.8}cqw;background:${rgba(layer.boxColor,layer.boxOpacity)};border:${layer.boxBorderWidth/10.8}cqw solid ${rgba(layer.boxBorderColor,layer.boxBorderOpacity)};border-radius:${layer.boxRadius/10.8}cqw;text-shadow:none;` : "";
-  return `<div class="layer${active ? " active" : ""}${editing ? " direct-editing" : ""}" data-layer="${index}" ${editing ? 'contenteditable="true" spellcheck="false"' : ""} style="left:${layer.x}%;top:${layer.y}%;font-family:'${esc(layer.font)}',sans-serif;font-size:${layer.size/10.8}cqw;font-weight:${layer.weight||700};text-decoration:${layer.underline?"underline":"none"};color:${layer.color};text-align:${layer.align};opacity:${layer.opacity};rotate:${layer.rotation}deg;${boxStyle}">${richTextHtml(layer, active ? selection : null)}</div>`;
 }
 function directToolbarHtml(layer, slideId, index) {
   const editing = directEditing.has(`${slideId}:${index}`);
@@ -193,33 +158,30 @@ function applyDirectStyle(slideId, index, patch) {
   render();
 }
 function sectionIsOpen(slideId, section) { return sectionStates.get(`${slideId}:${section}`) === true; }
-function textStyleControlsHtml(layer, slideId) {
-  const open = sectionIsOpen(slideId, "textStyle"), styledCount = normalizedStyleRanges(layer).length;
-  return `<details class="editor-section text-style-controls" data-editor-section="textStyle" data-slide="${slideId}" ${open?"open":""}><summary><strong>Kiểu chữ</strong><span class="section-meta">${esc(layer.font)} · ${layer.size}px${styledCount?` · ${styledCount} đoạn riêng`:""}</span></summary><div class="section-body"><div class="fields"><label class="field">Font<select data-control="font">${fonts.map(font=>`<option ${font===layer.font?"selected":""}>${font}</option>`).join("")}</select></label><label class="field">Màu<input type="color" data-control="color" value="${layer.color}"></label><label class="field">Cỡ mặc định <span class="range-value">${layer.size}</span><input type="range" min="24" max="220" data-control="size" value="${layer.size}"></label><label class="field">Xoay <span class="range-value">${layer.rotation}°</span><input type="range" min="-180" max="180" data-control="rotation" value="${layer.rotation}"></label><label class="field">Độ trong <span class="range-value">${Math.round(layer.opacity*100)}%</span><input type="range" min="10" max="100" data-control="opacity" value="${layer.opacity*100}"></label><label class="field">Căn<select data-control="align"><option value="left" ${layer.align==="left"?"selected":""}>Trái</option><option value="center" ${layer.align==="center"?"selected":""}>Giữa</option><option value="right" ${layer.align==="right"?"selected":""}>Phải</option></select></label><div class="field wide selection-size-tools"><span>Bôi đen một đoạn trong ô Nội dung, chọn định dạng rồi áp dụng.</span><div class="selection-format-grid"><label>Font<select data-selection-font><option value="">Giữ nguyên</option>${fonts.map(font=>`<option>${font}</option>`).join("")}</select></label><label>Cỡ<input type="number" min="24" max="220" placeholder="Giữ nguyên" data-selection-size></label><label>Độ đậm<select data-selection-weight><option value="">Giữ nguyên</option><option value="400">Thường</option><option value="500">Vừa</option><option value="600">Hơi đậm</option><option value="700">Đậm</option><option value="800">Rất đậm</option><option value="900">Đen</option></select></label><label class="toggle"><input type="checkbox" data-selection-underline> Gạch chân</label></div><div class="selection-size-row"><button type="button" class="tool apply-selected-style">Áp dụng cho đoạn chọn</button><button type="button" class="tool clear-selected-styles" ${styledCount?"":"disabled"}>Xóa định dạng riêng</button></div></div></div></div></details>`;
-}
-
-function textBoxControlsHtml(rawLayer, slideId) {
-  const layer = withTextBox(rawLayer), percent = value => Math.round(value * 100), open = sectionIsOpen(slideId, "textBox");
-  return `<details class="editor-section text-box-controls" data-editor-section="textBox" data-slide="${slideId}" ${open?"open":""}><summary><strong>Hộp chữ</strong><span class="section-meta">${layer.boxEnabled?"Đang bật":"Đang tắt"}</span></summary><div class="section-body"><div class="control-title"><label class="toggle"><input type="checkbox" data-control="boxEnabled" ${layer.boxEnabled?"checked":""}> Bật hộp chữ</label></div><div class="box-presets"><button type="button" class="tool" data-box-preset="white">Hộp trắng</button><button type="button" class="tool" data-box-preset="dark">Hộp tối</button><button type="button" class="tool" data-box-preset="transparent">Trong suốt</button><button type="button" class="tool reset-text-box">Đặt lại hộp</button></div><div class="fields"><label class="field">Màu nền<input type="color" data-control="boxColor" value="${layer.boxColor}"></label><label class="field">Độ mờ nền <span class="range-value" data-layer-value-for="boxOpacity">${percent(layer.boxOpacity)}%</span><input type="range" min="0" max="100" data-control="boxOpacity" value="${percent(layer.boxOpacity)}"></label><label class="field">Màu viền<input type="color" data-control="boxBorderColor" value="${layer.boxBorderColor}"></label><label class="field">Độ dày viền <span class="range-value" data-layer-value-for="boxBorderWidth">${layer.boxBorderWidth}px</span><input type="range" min="0" max="40" step="1" data-control="boxBorderWidth" value="${layer.boxBorderWidth}"></label><label class="field">Độ mờ viền <span class="range-value" data-layer-value-for="boxBorderOpacity">${percent(layer.boxBorderOpacity)}%</span><input type="range" min="0" max="100" data-control="boxBorderOpacity" value="${percent(layer.boxBorderOpacity)}"></label><label class="field">Bo góc <span class="range-value" data-layer-value-for="boxRadius">${layer.boxRadius}px</span><input type="range" min="0" max="120" step="2" data-control="boxRadius" value="${layer.boxRadius}"></label><label class="field">Chiều rộng hộp <span class="range-value" data-layer-value-for="boxWidth">${layer.boxWidth}%</span><input type="range" min="20" max="96" step="1" data-control="boxWidth" value="${layer.boxWidth}"></label><label class="field">Đệm ngang <span class="range-value" data-layer-value-for="boxPaddingX">${layer.boxPaddingX}px</span><input type="range" min="0" max="120" step="2" data-control="boxPaddingX" value="${layer.boxPaddingX}"></label><label class="field">Đệm dọc <span class="range-value" data-layer-value-for="boxPaddingY">${layer.boxPaddingY}px</span><input type="range" min="0" max="80" step="2" data-control="boxPaddingY" value="${layer.boxPaddingY}"></label></div></div></details>`;
-
-}
-function imageControlsHtml(data, slideId) {
-  const percent = value => Math.round(value * 100), open = sectionIsOpen(slideId, "imageFrame");
-  return `<details class="editor-section image-controls" data-editor-section="imageFrame" data-slide="${slideId}" ${open?"open":""}><summary><strong>Chỉnh ảnh và khung</strong><span class="section-meta">${data.frameWidth>0?"Có khung":"Ảnh cơ bản"}</span></summary><div class="section-body"><div class="control-title"><button type="button" class="tool reset-image">Đặt lại ảnh/khung</button></div><div class="image-quick-tools"><button type="button" class="tool zoom-step" data-zoom-step="-0.2" title="Thu nhỏ">− Thu nhỏ</button><button type="button" class="tool zoom-step" data-zoom-step="0.2" title="Phóng to">+ Phóng to</button><button type="button" class="tool center-image">Về giữa</button><button type="button" class="tool fill-image">Lấp đầy khung</button><button type="button" class="tool fit-image">Vừa cả ảnh</button></div><p class="image-hint">Kéo trực tiếp trên ảnh để đổi vị trí (cần zoom &gt; 1×), giữ Ctrl/Cmd và lăn chuột hoặc chụm hai ngón để phóng to/thu nhỏ.</p><div class="fields"><label class="field">Zoom ảnh <span class="range-value" data-value-for="cropZoom">${data.cropZoom.toFixed(1)}×</span><input type="range" min="1" max="4" step="0.05" data-control="cropZoom" value="${data.cropZoom}"></label><label class="field">Kiểu vừa khung<select data-control="imageFit"><option value="cover" ${data.imageFit!=="contain"?"selected":""}>Lấp đầy (cắt bớt)</option><option value="contain" ${data.imageFit==="contain"?"selected":""}>Vừa cả ảnh (viền nền)</option></select></label><label class="field">Màu nền ảnh<input type="color" data-control="imageBackground" value="${data.imageBackground}"></label><label class="field toggle-field"><span>Lật ảnh</span><span class="flip-row"><label class="toggle"><input type="checkbox" data-control="imageFlipH" ${data.imageFlipH?"checked":""}> Ngang</label><label class="toggle"><input type="checkbox" data-control="imageFlipV" ${data.imageFlipV?"checked":""}> Dọc</label></span></label><label class="field">Trọng tâm ngang <span class="range-value" data-value-for="cropX">${Math.round(data.cropX)}%</span><input type="range" min="0" max="100" data-control="cropX" value="${data.cropX}"></label><label class="field">Trọng tâm dọc <span class="range-value" data-value-for="cropY">${Math.round(data.cropY)}%</span><input type="range" min="0" max="100" data-control="cropY" value="${data.cropY}"></label><label class="field">Độ sáng <span class="range-value" data-value-for="imageBrightness">${percent(data.imageBrightness)}%</span><input type="range" min="0.3" max="2" step="0.05" data-control="imageBrightness" value="${data.imageBrightness}"></label><label class="field">Tương phản <span class="range-value" data-value-for="imageContrast">${percent(data.imageContrast)}%</span><input type="range" min="0.3" max="2" step="0.05" data-control="imageContrast" value="${data.imageContrast}"></label><label class="field">Bão hòa <span class="range-value" data-value-for="imageSaturation">${percent(data.imageSaturation)}%</span><input type="range" min="0" max="2" step="0.05" data-control="imageSaturation" value="${data.imageSaturation}"></label><label class="field">Đen trắng <span class="range-value" data-value-for="imageGrayscale">${percent(data.imageGrayscale)}%</span><input type="range" min="0" max="100" step="1" data-control="imageGrayscale" value="${percent(data.imageGrayscale)}"></label><label class="field">Sắc độ <span class="range-value" data-value-for="imageHue">${Math.round(data.imageHue)}°</span><input type="range" min="-180" max="180" step="1" data-control="imageHue" value="${data.imageHue}"></label><label class="field">Làm mờ <span class="range-value" data-value-for="imageBlur">${data.imageBlur}px</span><input type="range" min="0" max="20" step="0.5" data-control="imageBlur" value="${data.imageBlur}"></label><label class="field">Màu viền<input type="color" data-control="frameColor" value="${data.frameColor}"></label><label class="field">Độ dày viền <span class="range-value" data-value-for="frameWidth">${data.frameWidth}px</span><input type="range" min="0" max="80" step="1" data-control="frameWidth" value="${data.frameWidth}"></label><label class="field">Khoảng cách khung <span class="range-value" data-value-for="frameInset">${data.frameInset}px</span><input type="range" min="0" max="360" step="2" data-control="frameInset" value="${data.frameInset}"></label><label class="field">Độ mờ khung <span class="range-value" data-value-for="frameOpacity">${percent(data.frameOpacity)}%</span><input type="range" min="0" max="100" step="1" data-control="frameOpacity" value="${percent(data.frameOpacity)}"></label><label class="field">Bo góc khung <span class="range-value" data-value-for="frameRadius">${data.frameRadius}px</span><input type="range" min="0" max="240" step="2" data-control="frameRadius" value="${data.frameRadius}"></label></div></div></details>`;
-
+/** Bối cảnh mà các bảng điều khiển cần; gom một chỗ để chữ ký hàm không phình ra. */
+function controlContext(slideId, data) {
+  const slide = project.slides.find(item => item.id === slideId);
+  return { fonts, sectionIsOpen, selectedIds, activeCell, slide, crop: activeCrop(slide, data) };
 }
 function decorateImageEditors() {
   document.querySelectorAll("[data-editor]").forEach(editor => {
     const data = drafts.get(editor.dataset.editor), fields = editor.querySelector(".fields");
     const index = selectedLayers.get(editor.dataset.editor) || 0, layer = data?.layers[index];
-    if (data && fields && layer) fields.insertAdjacentHTML("afterend", textStyleControlsHtml(layer, editor.dataset.editor) + textBoxControlsHtml(layer, editor.dataset.editor) + imageControlsHtml(data, editor.dataset.editor));
+    if (data && fields && layer) {
+      const context = controlContext(editor.dataset.editor, data);
+      fields.insertAdjacentHTML("afterend",
+        textStyleControlsHtml(layer, editor.dataset.editor, context)
+        + textBoxControlsHtml(layer, editor.dataset.editor, context)
+        + imageControlsHtml(data, editor.dataset.editor, context));
+    }
   });
 }
 function editCard(slide) {
   const data = draft(slide); let active = selectedLayers.get(slide.id) ?? 0; if (!data.layers[active]) active = 0; selectedLayers.set(slide.id, active);
   const layer = data.layers[active] || defaultLayer(slide);
-  const canUndo = (histories.get(slide.id) || []).length > 0, canRedo = (redos.get(slide.id) || []).length > 0;
-  return `<article class="card" data-editor="${slide.id}" data-design-saved="${slide.designSaved && !designDirty.has(slide.id) ? "true" : "false"}"><div class="card-head"><div><div class="number">Slide ${slide.position}</div><h2>${esc(slide.headline)}</h2></div><span class="status">${data.layers.length} lớp chữ</span></div><div class="visual"><div class="preview-column"><div class="canvas" data-canvas="${slide.id}">${background(slide, data)}<div class="safe-zone"></div>${data.layers.map((item, index) => layerHtml(item, index, index === active, textSelections.get(`${slide.id}:${index}`), directEditing.has(`${slide.id}:${index}`))).join("")}</div>${directToolbarHtml(layer,slide.id,active)}</div><div><div class="tools"><button class="tool add-layer">+ Thêm chữ</button><button class="tool remove-layer">Xóa lớp</button><button class="tool undo" ${canUndo ? "" : "disabled"}>Hoàn tác</button><button class="tool redo" ${canRedo ? "" : "disabled"}>Làm lại</button><details class="apply-targets"><summary class="tool">Chọn slide để áp dụng kiểu</summary><div class="apply-target-menu"><div class="apply-target-actions"><button type="button" class="tool select-all-targets">Chọn tất cả</button><button type="button" class="tool clear-all-targets">Bỏ chọn</button></div>${project.slides.map(target=>`<label class="toggle"><input type="checkbox" class="style-target-slide" value="${target.id}" ${target.id===slide.id?"checked":""}> Slide ${target.position}: ${esc(target.headline.slice(0,34))}</label>`).join("")}<button type="button" class="action apply-selected-slides">Áp dụng kiểu</button></div></details></div><label class="field">Lớp chữ<select data-control="layer">${data.layers.map((item,index)=>`<option value="${index}" ${index===active?"selected":""}>${index+1}. ${esc(item.content.slice(0,30)||"Chữ mới")}</option>`).join("")}</select></label><div class="fields"><label class="field wide">Nội dung<textarea data-control="content">${esc(layer.content)}</textarea></label></div><button class="action save-design" data-slide="${slide.id}">Lưu thiết kế</button></div></div></article>`;
+  const { history: undoStack, redo: redoStack } = loadHistory(slide.id);
+  const canUndo = undoStack.length > 0, canRedo = redoStack.length > 0;
+  return `<article class="card" data-editor="${slide.id}" data-design-saved="${slide.designSaved && !designDirty.has(slide.id) ? "true" : "false"}"><div class="card-head"><div><div class="number">Slide ${slide.position}</div><h2>${esc(slide.headline)}</h2></div><span class="status">${data.layers.length} lớp chữ</span></div><div class="visual"><div class="preview-column"><div class="canvas" data-canvas="${slide.id}">${background(slide, data, assets, activeCell(slide))}<div class="safe-zone"></div>${data.layers.map((item, index) => layerHtml(item, index, index === active, textSelections.get(`${slide.id}:${index}`), directEditing.has(`${slide.id}:${index}`))).join("")}</div>${directToolbarHtml(layer,slide.id,active)}<div class="proof-bar"><button type="button" class="tool show-proof" data-slide="${slide.id}">Xem ảnh thật</button><small class="muted proof-status" data-proof-status="${slide.id}"></small></div></div><div><div class="tools"><button class="tool add-layer">+ Thêm chữ</button><button class="tool remove-layer">Xóa lớp</button><button class="tool undo" ${canUndo ? "" : "disabled"}>Hoàn tác</button><button class="tool redo" ${canRedo ? "" : "disabled"}>Làm lại</button><details class="apply-targets"><summary class="tool">Chọn slide để áp dụng kiểu</summary><div class="apply-target-menu"><div class="apply-target-actions"><button type="button" class="tool select-all-targets">Chọn tất cả</button><button type="button" class="tool clear-all-targets">Bỏ chọn</button></div>${project.slides.map(target=>`<label class="toggle"><input type="checkbox" class="style-target-slide" value="${target.id}" ${target.id===slide.id?"checked":""}> Slide ${target.position}: ${esc(target.headline.slice(0,34))}</label>`).join("")}<button type="button" class="action apply-selected-slides">Áp dụng kiểu</button></div></details></div><label class="field">Lớp chữ<select data-control="layer">${data.layers.map((item,index)=>`<option value="${index}" ${index===active?"selected":""}>${index+1}. ${esc(item.content.slice(0,30)||"Chữ mới")}</option>`).join("")}</select></label><div class="fields"><label class="field wide">Nội dung<textarea data-control="content">${esc(layer.content)}</textarea></label></div><button class="action save-design" data-slide="${slide.id}">Lưu thiết kế</button></div></div></article>`;
 }
 
 function videoPanelHtml(){
@@ -252,6 +214,22 @@ function render() {
   decorateImageEditors();
   bindDrag();
   if(view==="video"){updateTimelineTotal();const firstVideoRow=document.querySelector(".timeline-scene");if(firstVideoRow)showVideoScene(firstVideoRow);}
+}
+
+// Payload thiết kế của một slide. Nút "Lưu thiết kế" và nút "Xem ảnh thật" dùng chung hàm này
+// để ảnh render thử luôn phản ánh đúng thứ sắp được lưu.
+function designPayload(slide, data) {
+  const primary = data.layers[0] || defaultLayer(slide);
+  return {
+    cropX:data.cropX, cropY:data.cropY, cropZoom:data.cropZoom, assetCrops:data.assetCrops||{},
+    imageBrightness:data.imageBrightness, imageContrast:data.imageContrast, imageSaturation:data.imageSaturation,
+    imageBlur:data.imageBlur, imageGrayscale:data.imageGrayscale, imageHue:data.imageHue,
+    imageFit:data.imageFit, imageBackground:data.imageBackground,
+    imageFlipH:data.imageFlipH, imageFlipV:data.imageFlipV, frameInset:data.frameInset, frameWidth:data.frameWidth,
+    frameColor:data.frameColor, frameOpacity:data.frameOpacity, frameRadius:data.frameRadius,
+    textEnabled:true, overlayText:primary.content, textFont:primary.font, textSize:primary.size, textPosition:"center",
+    textColor:primary.color, textAlign:primary.align, textX:primary.x, textY:primary.y, textLayers:data.layers
+  };
 }
 
 async function json(url, options = {}) { const response = await fetch(url, options); const value = await response.json(); if (!response.ok) throw new Error(value.message || "Yêu cầu thất bại"); return value; }
@@ -314,7 +292,8 @@ $("edit").oninput = event => {
   else if (["boxBorderWidth","boxRadius","boxPaddingX","boxPaddingY","boxWidth"].includes(control)) layer[control] = Number(event.target.value);
   else if (["boxOpacity","boxBorderOpacity"].includes(control)) layer[control] = Number(event.target.value)/100;
   else if (["boxColor","boxBorderColor"].includes(control)) layer[control] = event.target.value.toUpperCase();
-  else if (["cropX","cropY","cropZoom","imageBrightness","imageContrast","imageSaturation","imageBlur","imageHue","frameInset","frameWidth","frameRadius"].includes(control)) data[control] = Number(event.target.value);
+  else if (["cropX","cropY","cropZoom"].includes(control)) setCrop(project.slides.find(item=>item.id===slideId), data, { [control]: Number(event.target.value) });
+  else if (["imageBrightness","imageContrast","imageSaturation","imageBlur","imageHue","frameInset","frameWidth","frameRadius"].includes(control)) data[control] = Number(event.target.value);
   else if (["imageGrayscale","frameOpacity"].includes(control)) data[control] = Number(event.target.value)/100;
   else if (["imageFlipH","imageFlipV"].includes(control)) data[control] = event.target.checked;
   else if (control === "imageFit") data.imageFit = event.target.value === "contain" ? "contain" : "cover";
@@ -335,12 +314,14 @@ $("edit").oninput = event => {
   }
   const output = editor.querySelector(`[data-value-for="${control}"]`);
   if (output) {
-    if (["imageBrightness","imageContrast","imageSaturation","imageGrayscale","frameOpacity","cropX","cropY"].includes(control)) output.textContent = `${Math.round(data[control]*100)/(["cropX","cropY"].includes(control)?100:1)}%`;
-    else if (control === "cropZoom") output.textContent = `${data.cropZoom.toFixed(1)}×`;
+    const slideForCrop = project.slides.find(item=>item.id===slideId), currentCrop = activeCrop(slideForCrop, data);
+    if (["cropX","cropY"].includes(control)) output.textContent = `${Math.round(currentCrop[control])}%`;
+    else if (control === "cropZoom") output.textContent = `${currentCrop.cropZoom.toFixed(1)}×`;
+    else if (["imageBrightness","imageContrast","imageSaturation","imageGrayscale","frameOpacity"].includes(control)) output.textContent = `${Math.round(data[control]*100)}%`;
     else if (control === "imageHue") output.textContent = `${Math.round(data.imageHue)}°`;
     else output.textContent = `${data[control]}px`;
   }
-  const slide = project.slides.find(item=>item.id===slideId); const canvas = editor.querySelector(".canvas"); canvas.outerHTML = `<div class="canvas" data-canvas="${slide.id}">${background(slide,data)}<div class="safe-zone"></div>${data.layers.map((item,i)=>layerHtml(item,i,i===index,textSelections.get(`${slide.id}:${i}`),directEditing.has(`${slide.id}:${i}`))).join("")}</div>`; bindDrag();
+  const slide = project.slides.find(item=>item.id===slideId); const canvas = editor.querySelector(".canvas"); canvas.outerHTML = `<div class="canvas" data-canvas="${slide.id}">${background(slide, data, assets, activeCell(slide))}<div class="safe-zone"></div>${data.layers.map((item,i)=>layerHtml(item,i,i===index,textSelections.get(`${slide.id}:${i}`),directEditing.has(`${slide.id}:${i}`))).join("")}</div>`; bindDrag();
 };
 $("edit").ondblclick = event => {
   const layerElement = event.target.closest(".layer"), editor = event.target.closest("[data-editor]");
@@ -360,8 +341,21 @@ $("edit").onclick = async event => {
     if (event.target.closest(".direct-box")) { remember(slideId); data.layers[index].boxEnabled=!data.layers[index].boxEnabled; render(); return; }
     if (event.target.closest(".add-layer")) { remember(slideId); data.layers.push(withTextBox({ id:crypto.randomUUID(), role:"custom", content:"Chữ mới", enabled:true, font:project.brandKit?.font||"TikTok Sans", size:72, x:50, y:50, color:project.brandKit?.color||"#FFFFFF", align:"center", opacity:1, rotation:0 })); selectedLayers.set(slideId,data.layers.length-1); render(); return; }
     if (event.target.closest(".remove-layer")) { if (data.layers.length > 1) { remember(slideId); data.layers.splice(index,1); selectedLayers.set(slideId,Math.max(0,index-1)); render(); } return; }
-    if (event.target.closest(".undo")) { const history=histories.get(slideId)||[], redo=redos.get(slideId)||[]; if(history.length){redo.push(JSON.stringify(data));redos.set(slideId,redo);drafts.set(slideId,JSON.parse(history.pop()));render();} return; }
-    if (event.target.closest(".redo")) { const redo=redos.get(slideId)||[], history=histories.get(slideId)||[]; if(redo.length){history.push(JSON.stringify(data));histories.set(slideId,history);drafts.set(slideId,JSON.parse(redo.pop()));render();} return; }
+    if (event.target.closest(".undo")) {
+      const { history, redo } = loadHistory(slideId);
+      if (!history.length) return;
+      redo.push(JSON.stringify(data)); redos.set(slideId, redo);
+      drafts.set(slideId, JSON.parse(history.pop()));
+      // Hoàn tác đưa thiết kế về trạng thái khác bản đã lưu, nên phải đánh dấu là chưa lưu.
+      markDesignDirty(slideId); persistHistory(slideId); render(); return;
+    }
+    if (event.target.closest(".redo")) {
+      const { history, redo } = loadHistory(slideId);
+      if (!redo.length) return;
+      history.push(JSON.stringify(data)); histories.set(slideId, history);
+      drafts.set(slideId, JSON.parse(redo.pop()));
+      markDesignDirty(slideId); persistHistory(slideId); render(); return;
+    }
     if (event.target.closest(".apply-selected-style")) {
       const input = editor.querySelector('[data-control="content"]'), selection = textSelections.get(`${slideId}:${index}`) || { start:input.selectionStart, end:input.selectionEnd };
       if (!selection || selection.end <= selection.start) { alert("Hãy bôi đen đoạn chữ cần định dạng trong ô Nội dung."); return; }
@@ -388,11 +382,14 @@ $("edit").onclick = async event => {
     }
     if (event.target.closest(".reset-text-box")) { remember(slideId); Object.assign(data.layers[index], withTextBox()); render(); return; }
     if (event.target.closest(".reset-image")) { remember(slideId); Object.assign(data, imageDefaults()); render(); return; }
+    const cellPick = event.target.closest("[data-cell-pick]")?.dataset.cellPick;
+    if (cellPick) { activeCells.set(slideId, cellPick); render(); return; }
+    if (event.target.closest(".reset-cell-crops")) { remember(slideId); data.assetCrops = {}; render(); return; }
     const zoomStep = event.target.closest("[data-zoom-step]")?.dataset.zoomStep;
-    if (zoomStep) { remember(slideId); data.cropZoom = Number(Math.max(1, Math.min(MAX_ZOOM, data.cropZoom + Number(zoomStep))).toFixed(2)); render(); return; }
-    if (event.target.closest(".center-image")) { remember(slideId); data.cropX = 50; data.cropY = 50; render(); return; }
+    if (zoomStep) { remember(slideId); setCrop(slide, data, { cropZoom: Number(Math.max(1, Math.min(MAX_ZOOM, activeCrop(slide, data).cropZoom + Number(zoomStep))).toFixed(2)) }); render(); return; }
+    if (event.target.closest(".center-image")) { remember(slideId); setCrop(slide, data, { cropX: 50, cropY: 50 }); render(); return; }
     if (event.target.closest(".fill-image")) { remember(slideId); data.imageFit = "cover"; render(); return; }
-    if (event.target.closest(".fit-image")) { remember(slideId); data.imageFit = "contain"; data.cropZoom = 1; data.cropX = 50; data.cropY = 50; render(); return; }
+    if (event.target.closest(".fit-image")) { remember(slideId); data.imageFit = "contain"; setCrop(slide, data, { cropZoom: 1, cropX: 50, cropY: 50 }); render(); return; }
     if (event.target.closest(".select-all-targets")) { editor.querySelectorAll(".style-target-slide").forEach(input=>input.checked=true); return; }
     if (event.target.closest(".clear-all-targets")) { editor.querySelectorAll(".style-target-slide").forEach(input=>input.checked=false); return; }
     if (event.target.closest(".apply-selected-slides")) {
@@ -408,22 +405,15 @@ $("edit").onclick = async event => {
       }
       render(); return;
     }
+    if (event.target.closest(".show-proof")) { await showProof(slide, data, editor); return; }
+    if (event.target.closest(".close-proof")) { editor.querySelector(".proof-overlay")?.remove(); return; }
     if (event.target.closest(".save-design")) {
-      const primary = data.layers[0] || defaultLayer(slide);
       project = await json(`/api/projects/${projectId}/slides/${slideId}/design`, {
         method:"PATCH", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-          cropX:data.cropX,cropY:data.cropY,cropZoom:data.cropZoom,
-          imageBrightness:data.imageBrightness,imageContrast:data.imageContrast,imageSaturation:data.imageSaturation,
-          imageBlur:data.imageBlur,imageGrayscale:data.imageGrayscale,imageHue:data.imageHue,
-          imageFit:data.imageFit,imageBackground:data.imageBackground,
-          imageFlipH:data.imageFlipH,imageFlipV:data.imageFlipV,frameInset:data.frameInset,frameWidth:data.frameWidth,
-          frameColor:data.frameColor,frameOpacity:data.frameOpacity,frameRadius:data.frameRadius,
-          textEnabled:true,overlayText:primary.content,textFont:primary.font,textSize:primary.size,textPosition:"center",
-          textColor:primary.color,textAlign:primary.align,textX:primary.x,textY:primary.y,textLayers:data.layers
-        })
+        body:JSON.stringify(designPayload(slide, data))
       });
-      designDirty.delete(slideId); drafts.delete(slideId); histories.delete(slideId); redos.delete(slideId); render();
+      // Giữ lịch sử để vẫn hoàn tác được sau khi lưu; chỉ bỏ bản nháp để đọc lại từ dữ liệu vừa lưu.
+      designDirty.delete(slideId); drafts.delete(slideId); render();
     }
   } catch(error){alert(error.message);}
 };
@@ -431,44 +421,82 @@ $("edit").onclick = async event => {
 // Đồng bộ thanh trượt với thao tác kéo/lăn chuột trên khung xem trước mà không phải render lại cả trang.
 function syncImageControls(slideId) {
   const editor = document.querySelector(`[data-editor="${slideId}"]`), data = drafts.get(slideId);
-  if (!editor || !data) return;
+  const slide = project.slides.find(item => item.id === slideId);
+  if (!editor || !data || !slide) return;
+  const crop = activeCrop(slide, data);
   for (const control of ["cropX", "cropY", "cropZoom"]) {
     const input = editor.querySelector(`[data-control="${control}"]`);
-    if (input) input.value = data[control];
+    if (input) input.value = crop[control];
     const output = editor.querySelector(`[data-value-for="${control}"]`);
-    if (output) output.textContent = control === "cropZoom" ? `${data.cropZoom.toFixed(1)}×` : `${Math.round(data[control])}%`;
+    if (output) setReadout(output, control === "cropZoom" ? `${crop.cropZoom.toFixed(1)}×` : `${Math.round(crop[control])}%`);
   }
+}
+
+/**
+ * Cập nhật số hiển thị mà không thay cấu trúc DOM.
+ * `textContent` thay hẳn nút văn bản nên là một thay đổi `childList`, đủ để đánh thức
+ * MutationObserver của stitch-ui.js; observer chạy giữa lúc kéo sẽ cướp mất pointer capture.
+ * Sửa thẳng `nodeValue` chỉ là thay đổi `characterData` nên không bị theo dõi.
+ */
+function setReadout(element, text) {
+  if (element.firstChild?.nodeType === Node.TEXT_NODE && element.childNodes.length === 1) element.firstChild.nodeValue = text;
+  else element.textContent = text;
 }
 
 let wheelTimer = null, wheelSlideId = null;
 function bindCanvasPan() {
   document.querySelectorAll(".canvas").forEach(canvas => {
     const surface = canvas.querySelector("[data-canvas-bg]"), slideId = canvas.dataset.canvas, data = drafts.get(slideId);
-    if (!surface || !data) return;
-    const applyZoom = () => surface.querySelectorAll(".canvas-zoom").forEach(cell => {
-      cell.style.transform = `scale(${data.cropZoom})`;
-      cell.style.transformOrigin = `${data.cropX}% ${data.cropY}%`;
-    });
+    const slide = project.slides.find(item => item.id === slideId);
+    if (!surface || !data || !slide) return;
+    // Chỉ vẽ lại ô đang chỉnh, các ô khác giữ nguyên.
+    const applyZoom = () => {
+      const crop = activeCrop(slide, data), id = activeCell(slide);
+      const cell = surface.querySelector(`[data-cell="${CSS.escape(id)}"] .canvas-zoom`);
+      if (!cell) return;
+      cell.style.transform = `scale(${crop.cropZoom})`;
+      cell.style.transformOrigin = `${crop.cropX}% ${crop.cropY}%`;
+    };
     surface.onpointerdown = event => {
       if (event.target.closest(".layer")) return;
-      const rect = canvas.getBoundingClientRect(), startX = event.clientX, startY = event.clientY;
-      const originX = data.cropX, originY = data.cropY;
+      // Ảnh mặc định kéo–thả được: nếu không chặn, trình duyệt khởi động thao tác kéo ảnh gốc và
+      // bắn pointercancel ngay sau pixel đầu tiên, làm chết thao tác đổi trọng tâm.
+      event.preventDefault();
+      // Kéo trên một ô khác thì chuyển sang chỉnh ô đó.
+      const cellId = event.target.closest("[data-cell]")?.dataset.cell;
+      if (cellId && cellId !== activeCell(slide)) { activeCells.set(slideId, cellId); render(); return; }
+      // Chuẩn hoá theo ô đang chỉnh chứ không phải cả canvas: trong lưới, ảnh nằm gọn trong một ô
+      // nên dùng kích thước canvas sẽ làm thao tác kéo chậm đi đúng bằng số cột/số hàng.
+      const activeId = activeCell(slide);
+      const cellElement = surface.querySelector(`[data-cell="${CSS.escape(activeId)}"]`) || surface;
+      const rect = cellElement.getBoundingClientRect(), startX = event.clientX, startY = event.clientY;
+      const origin = activeCrop(slide, data);
+      // Chụp trạng thái ngay bây giờ; chỉ ghi vào lịch sử khi thả chuột để không đụng DOM giữa chừng.
+      const snapshot = JSON.stringify(data);
       let moved = false;
       surface.setPointerCapture(event.pointerId);
-      surface.classList.add("panning");
+      // Đổi con trỏ bằng style chứ không bằng class: `class` nằm trong attributeFilter của
+      // MutationObserver trong stitch-ui.js, đổi nó giữa lúc kéo sẽ làm mất pointer capture.
+      surface.style.cursor = "grabbing";
       surface.onpointermove = move => {
         const dx = move.clientX - startX, dy = move.clientY - startY;
         if (!moved && Math.hypot(dx, dy) < 4) return;
-        if (!moved) { remember(slideId); moved = true; }
-        // Ở mức zoom z, khung nhìn chỉ trượt được (z-1) lần chiều rộng khung, nên 1px kéo tay
-        // tương ứng 100/(rộng·(z-1)) phần trăm trọng tâm.
-        const span = data.cropZoom - 1;
-        if (span <= .001) return;
-        data.cropX = Number(Math.max(0, Math.min(100, originX - dx / (rect.width * span) * 100)).toFixed(2));
-        data.cropY = Number(Math.max(0, Math.min(100, originY - dy / (rect.height * span) * 100)).toFixed(2));
+        moved = true;
+        // Luôn tính từ trọng tâm lúc bấm chuột, nhưng so với giá trị **đang áp dụng** để biết có
+        // cần ghi hay không: so với `origin` thì khi kéo đi rồi kéo về đúng chỗ cũ, phép so sẽ
+        // thấy "không đổi" và bỏ qua, khiến bản nháp kẹt ở vị trí trung gian cuối cùng.
+        const live = activeCrop(slide, data);
+        const next = panCrop({ ...origin, cropZoom: live.cropZoom }, dx, dy, rect.width, rect.height);
+        if (next.cropX === live.cropX && next.cropY === live.cropY) return;
+        setCrop(slide, data, { cropX: next.cropX, cropY: next.cropY });
         applyZoom(); syncImageControls(slideId);
       };
-      const finish = () => { surface.onpointermove = null; surface.classList.remove("panning"); if (moved) render(); };
+      const finish = () => {
+        surface.onpointermove = null; surface.style.cursor = "";
+        if (!moved) return;
+        commitHistory(slideId, snapshot);
+        render();
+      };
       surface.onpointerup = finish; surface.onpointercancel = finish;
     };
     surface.onwheel = event => {
@@ -476,15 +504,43 @@ function bindCanvasPan() {
       // để lăn chuột thường vẫn cuộn trang như bình thường.
       if (!event.ctrlKey && !event.metaKey) return;
       event.preventDefault();
-      const next = Number(Math.max(1, Math.min(MAX_ZOOM, data.cropZoom - event.deltaY * .0015)).toFixed(2));
-      if (next === data.cropZoom) return;
+      const current = activeCrop(slide, data).cropZoom;
+      const next = Number(Math.max(1, Math.min(MAX_ZOOM, current - event.deltaY * .0015)).toFixed(2));
+      if (next === current) return;
       if (wheelSlideId !== slideId) { remember(slideId); wheelSlideId = slideId; }
-      data.cropZoom = next;
+      setCrop(slide, data, { cropZoom: next });
       applyZoom(); syncImageControls(slideId);
       clearTimeout(wheelTimer);
       wheelTimer = setTimeout(() => { wheelSlideId = null; }, 400);
     };
   });
+}
+
+// Gọi renderer thật của server với đúng thiết kế đang sửa rồi hiện ảnh chồng lên khung xem trước.
+// Đây là cách chắc chắn nhất để thấy ảnh sắp tải về, và cũng để lộ ngay nếu preview lệch bản render.
+async function showProof(slide, data, editor) {
+  const status = editor.querySelector(`[data-proof-status="${slide.id}"]`);
+  const button = editor.querySelector(".show-proof");
+  if (button) button.disabled = true;
+  if (status) status.textContent = "Đang render…";
+  try {
+    const response = await fetch(`/api/projects/${projectId}/slides/${slide.id}/preview-render`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ design: designPayload(slide, data) })
+    });
+    if (!response.ok) throw new Error((await response.json().catch(()=>({}))).message || "Không render được ảnh thật");
+    const url = URL.createObjectURL(await response.blob());
+    editor.querySelector(".proof-overlay")?.remove();
+    const canvas = editor.querySelector(".canvas");
+    canvas.insertAdjacentHTML("afterend", `<div class="proof-overlay"><img src="${url}" alt="Ảnh render thật"><div class="proof-actions"><span>Ảnh render thật · 1080×1920</span><button type="button" class="tool close-proof">Đóng</button></div></div>`);
+    // Ảnh đã nằm trong DOM nên thu hồi được URL tạm.
+    editor.querySelector(".proof-overlay img").onload = () => URL.revokeObjectURL(url);
+    if (status) status.textContent = "";
+  } catch (error) {
+    if (status) status.textContent = error.message;
+  } finally {
+    if (button) button.disabled = false;
+  }
 }
 
 function bindDrag() { bindCanvasPan(); document.querySelectorAll(".canvas").forEach(canvas => canvas.querySelectorAll(".layer").forEach(element => { element.onpointerdown = event => { if (element.isContentEditable) return; const slideId=canvas.dataset.canvas,index=Number(element.dataset.layer),data=drafts.get(slideId),startX=event.clientX,startY=event.clientY;let moved=false;selectedLayers.set(slideId,index);canvas.querySelectorAll(".layer").forEach((item,i)=>item.classList.toggle("active",i===index));element.setPointerCapture(event.pointerId);element.onpointermove=move=>{if(Math.hypot(move.clientX-startX,move.clientY-startY)<4&&!moved)return;if(!moved){remember(slideId);moved=true;}const rect=canvas.getBoundingClientRect(),x=Math.max(3,Math.min(97,(move.clientX-rect.left)/rect.width*100)),y=Math.max(3,Math.min(97,(move.clientY-rect.top)/rect.height*100));data.layers[index].x=Number(x.toFixed(2));data.layers[index].y=Number(y.toFixed(2));element.style.left=`${x}%`;element.style.top=`${y}%`;};element.onpointerup=()=>{element.onpointermove=null;if(moved)render();};}; })); }
