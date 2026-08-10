@@ -44,6 +44,19 @@ test("Facebook Page can be provisioned internally without Facebook Login", async
 
   const stored = storeModule.getSocialAccount(account.id, { includeSecrets: true });
   assert.equal(stored.accessToken, "internal-page-token");
+  const browserSafe = storeModule.listSocialAccounts().find(item => item.id === account.id);
+  assert.ok(browserSafe);
+  assert.equal(JSON.stringify(browserSafe).includes("internal-page-token"), false, "Page token must never be returned in account listings");
+});
+
+test("env-managed Facebook Page cannot be disconnected through Social Publisher", async () => {
+  const account = oauthModule.ensureConfiguredFacebookPageAccount();
+  const { disconnectSocialAccount } = await import("./social-service.js");
+  assert.throws(
+    () => disconnectSocialAccount(account.id),
+    error => error?.code === "SOCIAL_ACCOUNT_MANAGED_BY_ENV" && error?.status === 409
+  );
+  assert.ok(storeModule.getSocialAccount(account.id));
 });
 
 test("Instagram uses Business Login for Instagram instead of Facebook Login", () => {
@@ -64,6 +77,15 @@ test("Instagram uses Business Login for Instagram instead of Facebook Login", ()
   ]));
 });
 
+test("Instagram token exchange and refresh stay on Instagram-owned endpoints", async () => {
+  const oauth = await read("src/social-oauth.js");
+  assert.match(oauth, /https:\/\/api\.instagram\.com\/oauth\/access_token/u);
+  assert.match(oauth, /https:\/\/graph\.instagram\.com\/access_token/u);
+  assert.match(oauth, /grant_type:\s*"ig_exchange_token"/u);
+  assert.match(oauth, /https:\/\/graph\.instagram\.com\/refresh_access_token/u);
+  assert.match(oauth, /grant_type:\s*"ig_refresh_token"/u);
+});
+
 test("Instagram publishing is isolated onto graph.instagram.com", async () => {
   const provider = await read("src/social-provider-meta.js");
   assert.match(provider, /https:\/\/graph\.instagram\.com/u);
@@ -72,9 +94,10 @@ test("Instagram publishing is isolated onto graph.instagram.com", async () => {
 });
 
 test("Social UI separates internal Facebook from Instagram OAuth", async () => {
-  const [ui, routes] = await Promise.all([
+  const [ui, routes, env] = await Promise.all([
     read("public/social-studio.js"),
-    read("src/social-routes.js")
+    read("src/social-routes.js"),
+    read(".env.example")
   ]);
   assert.doesNotMatch(ui, /data-social-connect="meta"/u);
   assert.match(ui, /data-social-connect="instagram"/u);
@@ -82,4 +105,7 @@ test("Social UI separates internal Facebook from Instagram OAuth", async () => {
   assert.match(ui, /managedByEnv/u);
   assert.match(routes, /z\.enum\(\["instagram",\s*"tiktok"\]\)/u);
   assert.match(routes, /\/social\/oauth\/instagram\/callback/u);
+  assert.match(env, /FACEBOOK_PAGE_ACCESS_TOKEN=/u);
+  assert.match(env, /INSTAGRAM_APP_ID=/u);
+  assert.doesNotMatch(env, /META_APP_ID=/u);
 });
