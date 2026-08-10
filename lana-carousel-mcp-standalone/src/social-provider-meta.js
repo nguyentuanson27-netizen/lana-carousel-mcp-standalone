@@ -2,24 +2,25 @@ import { AppError } from "./errors.js";
 import { socialConfig } from "./social-config.js";
 import { formBody, socialFetchJson } from "./social-http.js";
 
-const graphBase = () => `https://graph.facebook.com/${socialConfig.metaGraphVersion}`;
+const facebookGraphBase = () => `https://graph.facebook.com/${socialConfig.metaGraphVersion}`;
+const instagramGraphBase = () => `https://graph.instagram.com/${socialConfig.instagramGraphVersion}`;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-async function graphPost(path, values, accessToken) {
-  return socialFetchJson(`${graphBase()}${path}`, {
+async function graphPost(base, path, values, accessToken) {
+  return socialFetchJson(`${base()}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: formBody({ ...values, access_token: accessToken })
   });
 }
 
-async function graphGet(path, values, accessToken) {
+async function graphGet(base, path, values, accessToken) {
   const query = new URLSearchParams({ ...values, access_token: accessToken });
-  return socialFetchJson(`${graphBase()}${path}?${query}`);
+  return socialFetchJson(`${base()}${path}?${query}`);
 }
 
 async function instagramContainerStatus(containerId, accessToken) {
-  return graphGet(`/${encodeURIComponent(containerId)}`, { fields: "status_code,status" }, accessToken);
+  return graphGet(instagramGraphBase, `/${encodeURIComponent(containerId)}`, { fields: "status_code,status" }, accessToken);
 }
 
 async function waitForInstagramContainer(containerId, accessToken) {
@@ -38,7 +39,7 @@ async function waitForInstagramContainer(containerId, accessToken) {
 
 async function instagramPermalink(mediaId, accessToken) {
   try {
-    const value = await graphGet(`/${encodeURIComponent(mediaId)}`, { fields: "permalink" }, accessToken);
+    const value = await graphGet(instagramGraphBase, `/${encodeURIComponent(mediaId)}`, { fields: "permalink" }, accessToken);
     return value.permalink || null;
   } catch { return null; }
 }
@@ -47,28 +48,28 @@ async function publishInstagramCarousel({ account, media, caption }) {
   if (!media.images?.length) throw new AppError("SOCIAL_MEDIA_MISSING", "Không có ảnh Carousel để đăng Instagram.", 409);
   const childIds = [];
   for (const image of media.images.slice(0, 10)) {
-    const child = await graphPost(`/${encodeURIComponent(account.externalAccountId)}/media`, {
+    const child = await graphPost(instagramGraphBase, `/${encodeURIComponent(account.externalAccountId)}/media`, {
       image_url: image.url,
       is_carousel_item: "true"
     }, account.accessToken);
     if (!child.id) throw new AppError("INSTAGRAM_CONTAINER_MISSING", "Instagram không trả container ảnh.", 502);
     childIds.push(child.id);
   }
-  const parent = await graphPost(`/${encodeURIComponent(account.externalAccountId)}/media`, {
+  const parent = await graphPost(instagramGraphBase, `/${encodeURIComponent(account.externalAccountId)}/media`, {
     media_type: "CAROUSEL",
     children: childIds.join(","),
     caption
   }, account.accessToken);
   if (!parent.id) throw new AppError("INSTAGRAM_CONTAINER_MISSING", "Instagram không trả container Carousel.", 502);
   await waitForInstagramContainer(parent.id, account.accessToken);
-  const published = await graphPost(`/${encodeURIComponent(account.externalAccountId)}/media_publish`, { creation_id: parent.id }, account.accessToken);
+  const published = await graphPost(instagramGraphBase, `/${encodeURIComponent(account.externalAccountId)}/media_publish`, { creation_id: parent.id }, account.accessToken);
   if (!published.id) throw new AppError("INSTAGRAM_PUBLISH_FAILED", "Instagram không trả media ID sau khi publish.", 502);
   return { remoteId: published.id, remoteUrl: await instagramPermalink(published.id, account.accessToken), providerState: { containerId: parent.id, childIds } };
 }
 
 async function publishInstagramReel({ account, media, caption }) {
   if (!media.video?.url) throw new AppError("SOCIAL_MEDIA_MISSING", "Không có MP4 READY để đăng Instagram Reel.", 409);
-  const container = await graphPost(`/${encodeURIComponent(account.externalAccountId)}/media`, {
+  const container = await graphPost(instagramGraphBase, `/${encodeURIComponent(account.externalAccountId)}/media`, {
     media_type: "REELS",
     video_url: media.video.url,
     caption,
@@ -76,7 +77,7 @@ async function publishInstagramReel({ account, media, caption }) {
   }, account.accessToken);
   if (!container.id) throw new AppError("INSTAGRAM_CONTAINER_MISSING", "Instagram không trả Reel container.", 502);
   await waitForInstagramContainer(container.id, account.accessToken);
-  const published = await graphPost(`/${encodeURIComponent(account.externalAccountId)}/media_publish`, { creation_id: container.id }, account.accessToken);
+  const published = await graphPost(instagramGraphBase, `/${encodeURIComponent(account.externalAccountId)}/media_publish`, { creation_id: container.id }, account.accessToken);
   if (!published.id) throw new AppError("INSTAGRAM_PUBLISH_FAILED", "Instagram không trả media ID sau khi publish Reel.", 502);
   return { remoteId: published.id, remoteUrl: await instagramPermalink(published.id, account.accessToken), providerState: { containerId: container.id } };
 }
@@ -85,7 +86,7 @@ async function publishFacebookPhotos({ account, media, caption }) {
   if (!media.images?.length) throw new AppError("SOCIAL_MEDIA_MISSING", "Không có ảnh Carousel để đăng Facebook.", 409);
   const photoIds = [];
   for (const image of media.images) {
-    const photo = await graphPost(`/${encodeURIComponent(account.externalAccountId)}/photos`, {
+    const photo = await graphPost(facebookGraphBase, `/${encodeURIComponent(account.externalAccountId)}/photos`, {
       url: image.url,
       published: "false"
     }, account.accessToken);
@@ -94,7 +95,7 @@ async function publishFacebookPhotos({ account, media, caption }) {
   }
   const values = { message: caption };
   photoIds.forEach((id, index) => { values[`attached_media[${index}]`] = JSON.stringify({ media_fbid: id }); });
-  const post = await graphPost(`/${encodeURIComponent(account.externalAccountId)}/feed`, values, account.accessToken);
+  const post = await graphPost(facebookGraphBase, `/${encodeURIComponent(account.externalAccountId)}/feed`, values, account.accessToken);
   if (!post.id) throw new AppError("FACEBOOK_PUBLISH_FAILED", "Facebook không trả post ID.", 502);
   const remoteUrl = `https://www.facebook.com/${post.id.replace("_", "/posts/")}`;
   return { remoteId: post.id, remoteUrl, providerState: { photoIds } };
@@ -102,7 +103,7 @@ async function publishFacebookPhotos({ account, media, caption }) {
 
 async function publishFacebookReel({ account, media, caption, title }) {
   if (!media.video?.url) throw new AppError("SOCIAL_MEDIA_MISSING", "Không có MP4 READY để đăng Facebook Reel.", 409);
-  const start = await graphPost("/me/video_reels", { upload_phase: "start" }, account.accessToken);
+  const start = await graphPost(facebookGraphBase, "/me/video_reels", { upload_phase: "start" }, account.accessToken);
   if (!start.video_id || !start.upload_url) throw new AppError("FACEBOOK_REEL_START_FAILED", "Facebook không tạo được phiên upload Reel.", 502);
   const upload = await socialFetchJson(start.upload_url, {
     method: "POST",
@@ -112,7 +113,7 @@ async function publishFacebookReel({ account, media, caption, title }) {
     }
   });
   if (upload.success !== true) throw new AppError("FACEBOOK_REEL_UPLOAD_FAILED", "Facebook không nhận được file Reel.", 502);
-  const finish = await graphPost("/me/video_reels", {
+  const finish = await graphPost(facebookGraphBase, "/me/video_reels", {
     video_id: start.video_id,
     upload_phase: "finish",
     video_state: "PUBLISHED",
