@@ -2,6 +2,7 @@ import { AppError } from "./errors.js";
 import { getProject } from "./service-core.js";
 import { socialFeatureStatus, socialConfig } from "./social-config.js";
 import { formBody, socialFetchJson } from "./social-http.js";
+import { ensureConfiguredFacebookPageAccount, refreshInstagramAccessToken } from "./social-oauth.js";
 import {
   createSocialMediaSnapshot,
   latestReadyVideoJob,
@@ -58,11 +59,26 @@ async function refreshTikTokAccount(account) {
   });
 }
 
+async function refreshInstagramAccount(account) {
+  if (account.platform !== "instagram") return account;
+  const expiresAt = account.tokenExpiresAt ? new Date(account.tokenExpiresAt).getTime() : 0;
+  if (!expiresAt || expiresAt > Date.now() + 7 * 24 * 60 * 60_000) return account;
+  const value = await refreshInstagramAccessToken(account.accessToken);
+  return updateSocialAccountTokens(account.id, {
+    accessToken: value.accessToken,
+    refreshToken: account.refreshToken,
+    tokenExpiresAt: value.expiresIn ? new Date(Date.now() + value.expiresIn * 1000).toISOString() : null,
+    scopes: account.scopes
+  });
+}
+
 async function accountForDelivery(delivery) {
   if (!delivery.accountId) throw new AppError("SOCIAL_ACCOUNT_DISCONNECTED", `Tài khoản ${delivery.accountName} đã bị ngắt kết nối.`, 409);
   const account = getSocialAccount(delivery.accountId, { includeSecrets: true });
   if (!account) throw new AppError("SOCIAL_ACCOUNT_NOT_FOUND", `Không tìm thấy tài khoản ${delivery.accountName}.`, 404);
-  return refreshTikTokAccount(account);
+  if (account.platform === "tiktok") return refreshTikTokAccount(account);
+  if (account.platform === "instagram") return refreshInstagramAccount(account);
+  return account;
 }
 
 export async function processSocialDelivery(deliveryId) {
@@ -196,6 +212,7 @@ export async function refreshTikTokDelivery({ projectId, deliveryId }) {
 }
 
 export function socialOverview(projectId) {
+  ensureConfiguredFacebookPageAccount();
   const project = getProject(projectId);
   let carouselReady = false;
   let carouselReason = null;
@@ -217,10 +234,14 @@ export function socialOverview(projectId) {
 export function disconnectSocialAccount(accountId) {
   const account = getSocialAccount(accountId);
   if (!account) throw new AppError("SOCIAL_ACCOUNT_NOT_FOUND", "Không tìm thấy tài khoản MXH.", 404);
+  if (account.metadata?.managedByEnv === true) {
+    throw new AppError("SOCIAL_ACCOUNT_MANAGED_BY_ENV", "Facebook Page nội bộ được quản lý bằng biến môi trường; hãy đổi hoặc xóa credential trên server rồi restart.", 409);
+  }
   deleteSocialAccount(accountId);
   return { success: true, id: accountId };
 }
 
+ensureConfiguredFacebookPageAccount();
 purgeOrphanedSocialMediaSnapshots().catch(error => console.error("Initial social media snapshot cleanup failed", error));
 setTimeout(scheduleSocialPump, 250).unref?.();
 const socialPumpTimer = setInterval(scheduleSocialPump, 15_000);
