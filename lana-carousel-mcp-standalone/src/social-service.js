@@ -48,8 +48,8 @@ function isActiveEnvFacebookAccount(account, feature = socialFeatureStatus()) {
     account.externalAccountId === socialConfig.facebookPageId;
 }
 
-function isStaleEnvFacebookAccount(account, feature = socialFeatureStatus()) {
-  return isEnvManagedFacebookAccount(account) && !isActiveEnvFacebookAccount(account, feature);
+function isCleanupOnlyFacebookAccount(account, feature = socialFeatureStatus()) {
+  return account?.platform === "facebook" && !isActiveEnvFacebookAccount(account, feature);
 }
 
 function isLegacyInstagramAccount(account) {
@@ -57,7 +57,7 @@ function isLegacyInstagramAccount(account) {
 }
 
 function assertAccountPublishable(account, feature = socialFeatureStatus()) {
-  if (isStaleEnvFacebookAccount(account, feature)) {
+  if (isCleanupOnlyFacebookAccount(account, feature)) {
     throw new AppError(
       "SOCIAL_FACEBOOK_CREDENTIAL_STALE",
       "Facebook Page credential này không còn khớp cấu hình server; hãy ngắt account cũ hoặc cấu hình lại đúng Page trước khi publish.",
@@ -70,7 +70,7 @@ function assertAccountPublishable(account, feature = socialFeatureStatus()) {
 }
 
 function accountForOverview(account, feature) {
-  if (!isStaleEnvFacebookAccount(account, feature)) return account;
+  if (!isCleanupOnlyFacebookAccount(account, feature)) return account;
   return {
     ...account,
     metadata: {
