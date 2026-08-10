@@ -36,6 +36,25 @@ function captionFor(post, platform) {
   return String(post.captions?.[platform] || post.caption || "").trim();
 }
 
+function isActiveEnvFacebookAccount(account, feature = socialFeatureStatus()) {
+  return account?.platform === "facebook" &&
+    account?.metadata?.managedByEnv === true &&
+    feature.facebookPageReady === true &&
+    account.externalAccountId === socialConfig.facebookPageId;
+}
+
+function accountForOverview(account, feature) {
+  if (account?.metadata?.managedByEnv !== true || isActiveEnvFacebookAccount(account, feature)) return account;
+  return {
+    ...account,
+    metadata: {
+      ...account.metadata,
+      managedByEnv: false,
+      staleManagedByEnv: true
+    }
+  };
+}
+
 async function refreshTikTokAccount(account) {
   if (account.platform !== "tiktok" || !account.refreshToken) return account;
   const expiresAt = account.tokenExpiresAt ? new Date(account.tokenExpiresAt).getTime() : 0;
@@ -214,6 +233,7 @@ export async function refreshTikTokDelivery({ projectId, deliveryId }) {
 export function socialOverview(projectId) {
   ensureConfiguredFacebookPageAccount();
   const project = getProject(projectId);
+  const feature = socialFeatureStatus();
   let carouselReady = false;
   let carouselReason = null;
   try { socialCarouselMedia(projectId); carouselReady = true; }
@@ -221,8 +241,8 @@ export function socialOverview(projectId) {
   const videoJob = latestReadyVideoJob(projectId);
   return {
     project: { id: project.id, title: project.title },
-    feature: socialFeatureStatus(),
-    accounts: listSocialAccounts(),
+    feature,
+    accounts: listSocialAccounts().map(account => accountForOverview(account, feature)),
     readiness: {
       carousel: { ready: carouselReady, reason: carouselReason },
       video: { ready: Boolean(videoJob), jobId: videoJob?.id || null }
@@ -234,8 +254,8 @@ export function socialOverview(projectId) {
 export function disconnectSocialAccount(accountId) {
   const account = getSocialAccount(accountId);
   if (!account) throw new AppError("SOCIAL_ACCOUNT_NOT_FOUND", "Không tìm thấy tài khoản MXH.", 404);
-  if (account.metadata?.managedByEnv === true) {
-    throw new AppError("SOCIAL_ACCOUNT_MANAGED_BY_ENV", "Facebook Page nội bộ được quản lý bằng biến môi trường; hãy đổi hoặc xóa credential trên server rồi restart.", 409);
+  if (isActiveEnvFacebookAccount(account)) {
+    throw new AppError("SOCIAL_ACCOUNT_MANAGED_BY_ENV", "Facebook Page nội bộ đang được quản lý bằng biến môi trường; hãy xóa credential trên server và restart trước khi ngắt account này.", 409);
   }
   deleteSocialAccount(accountId);
   return { success: true, id: accountId };
