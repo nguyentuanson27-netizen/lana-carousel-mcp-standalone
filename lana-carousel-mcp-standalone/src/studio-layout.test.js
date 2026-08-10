@@ -42,3 +42,22 @@ test("desktop sidebar collapse is persisted and active view controls compact hea
   assert.match(source, /studio-view-\$\{view\}/u);
   assert.match(source, /MutationObserver/u);
 });
+
+test("edit proof action is promoted into the vertical preview toolbar", async () => {
+  const [source, css] = await Promise.all([read("studio-layout.js"), read("stitch-layout.css")]);
+  assert.match(source, /\.show-proof/u);
+  assert.match(source, /\.direct-toolbar/u);
+  assert.match(source, /direct-proof/u);
+  assert.match(css, /#edit \.direct-proof/u);
+  assert.match(css, /#edit \.proof-bar/u);
+});
+
+test("Brand Kit can collapse to an accessible compact summary", async () => {
+  const [source, css] = await Promise.all([read("studio-layout.js"), read("stitch-layout.css")]);
+  assert.match(source, /lana-content-studio-brand-kit-collapsed/u);
+  assert.match(source, /brand-kit-toggle/u);
+  assert.match(source, /aria-expanded/u);
+  assert.match(source, /brand-kit-summary/u);
+  assert.match(css, /\.brand-kit\.is-collapsed/u);
+  assert.match(css, /\.brand-kit-toggle/u);
+});
