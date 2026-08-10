@@ -4,88 +4,123 @@ import { socialConfig, socialFeatureStatus } from "./social-config.js";
 import { formBody, socialFetchJson } from "./social-http.js";
 import { upsertSocialAccount } from "./social-store.js";
 
+const INSTAGRAM_PUBLISH_SCOPES = ["instagram_business_basic", "instagram_business_content_publish"];
+
 function requireReady(provider) {
   const status = socialFeatureStatus();
-  if (provider === "meta" && !status.metaOAuthReady) throw new AppError("META_OAUTH_NOT_CONFIGURED", "Chưa cấu hình META_APP_ID/META_APP_SECRET và Social secrets.", 503);
-  if (provider === "tiktok" && !status.tiktokOAuthReady) throw new AppError("TIKTOK_OAUTH_NOT_CONFIGURED", "Chưa cấu hình TIKTOK_CLIENT_KEY/TIKTOK_CLIENT_SECRET và Social secrets.", 503);
-}
-
-export function metaOAuthUrl(projectId) {
-  requireReady("meta");
-  const query = new URLSearchParams({
-    client_id: socialConfig.metaAppId,
-    redirect_uri: socialConfig.metaRedirectUri,
-    state: createOAuthState({ projectId, provider: "meta" }),
-    response_type: "code",
-    scope: [
-      "pages_show_list",
-      "pages_read_engagement",
-      "pages_manage_posts",
-      "instagram_basic",
-      "instagram_content_publish"
-    ].join(",")
-  });
-  return `https://www.facebook.com/${socialConfig.metaGraphVersion}/dialog/oauth?${query}`;
-}
-
-async function exchangeMetaCode(code) {
-  const query = new URLSearchParams({
-    client_id: socialConfig.metaAppId,
-    client_secret: socialConfig.metaAppSecret,
-    redirect_uri: socialConfig.metaRedirectUri,
-    code
-  });
-  const short = await socialFetchJson(`https://graph.facebook.com/${socialConfig.metaGraphVersion}/oauth/access_token?${query}`);
-  if (!short.access_token) throw new AppError("META_OAUTH_FAILED", "Meta không trả access token.", 400);
-  try {
-    const longQuery = new URLSearchParams({
-      grant_type: "fb_exchange_token",
-      client_id: socialConfig.metaAppId,
-      client_secret: socialConfig.metaAppSecret,
-      fb_exchange_token: short.access_token
-    });
-    const long = await socialFetchJson(`https://graph.facebook.com/${socialConfig.metaGraphVersion}/oauth/access_token?${longQuery}`);
-    return long.access_token || short.access_token;
-  } catch {
-    return short.access_token;
+  if (provider === "instagram" && !status.instagramOAuthReady) {
+    throw new AppError("INSTAGRAM_OAUTH_NOT_CONFIGURED", "Chưa cấu hình INSTAGRAM_APP_ID/INSTAGRAM_APP_SECRET và Social secrets.", 503);
+  }
+  if (provider === "tiktok" && !status.tiktokOAuthReady) {
+    throw new AppError("TIKTOK_OAUTH_NOT_CONFIGURED", "Chưa cấu hình TIKTOK_CLIENT_KEY/TIKTOK_CLIENT_SECRET và Social secrets.", 503);
   }
 }
 
-export async function completeMetaOAuth({ code, state }) {
-  requireReady("meta");
-  const verified = verifyOAuthState(state, "meta");
-  const userToken = await exchangeMetaCode(code);
-  const query = new URLSearchParams({
-    fields: "id,name,access_token,tasks,instagram_business_account{id,username,name}",
-    access_token: userToken
-  });
-  const pages = await socialFetchJson(`https://graph.facebook.com/${socialConfig.metaGraphVersion}/me/accounts?${query}`);
-  const connected = [];
-  for (const page of pages.data || []) {
-    if (!page.id || !page.access_token) continue;
-    const pageAccount = upsertSocialAccount({
-      platform: "facebook",
-      externalAccountId: String(page.id),
-      accountName: page.name || `Facebook Page ${page.id}`,
-      accessToken: page.access_token,
-      scopes: ["pages_manage_posts", "pages_read_engagement"],
-      metadata: { tasks: page.tasks || [] }
-    });
-    connected.push(pageAccount);
-    const instagram = page.instagram_business_account;
-    if (instagram?.id) {
-      connected.push(upsertSocialAccount({
-        platform: "instagram",
-        externalAccountId: String(instagram.id),
-        accountName: instagram.username ? `@${instagram.username}` : (instagram.name || `Instagram ${instagram.id}`),
-        accessToken: page.access_token,
-        scopes: ["instagram_basic", "instagram_content_publish"],
-        metadata: { facebookPageId: String(page.id), facebookPageName: page.name || "" }
-      }));
+export function ensureConfiguredFacebookPageAccount() {
+  if (!socialFeatureStatus().facebookPageReady) return null;
+  return upsertSocialAccount({
+    platform: "facebook",
+    externalAccountId: socialConfig.facebookPageId,
+    accountName: socialConfig.facebookPageName || `Facebook Page ${socialConfig.facebookPageId}`,
+    accessToken: socialConfig.facebookPageAccessToken,
+    scopes: ["pages_manage_posts"],
+    metadata: {
+      credentialSource: "env",
+      managedByEnv: true
     }
+  });
+}
+
+export function instagramOAuthUrl(projectId) {
+  requireReady("instagram");
+  const query = new URLSearchParams({
+    client_id: socialConfig.instagramAppId,
+    redirect_uri: socialConfig.instagramRedirectUri,
+    response_type: "code",
+    scope: INSTAGRAM_PUBLISH_SCOPES.join(","),
+    state: createOAuthState({ projectId, provider: "instagram" }),
+    enable_fb_login: "0",
+    force_authentication: "1"
+  });
+  return `https://www.instagram.com/oauth/authorize?${query}`;
+}
+
+async function exchangeInstagramCode(code) {
+  const body = new FormData();
+  body.set("client_id", socialConfig.instagramAppId);
+  body.set("client_secret", socialConfig.instagramAppSecret);
+  body.set("grant_type", "authorization_code");
+  body.set("redirect_uri", socialConfig.instagramRedirectUri);
+  body.set("code", String(code || ""));
+  const short = await socialFetchJson("https://api.instagram.com/oauth/access_token", {
+    method: "POST",
+    body
+  });
+  if (!short.access_token || !short.user_id) {
+    throw new AppError("INSTAGRAM_OAUTH_FAILED", "Instagram không trả access token/user_id.", 400);
   }
-  if (!connected.length) throw new AppError("META_NO_PUBLISHING_ACCOUNT", "Không tìm thấy Facebook Page/Instagram Professional có quyền publish.", 400);
-  return { projectId: verified.projectId, accounts: connected };
+
+  const query = new URLSearchParams({
+    grant_type: "ig_exchange_token",
+    client_secret: socialConfig.instagramAppSecret,
+    access_token: short.access_token
+  });
+  const longLived = await socialFetchJson(`https://graph.instagram.com/access_token?${query}`);
+  if (!longLived.access_token) {
+    throw new AppError("INSTAGRAM_LONG_LIVED_TOKEN_FAILED", "Instagram không trả long-lived access token.", 400);
+  }
+  return {
+    accessToken: longLived.access_token,
+    userId: String(short.user_id),
+    expiresIn: Number(longLived.expires_in) || 0
+  };
+}
+
+async function instagramProfile(userId, accessToken) {
+  const query = new URLSearchParams({
+    fields: "user_id,username,name,account_type",
+    access_token: accessToken
+  });
+  try {
+    return await socialFetchJson(`https://graph.instagram.com/${socialConfig.instagramGraphVersion}/${encodeURIComponent(userId)}?${query}`);
+  } catch {
+    return {};
+  }
+}
+
+export async function completeInstagramOAuth({ code, state }) {
+  requireReady("instagram");
+  const verified = verifyOAuthState(state, "instagram");
+  const token = await exchangeInstagramCode(code);
+  const profile = await instagramProfile(token.userId, token.accessToken);
+  const username = String(profile.username || "").trim();
+  const account = upsertSocialAccount({
+    platform: "instagram",
+    externalAccountId: token.userId,
+    accountName: username ? `@${username}` : (String(profile.name || "").trim() || `Instagram ${token.userId}`),
+    accessToken: token.accessToken,
+    tokenExpiresAt: token.expiresIn ? new Date(Date.now() + token.expiresIn * 1000).toISOString() : null,
+    scopes: INSTAGRAM_PUBLISH_SCOPES,
+    metadata: {
+      credentialSource: "instagram-login",
+      accountType: profile.account_type || "",
+      username
+    }
+  });
+  return { projectId: verified.projectId, accounts: [account] };
+}
+
+export async function refreshInstagramAccessToken(accessToken) {
+  const query = new URLSearchParams({
+    grant_type: "ig_refresh_token",
+    access_token: String(accessToken || "")
+  });
+  const value = await socialFetchJson(`https://graph.instagram.com/refresh_access_token?${query}`);
+  if (!value.access_token) throw new AppError("INSTAGRAM_REFRESH_FAILED", "Không thể refresh Instagram access token.", 401);
+  return {
+    accessToken: value.access_token,
+    expiresIn: Number(value.expires_in) || 0
+  };
 }
 
 export function tiktokOAuthUrl(projectId) {
