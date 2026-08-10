@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "lana-social-connection-test-"));
 process.env.NODE_ENV = "test";
@@ -22,10 +24,61 @@ process.env.TIKTOK_CLIENT_SECRET = "tiktok-secret";
 await fs.mkdir(process.env.ASSET_DIRECTORY, { recursive: true });
 
 const root = new URL("../", import.meta.url);
+const rootPath = fileURLToPath(root);
 const read = relativePath => fs.readFile(new URL(relativePath, root), "utf8");
 const configModule = await import("./social-config.js");
 const oauthModule = await import("./social-oauth.js");
 const storeModule = await import("./social-store.js");
+
+function runFresh(script, env) {
+  const output = execFileSync(process.execPath, ["--input-type=module", "--eval", script], {
+    cwd: rootPath,
+    env: { ...process.env, ...env },
+    encoding: "utf8"
+  });
+  const lines = output.trim().split(/\r?\n/u).filter(Boolean);
+  return JSON.parse(lines.at(-1));
+}
+
+async function createFacebookLifecycleFixture() {
+  const lifecycleRoot = await fs.mkdtemp(path.join(os.tmpdir(), "lana-social-facebook-lifecycle-"));
+  const databasePath = path.join(lifecycleRoot, "lana.sqlite");
+  const assetDirectory = path.join(lifecycleRoot, "assets");
+  await fs.mkdir(assetDirectory, { recursive: true });
+  const baseEnv = {
+    NODE_ENV: "test",
+    PUBLIC_BASE_URL: "https://content.example",
+    DATABASE_PATH: databasePath,
+    ASSET_DIRECTORY: assetDirectory,
+    SOCIAL_TOKEN_ENCRYPTION_KEY: "d".repeat(64),
+    SOCIAL_OAUTH_STATE_SECRET: "e".repeat(64),
+    SOCIAL_MEDIA_SIGNING_SECRET: "f".repeat(64),
+    INSTAGRAM_APP_ID: "",
+    INSTAGRAM_APP_SECRET: "",
+    TIKTOK_CLIENT_KEY: "",
+    TIKTOK_CLIENT_SECRET: ""
+  };
+  const initial = runFresh(`
+    const { createProject } = await import("./src/service-core.js");
+    const { ensureConfiguredFacebookPageAccount } = await import("./src/social-oauth.js");
+    const { createSocialPost } = await import("./src/social-store.js");
+    const project = createProject({ title: "Facebook lifecycle" });
+    const account = ensureConfiguredFacebookPageAccount();
+    const post = createSocialPost({
+      projectId: project.id,
+      contentType: "carousel",
+      mediaSnapshot: { snapshotId: "stale-facebook", images: [] },
+      accounts: [account]
+    });
+    console.log(JSON.stringify({ projectId: project.id, accountId: account.id, deliveryId: post.deliveries[0].id }));
+  `, {
+    ...baseEnv,
+    FACEBOOK_PAGE_ID: "page-a",
+    FACEBOOK_PAGE_NAME: "Page A",
+    FACEBOOK_PAGE_ACCESS_TOKEN: "page-a-token"
+  });
+  return { ...initial, baseEnv };
+}
 
 test("Facebook Page can be provisioned internally without Facebook Login", async () => {
   assert.equal(configModule.socialFeatureStatus().facebookPageReady, true);
@@ -67,6 +120,74 @@ test("stale env-managed Facebook account becomes removable after env ownership e
   assert.match(service, /staleManagedByEnv:\s*true/u);
   assert.match(service, /if \(isActiveEnvFacebookAccount\(account\)\)/u);
   assert.doesNotMatch(service, /if \(account\.metadata\?\.managedByEnv === true\) \{/u);
+});
+
+test("stale Facebook credential cannot publish after Page ID changes but remains disconnectable", async () => {
+  const fixture = await createFacebookLifecycleFixture();
+  const result = runFresh(`
+    const { socialOverview, createPublishPost, processSocialDelivery, disconnectSocialAccount } = await import("./src/social-service.js");
+    const { getSocialAccount } = await import("./src/social-store.js");
+    const overview = socialOverview(${JSON.stringify(fixture.projectId)});
+    const stale = overview.accounts.find(account => account.id === ${JSON.stringify(fixture.accountId)});
+    let createCode = null;
+    let deliveryCode = null;
+    try {
+      await createPublishPost({ projectId: ${JSON.stringify(fixture.projectId)}, contentType: "carousel", accountIds: [${JSON.stringify(fixture.accountId)}] });
+    } catch (error) {
+      createCode = error?.code || null;
+    }
+    try {
+      await processSocialDelivery(${JSON.stringify(fixture.deliveryId)});
+    } catch (error) {
+      deliveryCode = error?.code || null;
+    }
+    const disconnected = disconnectSocialAccount(${JSON.stringify(fixture.accountId)});
+    console.log(JSON.stringify({
+      staleManagedByEnv: stale?.metadata?.staleManagedByEnv === true,
+      createCode,
+      deliveryCode,
+      disconnected: disconnected.success === true,
+      removed: getSocialAccount(${JSON.stringify(fixture.accountId)}) == null
+    }));
+  `, {
+    ...fixture.baseEnv,
+    FACEBOOK_PAGE_ID: "page-b",
+    FACEBOOK_PAGE_NAME: "Page B",
+    FACEBOOK_PAGE_ACCESS_TOKEN: "page-b-token"
+  });
+  assert.equal(result.staleManagedByEnv, true);
+  assert.equal(result.createCode, "SOCIAL_FACEBOOK_CREDENTIAL_STALE");
+  assert.equal(result.deliveryCode, "SOCIAL_FACEBOOK_CREDENTIAL_STALE");
+  assert.equal(result.disconnected, true);
+  assert.equal(result.removed, true);
+});
+
+test("stale Facebook credential cannot publish after env removal", async () => {
+  const fixture = await createFacebookLifecycleFixture();
+  const result = runFresh(`
+    const { socialOverview, createPublishPost } = await import("./src/social-service.js");
+    const overview = socialOverview(${JSON.stringify(fixture.projectId)});
+    const stale = overview.accounts.find(account => account.id === ${JSON.stringify(fixture.accountId)});
+    let createCode = null;
+    try {
+      await createPublishPost({ projectId: ${JSON.stringify(fixture.projectId)}, contentType: "carousel", accountIds: [${JSON.stringify(fixture.accountId)}] });
+    } catch (error) {
+      createCode = error?.code || null;
+    }
+    console.log(JSON.stringify({
+      facebookPageReady: overview.feature.facebookPageReady,
+      staleManagedByEnv: stale?.metadata?.staleManagedByEnv === true,
+      createCode
+    }));
+  `, {
+    ...fixture.baseEnv,
+    FACEBOOK_PAGE_ID: "",
+    FACEBOOK_PAGE_NAME: "",
+    FACEBOOK_PAGE_ACCESS_TOKEN: ""
+  });
+  assert.equal(result.facebookPageReady, false);
+  assert.equal(result.staleManagedByEnv, true);
+  assert.equal(result.createCode, "SOCIAL_FACEBOOK_CREDENTIAL_STALE");
 });
 
 test("Instagram uses Business Login for Instagram instead of Facebook Login", () => {
