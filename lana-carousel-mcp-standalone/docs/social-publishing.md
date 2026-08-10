@@ -18,6 +18,7 @@ Thiết kế này cố ý **không dùng Facebook Login for Business**. Facebook
 - Access token và refresh token được mã hóa AES-256-GCM trước khi lưu SQLite.
 - `SOCIAL_TOKEN_ENCRYPTION_KEY` phải được giữ ổn định. Đổi/mất key sẽ làm credential đã lưu không giải mã được.
 - Facebook Page token có nguồn cấu hình duy nhất từ environment ở server, không trả về browser. Account Facebook đang khớp credential env hiện tại được đánh dấu managed và không thể disconnect từ UI/API.
+- Facebook account do env tạo chỉ được publish khi Page ID đó vẫn khớp cấu hình server hiện tại. Nếu env bị xóa hoặc đổi sang Page khác, row cũ trở thành cleanup-only: không auto-select, không tạo post mới và queued delivery cũ sẽ fail-closed trước provider call.
 - Provider không truy cập trực tiếp API media private của Lana. Social Publisher tạo URL HMAC có TTL cho từng ảnh/MP4.
 - URL Social media mặc định hết hạn sau 6 giờ (`SOCIAL_MEDIA_URL_TTL_SECONDS=21600`).
 
@@ -46,9 +47,9 @@ FACEBOOK_PAGE_NAME=La.na Design
 FACEBOOK_PAGE_ACCESS_TOKEN=...
 ```
 
-`FACEBOOK_PAGE_ACCESS_TOKEN` phải là Page Access Token có quyền publish lên đúng Page (`pages_manage_posts`). Sau khi restart, Lana upsert một `social_account` Facebook và mã hóa token bằng cùng credential store hiện có. Nếu đổi token trong `.env`, restart sẽ cập nhật credential của cùng Page thay vì tạo account trùng.
+`FACEBOOK_PAGE_ACCESS_TOKEN` phải là Page Access Token có quyền publish lên đúng Page (`pages_manage_posts`). Sau khi restart, Lana upsert một `social_account` Facebook và mã hóa token bằng cùng credential store hiện có. Nếu đổi token trong `.env` nhưng giữ nguyên `FACEBOOK_PAGE_ID`, restart sẽ cập nhật credential của cùng Page thay vì tạo account trùng.
 
-Để bỏ Facebook Page khỏi Lana: xóa `FACEBOOK_PAGE_ID` / `FACEBOOK_PAGE_ACCESS_TOKEN` khỏi environment và restart. Account cũ sẽ được hiển thị như một credential stale thay vì tiếp tục bị khóa bởi `managedByEnv`; lúc đó có thể bấm **Ngắt** trong Social Publisher để dọn row cũ. Lana không tự xóa row khi env biến mất để tránh làm mất lịch sử/account binding ngoài ý muốn.
+Nếu `FACEBOOK_PAGE_ID` đổi sang Page khác, Lana provision Page mới và giữ row Page cũ chỉ để cleanup/history. Nếu Facebook env bị xóa hoàn toàn, row cũ cũng chuyển sang cleanup-only. Trong cả hai trường hợp, stale row hiển thị **Cần cấu hình lại**, checkbox publish bị disable, API tạo post trả `SOCIAL_FACEBOOK_CREDENTIAL_STALE`, queued delivery cũ fail trước khi gọi Facebook provider, nhưng nút **Ngắt** vẫn hoạt động để dọn row cũ. Lana không tự xóa row khi env thay đổi để tránh làm mất lịch sử/account binding ngoài ý muốn.
 
 ## Instagram Login
 
