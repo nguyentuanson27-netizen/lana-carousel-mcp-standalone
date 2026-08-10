@@ -87,6 +87,8 @@ Lana -> www.instagram.com/oauth/authorize
 
 Instagram account phải là Professional account (Business hoặc Creator). Với use case nội bộ, cấu hình Meta app theo Standard Access cho account mà chủ app sở hữu/quản lý và đã thêm vào App Dashboard. Nếu sau này app phục vụ Instagram account của bên thứ ba, phải đánh giá lại Advanced Access/App Review.
 
+Nếu database còn Instagram account được tạo bởi flow Facebook Login cũ, Lana sẽ hiển thị **Cần kết nối lại**, không auto-select và từ chối publish bằng token cũ. Bấm **Ngắt**, sau đó kết nối lại bằng nút **+ Instagram** để lấy Instagram User token đúng loại.
+
 Lana refresh long-lived Instagram token khi token còn dưới 7 ngày trước lúc publish. Nếu refresh thất bại, delivery fail rõ ràng thay vì âm thầm đăng bằng credential không hợp lệ.
 
 ## TikTok
@@ -161,6 +163,10 @@ TIKTOK_CLIENT_SECRET=
 ```
 
 `PUBLIC_BASE_URL` phải là HTTPS URL mà Instagram/TikTok và provider media có thể truy cập từ Internet.
+
+## Verification sau deploy
+
+CI kiểm tra contract, persistence, provider routing và regression nhưng không gọi credential thật của Meta/TikTok. Sau deploy cần smoke-test tối thiểu: Facebook Page đăng một post thử, Instagram Login hoàn tất callback rồi publish một media thử, TikTok reconnect/publish draft như flow cũ. Nếu Meta thay token endpoint hoặc yêu cầu mới, lỗi provider phải được xử lý trước khi coi rollout Social hoàn tất.
 
 ## Ngoài MVP
 
