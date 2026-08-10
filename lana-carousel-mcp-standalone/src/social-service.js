@@ -43,6 +43,10 @@ function isActiveEnvFacebookAccount(account, feature = socialFeatureStatus()) {
     account.externalAccountId === socialConfig.facebookPageId;
 }
 
+function isLegacyInstagramAccount(account) {
+  return account?.platform === "instagram" && account?.metadata?.credentialSource !== "instagram-login";
+}
+
 function accountForOverview(account, feature) {
   if (account?.metadata?.managedByEnv !== true || isActiveEnvFacebookAccount(account, feature)) return account;
   return {
@@ -95,6 +99,9 @@ async function accountForDelivery(delivery) {
   if (!delivery.accountId) throw new AppError("SOCIAL_ACCOUNT_DISCONNECTED", `Tài khoản ${delivery.accountName} đã bị ngắt kết nối.`, 409);
   const account = getSocialAccount(delivery.accountId, { includeSecrets: true });
   if (!account) throw new AppError("SOCIAL_ACCOUNT_NOT_FOUND", `Không tìm thấy tài khoản ${delivery.accountName}.`, 404);
+  if (isLegacyInstagramAccount(account)) {
+    throw new AppError("INSTAGRAM_RECONNECT_REQUIRED", "Instagram account này được kết nối bằng Facebook Login cũ; hãy ngắt và kết nối lại bằng Instagram Login.", 409);
+  }
   if (account.platform === "tiktok") return refreshTikTokAccount(account);
   if (account.platform === "instagram") return refreshInstagramAccount(account);
   return account;
@@ -181,6 +188,9 @@ export async function createPublishPost({ projectId, contentType, caption = "", 
   if (!uniqueIds.length) throw new AppError("SOCIAL_ACCOUNT_REQUIRED", "Hãy chọn ít nhất một tài khoản mạng xã hội.", 400);
   const accounts = uniqueIds.map(id => getSocialAccount(id)).filter(Boolean);
   if (accounts.length !== uniqueIds.length) throw new AppError("SOCIAL_ACCOUNT_NOT_FOUND", "Một tài khoản MXH không còn tồn tại.", 404);
+  if (accounts.some(isLegacyInstagramAccount)) {
+    throw new AppError("INSTAGRAM_RECONNECT_REQUIRED", "Instagram account cũ phải được ngắt và kết nối lại bằng Instagram Login trước khi publish.", 409);
+  }
   if (!new Set(["carousel", "video"]).has(contentType)) {
     throw new AppError("SOCIAL_CONTENT_TYPE_INVALID", "Loại nội dung Social không hợp lệ.", 400);
   }
