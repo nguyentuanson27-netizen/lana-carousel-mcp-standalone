@@ -113,6 +113,10 @@ Hai cái bẫy khi sửa phần kéo này, cả hai đều làm thao tác chết
   Vì vậy thao tác kéo chỉ đổi `style`, cập nhật số hiển thị qua `nodeValue`, và chỉ ghi lịch sử
   hoàn tác lúc thả chuột.
 
+Trọng tâm mới luôn tính từ vị trí lúc **bấm chuột** cộng tổng độ dời, nhưng phép kiểm tra "không có
+gì đổi" phải so với giá trị **đang áp dụng**. So với vị trí lúc bấm chuột thì lúc kéo đi rồi kéo về
+đúng chỗ cũ, phép so sẽ thấy trùng và bỏ qua, khiến bản nháp kẹt ở vị trí trung gian cuối cùng.
+
 ### 10. Mọi độ dài tính bằng pixel đều thuộc hệ toạ độ 1080px
 
 Preview biểu diễn chúng bằng `cqw` nên tự co giãn theo bề rộng canvas. Bản render vì thế phải nhân

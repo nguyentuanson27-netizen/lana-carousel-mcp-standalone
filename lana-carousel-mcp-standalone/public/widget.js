@@ -482,9 +482,12 @@ function bindCanvasPan() {
         const dx = move.clientX - startX, dy = move.clientY - startY;
         if (!moved && Math.hypot(dx, dy) < 4) return;
         moved = true;
-        const current = { ...origin, cropZoom: activeCrop(slide, data).cropZoom };
-        const next = panCrop(current, dx, dy, rect.width, rect.height);
-        if (next.cropX === current.cropX && next.cropY === current.cropY) return;
+        // Luôn tính từ trọng tâm lúc bấm chuột, nhưng so với giá trị **đang áp dụng** để biết có
+        // cần ghi hay không: so với `origin` thì khi kéo đi rồi kéo về đúng chỗ cũ, phép so sẽ
+        // thấy "không đổi" và bỏ qua, khiến bản nháp kẹt ở vị trí trung gian cuối cùng.
+        const live = activeCrop(slide, data);
+        const next = panCrop({ ...origin, cropZoom: live.cropZoom }, dx, dy, rect.width, rect.height);
+        if (next.cropX === live.cropX && next.cropY === live.cropY) return;
         setCrop(slide, data, { cropX: next.cropX, cropY: next.cropY });
         applyZoom(); syncImageControls(slideId);
       };

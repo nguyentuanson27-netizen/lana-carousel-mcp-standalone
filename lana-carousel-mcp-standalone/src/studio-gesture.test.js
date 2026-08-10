@@ -78,8 +78,13 @@ describe("kéo trên khung xem trước đổi trọng tâm đúng tỉ lệ", {
     await fs.rm(tempDirectory, { recursive: true, force: true });
   });
 
-  /** Mở studio ở bước sửa thiết kế, kéo dọc `dy` pixel trên ô đầu tiên. */
-  async function dragFirstCell(dy, zoom) {
+  /**
+   * Mở studio ở bước sửa thiết kế rồi kéo trên ô đầu tiên theo một chuỗi độ dời dọc.
+   * `waypoints` là các mốc `dy` tính từ điểm bấm chuột, đi lần lượt trước khi thả.
+   * `stepsPerLeg` là số sự kiện chuột cho mỗi chặng: để 1 khi cần chặng cuối rơi đúng vào một mốc,
+   * để lớn hơn khi muốn mô phỏng một đường kéo liên tục.
+   */
+  async function dragFirstCell(waypoints, zoom, stepsPerLeg = 8) {
     const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } });
     const errors = [];
     page.on("pageerror", error => errors.push(String(error)));
@@ -102,7 +107,10 @@ describe("kéo trên khung xem trước đổi trọng tâm đúng tỉ lệ", {
     const startX = box.x + box.width / 2, startY = box.y + box.height / 2;
     await page.mouse.move(startX, startY);
     await page.mouse.down();
-    await page.mouse.move(startX, startY + dy, { steps: 8 });
+    for (const dy of waypoints) {
+      await page.mouse.move(startX, startY + dy, { steps: stepsPerLeg });
+      await page.waitForTimeout(30);
+    }
     await page.mouse.up();
     await page.waitForTimeout(150);
 
@@ -116,7 +124,7 @@ describe("kéo trên khung xem trước đổi trọng tâm đúng tỉ lệ", {
 
   test("kéo được chuẩn hoá theo ô đang chỉnh, không phải theo cả canvas", async () => {
     const zoom = 2, dy = -60;
-    const { before, after, cellHeight, canvasHeight } = await dragFirstCell(dy, zoom);
+    const { before, after, cellHeight, canvasHeight } = await dragFirstCell([dy], zoom);
     // Lưới hai ảnh xếp một cột hai hàng nên ô cao bằng nửa canvas — đây là chỗ hai cách chuẩn hoá
     // cho kết quả khác nhau.
     assert.ok(Math.abs(cellHeight - canvasHeight / 2) < 4, "bố cục thử phải là lưới hai hàng");
@@ -130,10 +138,20 @@ describe("kéo trên khung xem trước đổi trọng tâm đúng tỉ lệ", {
       `chuẩn hoá theo canvas sẽ cho ~${canvasNormalised.toFixed(1)}%, kết quả không được trùng giá trị đó`);
   });
 
+  test("kéo đi rồi kéo về đúng chỗ cũ trả lại trọng tâm ban đầu", async () => {
+    // Nếu phép kiểm tra "không đổi" so với trọng tâm lúc bấm chuột thay vì giá trị đang áp dụng,
+    // chặng quay về sẽ bị bỏ qua và bản nháp kẹt ở vị trí trung gian.
+    // Mỗi chặng đúng một sự kiện chuột: chặng quay về phải rơi chính xác vào điểm xuất phát,
+    // nếu chia nhỏ thì các bước trung gian sát điểm gốc sẽ che mất lỗi.
+    const { before, after } = await dragFirstCell([-60, 0], 2, 1);
+    assert.ok(Math.abs(after - before) <= 1,
+      `quay về điểm xuất phát phải cho lại ~${before}%, nhận ${after}%`);
+  });
+
   test("thao tác kéo chạy hết quãng đường chứ không đứt sau vài pixel", async () => {
     // Trước đây `remember()` gọi giữa lúc kéo làm đổi DOM, MutationObserver của stitch-ui.js chạy
     // và cướp mất pointer capture nên chỉ vài pixel đầu được áp dụng.
-    const zoom = 2, small = await dragFirstCell(-12, zoom), large = await dragFirstCell(-60, zoom);
+    const zoom = 2, small = await dragFirstCell([-12], zoom), large = await dragFirstCell([-60], zoom);
     const smallShift = Math.abs(small.after - small.before), largeShift = Math.abs(large.after - large.before);
     assert.ok(largeShift > smallShift * 3,
       `kéo xa gấp năm phải dịch nhiều hơn hẳn: ${smallShift.toFixed(1)}% so với ${largeShift.toFixed(1)}%`);
