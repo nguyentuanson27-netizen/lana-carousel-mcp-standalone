@@ -79,8 +79,16 @@
     return account?.platform === "instagram" && account?.metadata?.credentialSource !== "instagram-login";
   }
 
+  function isStaleFacebookAccount(account) {
+    return account?.platform === "facebook" && account?.metadata?.staleManagedByEnv === true;
+  }
+
+  function isSelectableAccount(account) {
+    return !isLegacyInstagramAccount(account) && !isStaleFacebookAccount(account);
+  }
+
   function syncSelectedAccounts(accounts) {
-    const selectable = accounts.filter(account => !isLegacyInstagramAccount(account));
+    const selectable = accounts.filter(isSelectableAccount);
     const ids = new Set(selectable.map(account => account.id));
     for (const id of [...state.selectedAccounts]) if (!ids.has(id)) state.selectedAccounts.delete(id);
     if (!state.selectedAccounts.size) selectable.forEach(account => state.selectedAccounts.add(account.id));
@@ -125,11 +133,13 @@
   function accountHtml(account) {
     const managedByEnv = account.metadata?.managedByEnv === true;
     const legacyInstagram = isLegacyInstagramAccount(account);
+    const staleFacebook = isStaleFacebookAccount(account);
+    const disabled = legacyInstagram || staleFacebook;
     return `<label class="social-account">
-      <input type="checkbox" data-social-account="${account.id}" ${state.selectedAccounts.has(account.id) ? "checked" : ""} ${legacyInstagram ? "disabled" : ""}>
+      <input type="checkbox" data-social-account="${account.id}" ${state.selectedAccounts.has(account.id) ? "checked" : ""} ${disabled ? "disabled" : ""}>
       <span class="social-account-copy">
         <strong>${escapeHtml(account.accountName)}</strong>
-        <span>${escapeHtml(platformLabel(account.platform))}${managedByEnv ? " · Facebook nội bộ" : ""}${legacyInstagram ? " · Cần kết nối lại" : ""}</span>
+        <span>${escapeHtml(platformLabel(account.platform))}${managedByEnv ? " · Facebook nội bộ" : ""}${legacyInstagram ? " · Cần kết nối lại" : ""}${staleFacebook ? " · Cần cấu hình lại" : ""}</span>
       </span>
       ${managedByEnv
         ? '<span class="tool" aria-label="Credential do server quản lý">Server</span>'
