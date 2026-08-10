@@ -87,6 +87,20 @@ test("Instagram uses Business Login for Instagram instead of Facebook Login", ()
   ]));
 });
 
+test("legacy Facebook-linked Instagram credentials cannot be selected or published after migration", async () => {
+  const [service, ui] = await Promise.all([
+    read("src/social-service.js"),
+    read("public/social-studio.js")
+  ]);
+  assert.match(service, /function isLegacyInstagramAccount\(account\)/u);
+  assert.match(service, /metadata\?\.credentialSource !== "instagram-login"/u);
+  assert.match(service, /accounts\.some\(isLegacyInstagramAccount\)/u);
+  assert.match(service, /INSTAGRAM_RECONNECT_REQUIRED/u);
+  assert.match(ui, /const selectable = accounts\.filter\(account => !isLegacyInstagramAccount\(account\)\)/u);
+  assert.match(ui, /Cần kết nối lại/u);
+  assert.match(ui, /legacyInstagram \? "disabled"/u);
+});
+
 test("Instagram token exchange and refresh stay on Instagram-owned endpoints", async () => {
   const oauth = await read("src/social-oauth.js");
   assert.match(oauth, /https:\/\/api\.instagram\.com\/oauth\/access_token/u);
