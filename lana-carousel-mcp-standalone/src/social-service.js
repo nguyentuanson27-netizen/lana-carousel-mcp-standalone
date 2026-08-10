@@ -2,6 +2,7 @@ import { AppError } from "./errors.js";
 import { getProject } from "./service-core.js";
 import { socialFeatureStatus, socialConfig } from "./social-config.js";
 import { formBody, socialFetchJson } from "./social-http.js";
+import { ensureConfiguredFacebookPageAccount, refreshInstagramAccessToken } from "./social-oauth.js";
 import {
   createSocialMediaSnapshot,
   latestReadyVideoJob,
@@ -35,6 +36,52 @@ function captionFor(post, platform) {
   return String(post.captions?.[platform] || post.caption || "").trim();
 }
 
+function isEnvManagedFacebookAccount(account) {
+  return account?.platform === "facebook" &&
+    account?.metadata?.credentialSource === "env" &&
+    account?.metadata?.managedByEnv === true;
+}
+
+function isActiveEnvFacebookAccount(account, feature = socialFeatureStatus()) {
+  return isEnvManagedFacebookAccount(account) &&
+    feature.facebookPageReady === true &&
+    account.externalAccountId === socialConfig.facebookPageId;
+}
+
+function isCleanupOnlyFacebookAccount(account, feature = socialFeatureStatus()) {
+  return account?.platform === "facebook" && !isActiveEnvFacebookAccount(account, feature);
+}
+
+function isLegacyInstagramAccount(account) {
+  return account?.platform === "instagram" && account?.metadata?.credentialSource !== "instagram-login";
+}
+
+function assertAccountPublishable(account, feature = socialFeatureStatus()) {
+  if (isCleanupOnlyFacebookAccount(account, feature)) {
+    throw new AppError(
+      "SOCIAL_FACEBOOK_CREDENTIAL_STALE",
+      "Facebook Page credential này không còn khớp cấu hình server; hãy ngắt account cũ hoặc cấu hình lại đúng Page trước khi publish.",
+      409
+    );
+  }
+  if (isLegacyInstagramAccount(account)) {
+    throw new AppError("INSTAGRAM_RECONNECT_REQUIRED", "Instagram account này được kết nối bằng Facebook Login cũ; hãy ngắt và kết nối lại bằng Instagram Login.", 409);
+  }
+}
+
+function accountForOverview(account, feature) {
+  if (!isCleanupOnlyFacebookAccount(account, feature)) return account;
+  return {
+    ...account,
+    metadata: {
+      ...account.metadata,
+      managedByEnv: false,
+      staleManagedByEnv: true,
+      publishable: false
+    }
+  };
+}
+
 async function refreshTikTokAccount(account) {
   if (account.platform !== "tiktok" || !account.refreshToken) return account;
   const expiresAt = account.tokenExpiresAt ? new Date(account.tokenExpiresAt).getTime() : 0;
@@ -58,11 +105,27 @@ async function refreshTikTokAccount(account) {
   });
 }
 
+async function refreshInstagramAccount(account) {
+  if (account.platform !== "instagram") return account;
+  const expiresAt = account.tokenExpiresAt ? new Date(account.tokenExpiresAt).getTime() : 0;
+  if (!expiresAt || expiresAt > Date.now() + 7 * 24 * 60 * 60_000) return account;
+  const value = await refreshInstagramAccessToken(account.accessToken);
+  return updateSocialAccountTokens(account.id, {
+    accessToken: value.accessToken,
+    refreshToken: account.refreshToken,
+    tokenExpiresAt: value.expiresIn ? new Date(Date.now() + value.expiresIn * 1000).toISOString() : null,
+    scopes: account.scopes
+  });
+}
+
 async function accountForDelivery(delivery) {
   if (!delivery.accountId) throw new AppError("SOCIAL_ACCOUNT_DISCONNECTED", `Tài khoản ${delivery.accountName} đã bị ngắt kết nối.`, 409);
   const account = getSocialAccount(delivery.accountId, { includeSecrets: true });
   if (!account) throw new AppError("SOCIAL_ACCOUNT_NOT_FOUND", `Không tìm thấy tài khoản ${delivery.accountName}.`, 404);
-  return refreshTikTokAccount(account);
+  assertAccountPublishable(account);
+  if (account.platform === "tiktok") return refreshTikTokAccount(account);
+  if (account.platform === "instagram") return refreshInstagramAccount(account);
+  return account;
 }
 
 export async function processSocialDelivery(deliveryId) {
@@ -146,6 +209,8 @@ export async function createPublishPost({ projectId, contentType, caption = "", 
   if (!uniqueIds.length) throw new AppError("SOCIAL_ACCOUNT_REQUIRED", "Hãy chọn ít nhất một tài khoản mạng xã hội.", 400);
   const accounts = uniqueIds.map(id => getSocialAccount(id)).filter(Boolean);
   if (accounts.length !== uniqueIds.length) throw new AppError("SOCIAL_ACCOUNT_NOT_FOUND", "Một tài khoản MXH không còn tồn tại.", 404);
+  const feature = socialFeatureStatus();
+  for (const account of accounts) assertAccountPublishable(account, feature);
   if (!new Set(["carousel", "video"]).has(contentType)) {
     throw new AppError("SOCIAL_CONTENT_TYPE_INVALID", "Loại nội dung Social không hợp lệ.", 400);
   }
@@ -196,7 +261,9 @@ export async function refreshTikTokDelivery({ projectId, deliveryId }) {
 }
 
 export function socialOverview(projectId) {
+  ensureConfiguredFacebookPageAccount();
   const project = getProject(projectId);
+  const feature = socialFeatureStatus();
   let carouselReady = false;
   let carouselReason = null;
   try { socialCarouselMedia(projectId); carouselReady = true; }
@@ -204,8 +271,8 @@ export function socialOverview(projectId) {
   const videoJob = latestReadyVideoJob(projectId);
   return {
     project: { id: project.id, title: project.title },
-    feature: socialFeatureStatus(),
-    accounts: listSocialAccounts(),
+    feature,
+    accounts: listSocialAccounts().map(account => accountForOverview(account, feature)),
     readiness: {
       carousel: { ready: carouselReady, reason: carouselReason },
       video: { ready: Boolean(videoJob), jobId: videoJob?.id || null }
@@ -217,10 +284,14 @@ export function socialOverview(projectId) {
 export function disconnectSocialAccount(accountId) {
   const account = getSocialAccount(accountId);
   if (!account) throw new AppError("SOCIAL_ACCOUNT_NOT_FOUND", "Không tìm thấy tài khoản MXH.", 404);
+  if (isActiveEnvFacebookAccount(account)) {
+    throw new AppError("SOCIAL_ACCOUNT_MANAGED_BY_ENV", "Facebook Page nội bộ đang được quản lý bằng biến môi trường; hãy xóa credential trên server và restart trước khi ngắt account này.", 409);
+  }
   deleteSocialAccount(accountId);
   return { success: true, id: accountId };
 }
 
+ensureConfiguredFacebookPageAccount();
 purgeOrphanedSocialMediaSnapshots().catch(error => console.error("Initial social media snapshot cleanup failed", error));
 setTimeout(scheduleSocialPump, 250).unref?.();
 const socialPumpTimer = setInterval(scheduleSocialPump, 15_000);

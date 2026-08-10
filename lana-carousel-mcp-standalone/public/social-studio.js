@@ -67,7 +67,7 @@
       PUBLISHED: "Đã đăng",
       AWAITING_USER: "Đã gửi draft",
       FAILED: "Thất bại",
-      PARTIAL: "Một phần",
+      PARTIAL: "Một phần"
     })[value] || value || "Chưa rõ";
   }
 
@@ -75,10 +75,23 @@
     return ({ facebook: "Facebook", instagram: "Instagram", tiktok: "TikTok" })[platform] || platform;
   }
 
+  function isLegacyInstagramAccount(account) {
+    return account?.platform === "instagram" && account?.metadata?.credentialSource !== "instagram-login";
+  }
+
+  function isStaleFacebookAccount(account) {
+    return account?.platform === "facebook" && account?.metadata?.staleManagedByEnv === true;
+  }
+
+  function isSelectableAccount(account) {
+    return !isLegacyInstagramAccount(account) && !isStaleFacebookAccount(account);
+  }
+
   function syncSelectedAccounts(accounts) {
-    const ids = new Set(accounts.map(account => account.id));
+    const selectable = accounts.filter(isSelectableAccount);
+    const ids = new Set(selectable.map(account => account.id));
     for (const id of [...state.selectedAccounts]) if (!ids.has(id)) state.selectedAccounts.delete(id);
-    if (!state.selectedAccounts.size) accounts.forEach(account => state.selectedAccounts.add(account.id));
+    if (!state.selectedAccounts.size) selectable.forEach(account => state.selectedAccounts.add(account.id));
   }
 
   function captureComposeState() {
@@ -117,6 +130,23 @@
     </article>`;
   }
 
+  function accountHtml(account) {
+    const managedByEnv = account.metadata?.managedByEnv === true;
+    const legacyInstagram = isLegacyInstagramAccount(account);
+    const staleFacebook = isStaleFacebookAccount(account);
+    const disabled = legacyInstagram || staleFacebook;
+    return `<label class="social-account">
+      <input type="checkbox" data-social-account="${account.id}" ${state.selectedAccounts.has(account.id) ? "checked" : ""} ${disabled ? "disabled" : ""}>
+      <span class="social-account-copy">
+        <strong>${escapeHtml(account.accountName)}</strong>
+        <span>${escapeHtml(platformLabel(account.platform))}${managedByEnv ? " · Facebook nội bộ" : ""}${legacyInstagram ? " · Cần kết nối lại" : ""}${staleFacebook ? " · Cần cấu hình lại" : ""}</span>
+      </span>
+      ${managedByEnv
+        ? '<span class="tool" aria-label="Credential do server quản lý">Server</span>'
+        : `<button type="button" class="tool" data-social-disconnect="${account.id}">Ngắt</button>`}
+    </label>`;
+  }
+
   function render() {
     if (!state.active) return;
     captureComposeState();
@@ -129,7 +159,7 @@
         <div class="social-alert">Bước đăng mạng xã hội cần phiên quản trị để bảo vệ tài khoản Facebook, Instagram và TikTok.</div>
         <section class="social-card">
           <h3>Đăng nhập quản trị để tiếp tục</h3>
-          <p>Bạn vẫn đang mở đúng dự án. Sau khi xác thực API key, Lana sẽ quay lại trực tiếp Bước 6 và giữ nguyên quyền truy cập dự án hiện tại.</p>
+          <p>Bạn vẫn đang mở đúng dự án. Sau khi xác thực, Lana sẽ quay lại trực tiếp Bước 6 và giữ nguyên quyền truy cập dự án hiện tại.</p>
           <div class="social-submit"><button class="action" type="button" data-social-admin-login>Đăng nhập quản trị</button></div>
         </section>
       </div>`;
@@ -158,25 +188,23 @@
         <div>
           <div class="number">BƯỚC 6 · PUBLISH</div>
           <h2>Đăng mạng xã hội</h2>
-          <p>Đăng độc lập từng kênh. Facebook/Instagram publish trực tiếp; TikTok được gửi thành draft để hoàn tất trong ứng dụng TikTok.</p>
+          <p>Facebook dùng Page credential nội bộ; Instagram kết nối riêng bằng Instagram Login; TikTok được gửi thành draft để hoàn tất trong ứng dụng.</p>
         </div>
         <div class="social-connect-actions">
-          <button type="button" class="tool" data-social-connect="meta" ${feature.metaOAuthReady ? "" : "disabled"}>+ Facebook / Instagram</button>
+          <span class="tool" aria-label="Trạng thái Facebook nội bộ">Facebook nội bộ · ${feature.facebookPageReady ? "Đã cấu hình" : "Chưa cấu hình"}</span>
+          <button type="button" class="tool" data-social-connect="instagram" ${feature.instagramOAuthReady ? "" : "disabled"}>+ Instagram</button>
           <button type="button" class="tool" data-social-connect="tiktok" ${feature.tiktokOAuthReady ? "" : "disabled"}>+ TikTok</button>
         </div>
       </section>
 
       ${!feature.encryptionReady ? '<div class="social-alert error">Social Publisher chưa được cấu hình secrets trên server. Xem <code>docs/social-publishing.md</code>.</div>' : ""}
+      ${feature.encryptionReady && !feature.facebookPageReady ? '<div class="social-alert">Facebook nội bộ chưa được cấu hình. Thêm <code>FACEBOOK_PAGE_ID</code> và <code>FACEBOOK_PAGE_ACCESS_TOKEN</code> trên server rồi restart.</div>' : ""}
 
       <div class="social-grid">
         <section class="social-card">
           <h3>Tài khoản đã kết nối</h3>
           <div class="social-account-list">
-            ${accounts.map(account => `<label class="social-account">
-              <input type="checkbox" data-social-account="${account.id}" ${state.selectedAccounts.has(account.id) ? "checked" : ""}>
-              <span class="social-account-copy"><strong>${escapeHtml(account.accountName)}</strong><span>${escapeHtml(platformLabel(account.platform))}</span></span>
-              <button type="button" class="tool" data-social-disconnect="${account.id}">Ngắt</button>
-            </label>`).join("") || '<div class="social-empty">Chưa kết nối tài khoản nào.</div>'}
+            ${accounts.map(accountHtml).join("") || '<div class="social-empty">Chưa có tài khoản publish nào.</div>'}
           </div>
           <div class="social-ready" style="margin-top:12px">
             <span><span>Carousel</span><b class="${carouselReady ? "ready" : "not-ready"}">${carouselReady ? "Sẵn sàng" : escapeHtml(overview.readiness?.carousel?.reason || "Chưa sẵn sàng")}</b></span>
@@ -201,7 +229,7 @@
               </div>
             </details>
           </div>
-          <div class="social-submit"><button type="button" class="action" data-social-publish ${accounts.length && selectedReady && feature.encryptionReady ? "" : "disabled"}>Duyệt & đăng ngay</button></div>
+          <div class="social-submit"><button type="button" class="action" data-social-publish ${state.selectedAccounts.size && selectedReady && feature.encryptionReady ? "" : "disabled"}>Duyệt & đăng ngay</button></div>
         </section>
       </div>
 
@@ -245,8 +273,8 @@
     if (state.active) return;
     state.active = true;
     app.dataset.socialActive = "true";
-    workflow.querySelector('.social-step')?.setAttribute("aria-current", "step");
-    document.querySelectorAll('.workspace-shell > .panel:not(#social)').forEach(item => { item.style.display = "none"; });
+    workflow.querySelector(".social-step")?.setAttribute("aria-current", "step");
+    document.querySelectorAll(".workspace-shell > .panel:not(#social)").forEach(item => { item.style.display = "none"; });
     panel.style.display = "block";
     if (slideNavigation) slideNavigation.hidden = true;
     if (topAction) {
@@ -261,8 +289,8 @@
     if (!state.active) return;
     state.active = false;
     delete app.dataset.socialActive;
-    workflow.querySelector('.social-step')?.removeAttribute("aria-current");
-    document.querySelectorAll('.workspace-shell > .panel:not(#social)').forEach(item => { item.style.removeProperty("display"); });
+    workflow.querySelector(".social-step")?.removeAttribute("aria-current");
+    document.querySelectorAll(".workspace-shell > .panel:not(#social)").forEach(item => { item.style.removeProperty("display"); });
     panel.style.removeProperty("display");
     if (slideNavigation) slideNavigation.hidden = false;
     if (topAction) delete topAction.dataset.socialMode;
@@ -304,7 +332,10 @@
       }
 
       const reload = event.target.closest("[data-social-reload]");
-      if (reload) return loadOverview();
+      if (reload) {
+        await loadOverview();
+        return;
+      }
 
       const connect = event.target.closest("[data-social-connect]");
       if (connect) {
@@ -316,11 +347,9 @@
 
       const disconnect = event.target.closest("[data-social-disconnect]");
       if (disconnect) {
-        event.preventDefault();
-        if (!confirm("Ngắt kết nối tài khoản mạng xã hội này? Các bài đã đăng và lịch sử vẫn được giữ.")) return;
-        await socialJson(`/api/projects/${encodeURIComponent(projectId)}/social/accounts/${disconnect.dataset.socialDisconnect}`, { method: "DELETE" });
-        state.selectedAccounts.delete(disconnect.dataset.socialDisconnect);
-        state.notice = "Đã ngắt kết nối tài khoản.";
+        disconnect.disabled = true;
+        await socialJson(`/api/projects/${encodeURIComponent(projectId)}/social/accounts/${encodeURIComponent(disconnect.dataset.socialDisconnect)}`, { method: "DELETE" });
+        state.notice = "Đã ngắt tài khoản.";
         await loadOverview({ quiet: true });
         return;
       }
@@ -328,8 +357,8 @@
       const retry = event.target.closest("[data-social-retry]");
       if (retry) {
         retry.disabled = true;
-        await socialJson(`/api/projects/${encodeURIComponent(projectId)}/social/deliveries/${retry.dataset.socialRetry}/retry`, { method: "POST" });
-        state.notice = "Đã đưa delivery vào hàng đợi retry.";
+        await socialJson(`/api/projects/${encodeURIComponent(projectId)}/social/deliveries/${encodeURIComponent(retry.dataset.socialRetry)}/retry`, { method: "POST" });
+        state.notice = "Đã đưa delivery trở lại hàng chờ.";
         await loadOverview({ quiet: true });
         return;
       }
@@ -337,29 +366,32 @@
       const refresh = event.target.closest("[data-social-refresh]");
       if (refresh) {
         refresh.disabled = true;
-        await socialJson(`/api/projects/${encodeURIComponent(projectId)}/social/deliveries/${refresh.dataset.socialRefresh}/refresh`, { method: "POST" });
+        await socialJson(`/api/projects/${encodeURIComponent(projectId)}/social/deliveries/${encodeURIComponent(refresh.dataset.socialRefresh)}/refresh`, { method: "POST" });
         await loadOverview({ quiet: true });
         return;
       }
 
       const publish = event.target.closest("[data-social-publish]");
       if (publish) {
-        const accountIds = [...panel.querySelectorAll("[data-social-account]:checked")].map(input => input.dataset.socialAccount);
-        if (!accountIds.length) throw new Error("Hãy chọn ít nhất một tài khoản mạng xã hội.");
+        captureComposeState();
+        if (!state.selectedAccounts.size) throw new Error("Hãy chọn ít nhất một tài khoản.");
         publish.disabled = true;
-        publish.textContent = "Đang đóng băng media…";
-        const caption = panel.querySelector("#socialCaption")?.value.trim() || "";
-        const captions = {
-          facebook: panel.querySelector("#socialCaptionFacebook")?.value.trim() || "",
-          instagram: panel.querySelector("#socialCaptionInstagram")?.value.trim() || "",
-          tiktok: panel.querySelector("#socialCaptionTiktok")?.value.trim() || ""
-        };
         await socialJson(`/api/projects/${encodeURIComponent(projectId)}/social/posts`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ contentType: state.contentType, caption, captions, accountIds })
+          body: JSON.stringify({
+            contentType: state.contentType,
+            caption: state.compose.caption || "",
+            captions: {
+              facebook: state.compose.facebook,
+              instagram: state.compose.instagram,
+              tiktok: state.compose.tiktok
+            },
+            accountIds: [...state.selectedAccounts]
+          })
         });
-        state.notice = "Đã tạo lượt đăng với media snapshot cố định. Mỗi nền tảng sẽ được xử lý độc lập.";
+        state.notice = "Đã tạo lượt đăng. Lana đang xử lý từng nền tảng độc lập.";
+        state.error = "";
         await loadOverview({ quiet: true });
       }
     } catch (error) {
@@ -368,22 +400,19 @@
         state.overview = null;
         state.error = "";
       } else {
-        state.error = error.message;
+        state.error = error.message || "Không thể hoàn tất thao tác Social Publisher.";
       }
       render();
     }
   });
 
-  const callbackError = params.get("socialError");
-  const callbackConnected = params.get("socialConnected");
-  if (callbackError) state.error = callbackError;
-  if (callbackConnected) state.notice = `Đã kết nối ${callbackConnected === "meta" ? "Facebook / Instagram" : "TikTok"}.`;
-
-  if (params.get("social") === "1") {
-    const waitForApp = () => {
-      if (!app.classList.contains("hidden")) activate();
-      else setTimeout(waitForApp, 80);
-    };
-    waitForApp();
+  const socialConnected = params.get("socialConnected");
+  const socialError = params.get("socialError");
+  if (socialConnected) {
+    state.notice = socialConnected === "instagram"
+      ? "Đã kết nối Instagram."
+      : socialConnected === "tiktok" ? "Đã kết nối TikTok." : "Đã kết nối tài khoản.";
   }
+  if (socialError) state.error = socialError;
+  if (params.get("social") === "1" || socialConnected || socialError) activate();
 })();

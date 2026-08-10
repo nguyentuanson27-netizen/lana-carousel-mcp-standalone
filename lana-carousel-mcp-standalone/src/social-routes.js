@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { AppError, publicError } from "./errors.js";
-import { completeMetaOAuth, completeTikTokOAuth, metaOAuthUrl, tiktokOAuthUrl } from "./social-oauth.js";
+import { completeInstagramOAuth, completeTikTokOAuth, instagramOAuthUrl, tiktokOAuthUrl } from "./social-oauth.js";
 import { serveSocialSnapshotFile } from "./social-media.js";
 import "./social-recovery.js";
 import {
@@ -36,6 +36,15 @@ function callbackRedirect(projectId, result) {
   return `/widget?${query}`;
 }
 
+function projectIdFromState(state) {
+  try {
+    const stateBody = String(state || "").split(".")[0];
+    return JSON.parse(Buffer.from(stateBody, "base64url").toString("utf8")).projectId || "";
+  } catch {
+    return "";
+  }
+}
+
 export function registerSocialRoutes(app) {
   app.get("/api/projects/:projectId/social/overview", handle(async (req, res) => {
     requireAdmin(req);
@@ -45,8 +54,8 @@ export function registerSocialRoutes(app) {
 
   app.get("/api/projects/:projectId/social/oauth/:provider/start", handle(async (req, res) => {
     requireAdmin(req);
-    const provider = z.enum(["meta", "tiktok"]).parse(req.params.provider);
-    const url = provider === "meta" ? metaOAuthUrl(req.params.projectId) : tiktokOAuthUrl(req.params.projectId);
+    const provider = z.enum(["instagram", "tiktok"]).parse(req.params.provider);
+    const url = provider === "instagram" ? instagramOAuthUrl(req.params.projectId) : tiktokOAuthUrl(req.params.projectId);
     res.setHeader("Cache-Control", "no-store");
     res.json({ url });
   }));
@@ -81,20 +90,24 @@ export function registerSocialRoutes(app) {
     res.json(disconnectSocialAccount(req.params.accountId));
   }));
 
-  app.get("/social/oauth/meta/callback", async (req, res) => {
+  app.get("/social/oauth/instagram/callback", async (req, res) => {
     let projectId = "";
     try {
-      if (req.query.error) throw new AppError("META_OAUTH_CANCELLED", String(req.query.error_description || req.query.error), 400);
-      const result = await completeMetaOAuth({ code: String(req.query.code || ""), state: String(req.query.state || "") });
+      if (req.query.error) throw new AppError("INSTAGRAM_OAUTH_CANCELLED", String(req.query.error_description || req.query.error), 400);
+      const result = await completeInstagramOAuth({ code: String(req.query.code || ""), state: String(req.query.state || "") });
       projectId = result.projectId;
-      return res.redirect(302, callbackRedirect(projectId, { socialConnected: "meta" }));
+      return res.redirect(302, callbackRedirect(projectId, { socialConnected: "instagram" }));
     } catch (error) {
-      try {
-        const stateBody = String(req.query.state || "").split(".")[0];
-        projectId = JSON.parse(Buffer.from(stateBody, "base64url").toString("utf8")).projectId || "";
-      } catch { /* keep empty */ }
-      return res.redirect(302, callbackRedirect(projectId, { socialError: String(error?.message || "Không thể kết nối Meta.").slice(0, 300) }));
+      projectId = projectId || projectIdFromState(req.query.state);
+      return res.redirect(302, callbackRedirect(projectId, { socialError: String(error?.message || "Không thể kết nối Instagram.").slice(0, 300) }));
     }
+  });
+
+  app.get("/social/oauth/meta/callback", (req, res) => {
+    const projectId = projectIdFromState(req.query.state);
+    return res.redirect(302, callbackRedirect(projectId, {
+      socialError: "Facebook OAuth đã được tắt. Facebook Page nội bộ hiện được cấu hình trực tiếp trên server."
+    }));
   });
 
   app.get("/social/oauth/tiktok/callback", async (req, res) => {
@@ -105,10 +118,7 @@ export function registerSocialRoutes(app) {
       projectId = result.projectId;
       return res.redirect(302, callbackRedirect(projectId, { socialConnected: "tiktok" }));
     } catch (error) {
-      try {
-        const stateBody = String(req.query.state || "").split(".")[0];
-        projectId = JSON.parse(Buffer.from(stateBody, "base64url").toString("utf8")).projectId || "";
-      } catch { /* keep empty */ }
+      projectId = projectId || projectIdFromState(req.query.state);
       return res.redirect(302, callbackRedirect(projectId, { socialError: String(error?.message || "Không thể kết nối TikTok.").slice(0, 300) }));
     }
   });
