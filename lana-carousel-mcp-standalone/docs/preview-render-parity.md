@@ -96,7 +96,22 @@ khi lưu thiết kế.
 
 `slide.assetCrops[assetId]` chứa `cropX`/`cropY`/`cropZoom` riêng cho một ô; trường nào thiếu thì ô
 kế thừa giá trị cấp slide. Preview dùng `cropFor()` trong `preview-dom.js`, bản render dùng
-`cropSettingsFor()` — hai hàm này phải cùng công thức.
+`cropSettingsFor()` — hai hàm này phải cùng công thức. Mọi đường ghi thiết kế đều phải xử lý chúng:
+lưu, nhân bản dự án **và khôi phục phiên bản** (khôi phục còn phải xoá những ô được chỉnh riêng sau
+thời điểm chụp).
+
+Thao tác kéo trên khung xem trước phải chuẩn hoá theo kích thước **ô đang chỉnh**, không phải cả
+canvas: ở zoom `z`, khung nhìn chỉ trượt được `(z−1)` lần kích thước ô. Dùng kích thước canvas sẽ
+làm thao tác kéo chậm đi đúng bằng số cột/số hàng của lưới.
+
+Hai cái bẫy khi sửa phần kéo này, cả hai đều làm thao tác chết sau vài pixel:
+
+- **Ảnh mặc định kéo–thả được.** Không chặn thì trình duyệt khởi động thao tác kéo ảnh gốc và bắn
+  `pointercancel`. Cần `draggable="false"`, `-webkit-user-drag: none` và `preventDefault()`.
+- **Đổi DOM giữa lúc kéo.** `stitch-ui.js` theo dõi `childList` toàn trang cùng các thuộc tính
+  `class`/`disabled`/`data-design-saved`; observer chạy giữa chừng có thể cướp mất pointer capture.
+  Vì vậy thao tác kéo chỉ đổi `style`, cập nhật số hiển thị qua `nodeValue`, và chỉ ghi lịch sử
+  hoàn tác lúc thả chuột.
 
 ### 10. Mọi độ dài tính bằng pixel đều thuộc hệ toạ độ 1080px
 

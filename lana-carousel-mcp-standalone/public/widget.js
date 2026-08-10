@@ -1,5 +1,5 @@
 import { esc, fontStack, FALLBACK_FONT, MAX_ZOOM, selectedIds, withTextBox, imageDefaults, rgba,
-  frameHtml, background, cropFor, normalizedStyleRanges, normalizedSizeRanges, styleAt, richTextHtml, layerHtml }
+  frameHtml, background, cropFor, panCrop, normalizedStyleRanges, normalizedSizeRanges, styleAt, richTextHtml, layerHtml }
   from "/preview-dom.js";
 import { cellPickerHtml, imageControlsHtml, textBoxControlsHtml, textStyleControlsHtml } from "/editor-controls.js";
 const params = new URLSearchParams(location.search);
@@ -84,6 +84,21 @@ function persistHistory(slideId) {
   // Bộ nhớ phiên có hạn; hỏng thì bỏ qua chứ không chặn thao tác sửa.
   try { sessionStorage.setItem(historyKey(slideId), JSON.stringify({ history: histories.get(slideId) || [], redo: redos.get(slideId) || [] })); }
   catch { /* hết dung lượng thì chỉ giữ lịch sử trong bộ nhớ */ }
+}
+/**
+ * Ghi một ảnh chụp bản nháp vào lịch sử. Tách khỏi `remember()` để thao tác kéo có thể chụp
+ * trạng thái ngay khi bấm chuột nhưng chỉ ghi vào lịch sử lúc thả — `markDesignDirty()` đổi DOM,
+ * mà mọi thay đổi DOM giữa lúc kéo đều làm MutationObserver của stitch-ui.js chạy và cướp mất
+ * pointer capture, khiến thao tác kéo đứt sau vài pixel.
+ */
+function commitHistory(slideId, snapshot, markDirty = true) {
+  const { history } = loadHistory(slideId);
+  history.push(snapshot);
+  while (history.length > HISTORY_LIMIT) history.shift();
+  histories.set(slideId, history);
+  redos.set(slideId, []);
+  persistHistory(slideId);
+  if (markDirty) markDesignDirty(slideId);
 }
 function remember(slideId, markDirty = true) {
   const { history } = loadHistory(slideId);
@@ -413,8 +428,19 @@ function syncImageControls(slideId) {
     const input = editor.querySelector(`[data-control="${control}"]`);
     if (input) input.value = crop[control];
     const output = editor.querySelector(`[data-value-for="${control}"]`);
-    if (output) output.textContent = control === "cropZoom" ? `${crop.cropZoom.toFixed(1)}×` : `${Math.round(crop[control])}%`;
+    if (output) setReadout(output, control === "cropZoom" ? `${crop.cropZoom.toFixed(1)}×` : `${Math.round(crop[control])}%`);
   }
+}
+
+/**
+ * Cập nhật số hiển thị mà không thay cấu trúc DOM.
+ * `textContent` thay hẳn nút văn bản nên là một thay đổi `childList`, đủ để đánh thức
+ * MutationObserver của stitch-ui.js; observer chạy giữa lúc kéo sẽ cướp mất pointer capture.
+ * Sửa thẳng `nodeValue` chỉ là thay đổi `characterData` nên không bị theo dõi.
+ */
+function setReadout(element, text) {
+  if (element.firstChild?.nodeType === Node.TEXT_NODE && element.childNodes.length === 1) element.firstChild.nodeValue = text;
+  else element.textContent = text;
 }
 
 let wheelTimer = null, wheelSlideId = null;
@@ -433,29 +459,41 @@ function bindCanvasPan() {
     };
     surface.onpointerdown = event => {
       if (event.target.closest(".layer")) return;
+      // Ảnh mặc định kéo–thả được: nếu không chặn, trình duyệt khởi động thao tác kéo ảnh gốc và
+      // bắn pointercancel ngay sau pixel đầu tiên, làm chết thao tác đổi trọng tâm.
+      event.preventDefault();
       // Kéo trên một ô khác thì chuyển sang chỉnh ô đó.
       const cellId = event.target.closest("[data-cell]")?.dataset.cell;
       if (cellId && cellId !== activeCell(slide)) { activeCells.set(slideId, cellId); render(); return; }
-      const rect = canvas.getBoundingClientRect(), startX = event.clientX, startY = event.clientY;
-      const origin = activeCrop(slide, data), originX = origin.cropX, originY = origin.cropY;
+      // Chuẩn hoá theo ô đang chỉnh chứ không phải cả canvas: trong lưới, ảnh nằm gọn trong một ô
+      // nên dùng kích thước canvas sẽ làm thao tác kéo chậm đi đúng bằng số cột/số hàng.
+      const activeId = activeCell(slide);
+      const cellElement = surface.querySelector(`[data-cell="${CSS.escape(activeId)}"]`) || surface;
+      const rect = cellElement.getBoundingClientRect(), startX = event.clientX, startY = event.clientY;
+      const origin = activeCrop(slide, data);
+      // Chụp trạng thái ngay bây giờ; chỉ ghi vào lịch sử khi thả chuột để không đụng DOM giữa chừng.
+      const snapshot = JSON.stringify(data);
       let moved = false;
       surface.setPointerCapture(event.pointerId);
-      surface.classList.add("panning");
+      // Đổi con trỏ bằng style chứ không bằng class: `class` nằm trong attributeFilter của
+      // MutationObserver trong stitch-ui.js, đổi nó giữa lúc kéo sẽ làm mất pointer capture.
+      surface.style.cursor = "grabbing";
       surface.onpointermove = move => {
         const dx = move.clientX - startX, dy = move.clientY - startY;
         if (!moved && Math.hypot(dx, dy) < 4) return;
-        if (!moved) { remember(slideId); moved = true; }
-        // Ở mức zoom z, khung nhìn chỉ trượt được (z-1) lần chiều rộng khung, nên 1px kéo tay
-        // tương ứng 100/(rộng·(z-1)) phần trăm trọng tâm.
-        const span = activeCrop(slide, data).cropZoom - 1;
-        if (span <= .001) return;
-        setCrop(slide, data, {
-          cropX: Number(Math.max(0, Math.min(100, originX - dx / (rect.width * span) * 100)).toFixed(2)),
-          cropY: Number(Math.max(0, Math.min(100, originY - dy / (rect.height * span) * 100)).toFixed(2))
-        });
+        moved = true;
+        const current = { ...origin, cropZoom: activeCrop(slide, data).cropZoom };
+        const next = panCrop(current, dx, dy, rect.width, rect.height);
+        if (next.cropX === current.cropX && next.cropY === current.cropY) return;
+        setCrop(slide, data, { cropX: next.cropX, cropY: next.cropY });
         applyZoom(); syncImageControls(slideId);
       };
-      const finish = () => { surface.onpointermove = null; surface.classList.remove("panning"); if (moved) render(); };
+      const finish = () => {
+        surface.onpointermove = null; surface.style.cursor = "";
+        if (!moved) return;
+        commitHistory(slideId, snapshot);
+        render();
+      };
       surface.onpointerup = finish; surface.onpointercancel = finish;
     };
     surface.onwheel = event => {

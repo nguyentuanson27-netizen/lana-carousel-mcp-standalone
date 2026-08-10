@@ -52,6 +52,24 @@ export function cropFor(data, assetId) {
   };
 }
 
+/**
+ * Trọng tâm mới sau khi kéo ảnh đi (dx, dy) pixel.
+ *
+ * Ở mức zoom z, khung nhìn chỉ trượt được (z−1) lần kích thước **ô chứa ảnh**, nên phải chuẩn hoá
+ * theo bề rộng/chiều cao của chính ô đó. Dùng kích thước cả canvas sẽ làm thao tác kéo chậm đi đúng
+ * bằng số cột/số hàng của lưới.
+ */
+export function panCrop({ cropX, cropY, cropZoom }, dx, dy, cellWidth, cellHeight) {
+  const span = cropZoom - 1;
+  if (span <= .001 || !cellWidth || !cellHeight) return { cropX, cropY, cropZoom };
+  const clamp = value => Number(Math.max(0, Math.min(100, value)).toFixed(2));
+  return {
+    cropZoom,
+    cropX: clamp(cropX - dx / (cellWidth * span) * 100),
+    cropY: clamp(cropY - dy / (cellHeight * span) * 100)
+  };
+}
+
 export function background(slide, data, assets, activeAssetId = null) {
   const ids = selectedIds(slide), columns = ids.length <= 2 ? 1 : ids.length <= 6 ? 2 : 3;
   const filter = `brightness(${data.imageBrightness}) contrast(${data.imageContrast}) saturate(${data.imageSaturation}) grayscale(${data.imageGrayscale*100}%) hue-rotate(${data.imageHue||0}deg) blur(${data.imageBlur/10.8}cqw)`;
@@ -60,7 +78,7 @@ export function background(slide, data, assets, activeAssetId = null) {
   const cells = ids.map(id => {
     const crop = cropFor(data, id);
     const active = ids.length > 1 && id === activeAssetId ? " active-cell" : "";
-    return `<div class="canvas-cell${active}" data-cell="${esc(id)}"><div class="canvas-zoom" style="transform:scale(${crop.cropZoom});transform-origin:${crop.cropX}% ${crop.cropY}%"><img src="${esc(assets.get(id)?.publicUrl || "")}" style="object-fit:${data.imageFit === "contain" ? "contain" : "cover"};transform:${flip}"></div></div>`;
+    return `<div class="canvas-cell${active}" data-cell="${esc(id)}"><div class="canvas-zoom" style="transform:scale(${crop.cropZoom});transform-origin:${crop.cropX}% ${crop.cropY}%"><img draggable="false" src="${esc(assets.get(id)?.publicUrl || "")}" style="object-fit:${data.imageFit === "contain" ? "contain" : "cover"};transform:${flip}"></div></div>`;
   }).join("");
   return `<div class="canvas-bg" data-canvas-bg style="grid-template-columns:repeat(${columns},1fr);background:${esc(data.imageBackground || "#181411")};filter:${filter}">${cells}</div>${frameHtml(data)}`;
 }

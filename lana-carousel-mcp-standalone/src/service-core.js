@@ -299,8 +299,12 @@ export function restoreProjectVersion(projectId, versionId) {
   const snapshot = JSON.parse(row.snapshot), timestamp = now();
   db.transaction(() => {
     for (const oldSlide of snapshot.slides || []) {
-      if (!sql.getSlide.get(oldSlide.id)) continue;
+      const currentRow = sql.getSlide.get(oldSlide.id);
+      if (!currentRow) continue;
       sql.updateSlideCrop.run(imageDesignColumns({ id: oldSlide.id, projectId, source: oldSlide, updatedAt: timestamp }));
+      // Crop riêng của từng ô cũng thuộc thiết kế nên phải quay về đúng ảnh chụp: truyền cả object
+      // rỗng để những ô được chỉnh riêng sau thời điểm đó bị xoá, thay vì sót lại giá trị mới hơn.
+      writeAssetCrops(oldSlide.id, mapSlide(currentRow).selectedAssetIds, oldSlide.assetCrops || {});
       sql.updateSlideContent.run({ id: oldSlide.id, project_id: projectId, headline: oldSlide.headline, body: oldSlide.body, text_enabled: oldSlide.textEnabled ? 1 : 0, overlay_text: oldSlide.overlayText, text_font: oldSlide.textFont, text_size: oldSlide.textSize, text_position: oldSlide.textPosition, text_color: oldSlide.textColor, text_align: oldSlide.textAlign, text_x: oldSlide.textX, text_y: oldSlide.textY, text_layers: JSON.stringify(oldSlide.textLayers || []), updated_at: timestamp });
       if (oldSlide.designSaved) sql.markSlideDesignSaved.run(timestamp, timestamp, oldSlide.id, projectId);
       sql.updateSlideVideo.run(JSON.stringify(oldSlide.video || {}), timestamp, oldSlide.id, projectId);

@@ -203,6 +203,33 @@ test("per-cell crops are ignored for assets the slide has not selected", () => {
   assert.equal(saved.slides[0].cropX, 40, "crop cấp slide vẫn được ghi bình thường");
 });
 
+test("restoring a project version also restores per-cell crops", () => {
+  const project = service.createProject({ title: "Restore cells" });
+  const slide = service.addSlide({ projectId: project.id, position: 1, subject: "S", headline: "H", body: "B" });
+  const assetId = "44444444-4444-4444-8444-444444444444", other = "55555555-5555-4555-8555-555555555555";
+  const stamp = new Date().toISOString();
+  for (const [index, id] of [assetId, other].entries()) {
+    db.prepare(`INSERT INTO assets (id,project_id,storage_key,public_url,mime_type,file_size,width,height,sha256,source_image_url,source_type,created_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(id, project.id, `r${index}.png`, `/assets/r${index}.png`, "image/png", 10, 10, 10, `sha-restore-${index}`, "https://example.com/r.png", "unknown", stamp);
+    db.prepare("INSERT INTO slide_asset_selections (slide_id,asset_id,position) VALUES (?,?,?)").run(slide.id, id, index);
+  }
+
+  service.updateSlideCrop({ projectId: project.id, slideId: slide.id, cropX: 50, assetCrops: { [assetId]: { cropX: 0 } } });
+  const versions = service.getProjectVersions(project.id);
+  const saved = versions[0];
+  assert.ok(saved, "cần một phiên bản đã lưu để khôi phục");
+
+  // Đổi crop riêng sau khi đã lưu phiên bản.
+  service.updateSlideCrop({ projectId: project.id, slideId: slide.id, cropX: 50, assetCrops: { [assetId]: { cropX: 100 }, [other]: { cropZoom: 2 } } });
+  assert.equal(service.getProject(project.id).slides[0].assetCrops[assetId].cropX, 100);
+
+  const restored = service.restoreProjectVersion(project.id, saved.id);
+  const crops = restored.slides[0].assetCrops;
+  assert.equal(crops[assetId]?.cropX, 0, "crop riêng phải quay về giá trị trong ảnh chụp");
+  assert.equal(crops[other], undefined, "ô được chỉnh riêng sau đó phải bị xoá khi khôi phục");
+});
+
 test("new image controls survive a design save round trip", () => {
   const project = service.createProject({ title: "Parity" });
   const slide = service.addSlide({ projectId: project.id, position: 1, subject: "Subject", headline: "Headline", body: "Body" });
