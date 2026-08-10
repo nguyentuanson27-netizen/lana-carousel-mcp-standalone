@@ -17,7 +17,7 @@ Thiết kế này cố ý **không dùng Facebook Login for Business**. Facebook
 - Các endpoint quản lý tài khoản, tạo post, retry và xem lịch sử chỉ chấp nhận `admin-session` hoặc API key. Link dự án/MCP resource session không có quyền publish.
 - Access token và refresh token được mã hóa AES-256-GCM trước khi lưu SQLite.
 - `SOCIAL_TOKEN_ENCRYPTION_KEY` phải được giữ ổn định. Đổi/mất key sẽ làm credential đã lưu không giải mã được.
-- Facebook Page token chỉ đọc từ environment ở server, không trả về browser. Account Facebook được đánh dấu `managedByEnv` và không thể disconnect từ UI/API.
+- Facebook Page token có nguồn cấu hình duy nhất từ environment ở server, không trả về browser. Account Facebook đang khớp credential env hiện tại được đánh dấu managed và không thể disconnect từ UI/API.
 - Provider không truy cập trực tiếp API media private của Lana. Social Publisher tạo URL HMAC có TTL cho từng ảnh/MP4.
 - URL Social media mặc định hết hạn sau 6 giờ (`SOCIAL_MEDIA_URL_TTL_SECONDS=21600`).
 
@@ -48,7 +48,7 @@ FACEBOOK_PAGE_ACCESS_TOKEN=...
 
 `FACEBOOK_PAGE_ACCESS_TOKEN` phải là Page Access Token có quyền publish lên đúng Page (`pages_manage_posts`). Sau khi restart, Lana upsert một `social_account` Facebook và mã hóa token bằng cùng credential store hiện có. Nếu đổi token trong `.env`, restart sẽ cập nhật credential của cùng Page thay vì tạo account trùng.
 
-Để bỏ Facebook Page khỏi Lana, xóa `FACEBOOK_PAGE_ID` / `FACEBOOK_PAGE_ACCESS_TOKEN` khỏi environment, restart, rồi xử lý row cũ bằng maintenance/admin tooling; UI cố ý không cho người dùng xóa credential do server quản lý.
+Để bỏ Facebook Page khỏi Lana: xóa `FACEBOOK_PAGE_ID` / `FACEBOOK_PAGE_ACCESS_TOKEN` khỏi environment và restart. Account cũ sẽ được hiển thị như một credential stale thay vì tiếp tục bị khóa bởi `managedByEnv`; lúc đó có thể bấm **Ngắt** trong Social Publisher để dọn row cũ. Lana không tự xóa row khi env biến mất để tránh làm mất lịch sử/account binding ngoài ý muốn.
 
 ## Instagram Login
 
