@@ -119,14 +119,13 @@ test("stale env-managed Facebook account becomes removable after env ownership e
   assert.match(service, /account\.externalAccountId === socialConfig\.facebookPageId/u);
   assert.match(service, /staleManagedByEnv:\s*true/u);
   assert.match(service, /if \(isActiveEnvFacebookAccount\(account\)\)/u);
-  assert.doesNotMatch(service, /if \(account\.metadata\?\.managedByEnv === true\) \{/u);
 });
 
 test("stale Facebook credential cannot publish after Page ID changes but remains disconnectable", async () => {
   const fixture = await createFacebookLifecycleFixture();
   const result = runFresh(`
     const { socialOverview, createPublishPost, processSocialDelivery, disconnectSocialAccount } = await import("./src/social-service.js");
-    const { getSocialAccount } = await import("./src/social-store.js");
+    const { getSocialAccount, getSocialDelivery } = await import("./src/social-store.js");
     const overview = socialOverview(${JSON.stringify(fixture.projectId)});
     const stale = overview.accounts.find(account => account.id === ${JSON.stringify(fixture.accountId)});
     let createCode = null;
@@ -141,11 +140,14 @@ test("stale Facebook credential cannot publish after Page ID changes but remains
     } catch (error) {
       deliveryCode = error?.code || null;
     }
+    const deliveryStatus = getSocialDelivery(${JSON.stringify(fixture.deliveryId)})?.status || null;
     const disconnected = disconnectSocialAccount(${JSON.stringify(fixture.accountId)});
     console.log(JSON.stringify({
       staleManagedByEnv: stale?.metadata?.staleManagedByEnv === true,
+      publishable: stale?.metadata?.publishable,
       createCode,
       deliveryCode,
+      deliveryStatus,
       disconnected: disconnected.success === true,
       removed: getSocialAccount(${JSON.stringify(fixture.accountId)}) == null
     }));
@@ -156,8 +158,10 @@ test("stale Facebook credential cannot publish after Page ID changes but remains
     FACEBOOK_PAGE_ACCESS_TOKEN: "page-b-token"
   });
   assert.equal(result.staleManagedByEnv, true);
+  assert.equal(result.publishable, false);
   assert.equal(result.createCode, "SOCIAL_FACEBOOK_CREDENTIAL_STALE");
   assert.equal(result.deliveryCode, "SOCIAL_FACEBOOK_CREDENTIAL_STALE");
+  assert.equal(result.deliveryStatus, "FAILED");
   assert.equal(result.disconnected, true);
   assert.equal(result.removed, true);
 });
@@ -177,6 +181,7 @@ test("stale Facebook credential cannot publish after env removal", async () => {
     console.log(JSON.stringify({
       facebookPageReady: overview.feature.facebookPageReady,
       staleManagedByEnv: stale?.metadata?.staleManagedByEnv === true,
+      publishable: stale?.metadata?.publishable,
       createCode
     }));
   `, {
@@ -187,6 +192,7 @@ test("stale Facebook credential cannot publish after env removal", async () => {
   });
   assert.equal(result.facebookPageReady, false);
   assert.equal(result.staleManagedByEnv, true);
+  assert.equal(result.publishable, false);
   assert.equal(result.createCode, "SOCIAL_FACEBOOK_CREDENTIAL_STALE");
 });
 
@@ -215,11 +221,11 @@ test("legacy Facebook-linked Instagram credentials cannot be selected or publish
   ]);
   assert.match(service, /function isLegacyInstagramAccount\(account\)/u);
   assert.match(service, /metadata\?\.credentialSource !== "instagram-login"/u);
-  assert.match(service, /accounts\.some\(isLegacyInstagramAccount\)/u);
+  assert.match(service, /assertAccountPublishable\(account/u);
   assert.match(service, /INSTAGRAM_RECONNECT_REQUIRED/u);
-  assert.match(ui, /const selectable = accounts\.filter\(account => !isLegacyInstagramAccount\(account\)\)/u);
+  assert.match(ui, /function isSelectableAccount\(account\)/u);
+  assert.match(ui, /accounts\.filter\(isSelectableAccount\)/u);
   assert.match(ui, /Cần kết nối lại/u);
-  assert.match(ui, /legacyInstagram \? "disabled"/u);
 });
 
 test("Instagram token exchange and refresh stay on Instagram-owned endpoints", async () => {
@@ -238,7 +244,7 @@ test("Instagram publishing is isolated onto graph.instagram.com", async () => {
   assert.match(provider, /account\.platform === "instagram"/u);
 });
 
-test("Social UI separates internal Facebook from Instagram OAuth", async () => {
+test("Social UI separates internal Facebook from Instagram OAuth and disables stale Facebook", async () => {
   const [ui, routes, env] = await Promise.all([
     read("public/social-studio.js"),
     read("src/social-routes.js"),
@@ -247,7 +253,10 @@ test("Social UI separates internal Facebook from Instagram OAuth", async () => {
   assert.doesNotMatch(ui, /data-social-connect="meta"/u);
   assert.match(ui, /data-social-connect="instagram"/u);
   assert.match(ui, /Facebook nội bộ/u);
-  assert.match(ui, /managedByEnv/u);
+  assert.match(ui, /function isStaleFacebookAccount\(account\)/u);
+  assert.match(ui, /metadata\?\.staleManagedByEnv === true/u);
+  assert.match(ui, /const disabled = legacyInstagram \|\| staleFacebook/u);
+  assert.match(ui, /Cần cấu hình lại/u);
   assert.match(routes, /z\.enum\(\["instagram",\s*"tiktok"\]\)/u);
   assert.match(routes, /\/social\/oauth\/instagram\/callback/u);
   assert.match(env, /FACEBOOK_PAGE_ACCESS_TOKEN=/u);
