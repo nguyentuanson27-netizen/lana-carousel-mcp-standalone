@@ -263,3 +263,53 @@ test("reports no duration for audio that is not a readable wav",()=>{
  assert.equal(jobs.wavDurationSeconds(Buffer.alloc(0)),0);
  assert.equal(jobs.wavDurationSeconds(Buffer.from("ID3 this is an mp3 payload padded out to be long enough")),0);
 });
+
+test("marks a clip with only an estimated duration so it never gets trimmed to that guess",()=>{
+ const [estimated,measured]=jobs.planVoiceTracks({
+  segments:[{id:"s1",start:0,end:3},{id:"s2",start:4,end:7}],
+  clips:[
+   {url:"google.mp3",rawDuration:1.4,measured:false},
+   {url:"vertex.wav",rawDuration:1.4,measured:true}
+  ],
+  ttsSpeed:1
+ });
+ assert.equal(estimated.measured,false);
+ assert.equal(measured.measured,true);
+});
+
+const delay=milliseconds=>new Promise(resolve=>setTimeout(resolve,milliseconds));
+
+test("lets in-flight workers finish before surfacing a failure so cleanup sees every temp file",async()=>{
+ const written=[];
+ const failed=await jobs.mapWithLimit([0,1,2,3],2,async item=>{
+  if(item===0){
+   await delay(5);
+   throw new Error("TTS đoạn 1 hỏng");
+  }
+  await delay(40);
+  written.push(item);
+  return item;
+ }).then(()=>null,error=>error);
+
+ assert.equal(failed?.message,"TTS đoạn 1 hỏng");
+ // Worker chậm phải xong trước khi lỗi nổi lên, nếu không file nó ghi ra sẽ lọt khỏi vòng dọn dẹp.
+ assert.deepEqual(written,[1]);
+});
+
+test("stops handing out new work once a worker has failed",async()=>{
+ const started=[];
+ await jobs.mapWithLimit([0,1,2,3,4,5],1,async item=>{
+  started.push(item);
+  if(item===1)throw new Error("dừng ở đây");
+  return item;
+ }).catch(()=>{});
+ assert.deepEqual(started,[0,1]);
+});
+
+test("returns results in the original order when nothing fails",async()=>{
+ const results=await jobs.mapWithLimit([30,0,10],3,async item=>{
+  await delay(item);
+  return `item-${item}`;
+ });
+ assert.deepEqual(results,["item-30","item-0","item-10"]);
+});

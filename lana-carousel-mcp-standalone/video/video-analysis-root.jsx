@@ -18,7 +18,10 @@ const Caption=({segment,settings})=>{
 // Mỗi đoạn có clip giọng đọc riêng đặt đúng mốc `start`, nên tiếng và phụ đề không lệch dần.
 const VoiceTrack=({track,settings})=>{
  const {fps}=useVideoConfig();
- return <Sequence from={Math.round(Number(track.start||0)*fps)} durationInFrames={Math.max(1,Math.ceil(Number(track.duration||0)*fps))}>
+ // `duration` chỉ dùng làm điểm cắt khi nó là số đo thật. Nhánh TTS trả MP3 chỉ có độ dài
+ // ước lượng, cắt theo đó sẽ nuốt mất phần cuối câu, nên để clip tự chạy hết file.
+ const trimmed=track.measured!==false&&Number(track.duration)>0;
+ return <Sequence from={Math.round(Number(track.start||0)*fps)} durationInFrames={trimmed?Math.max(1,Math.ceil(Number(track.duration)*fps)):undefined}>
   <Audio src={track.url} volume={settings.ttsVolume??1} playbackRate={Number(track.playbackRate)||1}/>
  </Sequence>;
 };

@@ -102,17 +102,26 @@ async function materializeTtsTrack(jobId,index,dataUrl){
  };
 }
 
-async function mapWithLimit(items,limit,run){
+// Không được ném lỗi khi worker đầu tiên hỏng: các worker còn lại vẫn đang chạy và vẫn sẽ
+// ghi file tạm. Nếu work() dọn dẹp ngay lúc đó thì file ghi muộn bị bỏ sót lại trong
+// thư mục asset và không có ai xoá. Dừng nhận việc mới, chờ tất cả dừng hẳn rồi mới báo lỗi.
+export async function mapWithLimit(items,limit,run){
  const results=new Array(items.length);
  let cursor=0;
+ let failure;
  const workers=Array.from({length:Math.max(1,Math.min(limit,items.length))},async()=>{
-  while(cursor<items.length){
+  while(cursor<items.length&&!failure){
    const current=cursor;
    cursor+=1;
-   results[current]=await run(items[current],current);
+   try{
+    results[current]=await run(items[current],current);
+   }catch(error){
+    failure??=error;
+   }
   }
  });
  await Promise.all(workers);
+ if(failure)throw failure;
  return results;
 }
 
@@ -138,8 +147,11 @@ async function synthesizeSegmentVoice({jobId,settings,segment,index,temporaryVoi
  if(!track?.dataUrl)return null;
  const asset=await materializeTtsTrack(jobId,index,track.dataUrl);
  temporaryVoicePaths.push(asset.filePath);
- const rawDuration=asset.measuredDuration||Number(track.durationSeconds||0);
- return rawDuration>0?{url:asset.url,rawDuration}:null;
+ // Nhánh Google trả MP3 kèm độ dài chỉ ước lượng theo số từ, không phải độ dài thật.
+ // Phải phân biệt để bên dưới không cắt clip theo một con số đoán.
+ const measured=asset.measuredDuration>0;
+ const rawDuration=measured?asset.measuredDuration:Number(track.durationSeconds||0);
+ return rawDuration>0?{url:asset.url,rawDuration,measured}:null;
 }
 
 // Một track TTS liền mạch phát từ giây 0 sẽ lệch dần so với phụ đề, và độ lệch tích lũy
@@ -162,6 +174,9 @@ export function planVoiceTracks({segments,clips,ttsSpeed}){
    url:clip.url,
    start,
    duration:rawDuration/playbackRate,
+   // Chỉ cắt clip khi độ dài là số đo thật. Với độ dài ước lượng, cắt theo nó sẽ mất
+   // phần cuối câu — trái đúng nguyên tắc thà đọc tràn còn hơn mất chữ.
+   measured:clip.measured!==false,
    playbackRate
   });
  }
