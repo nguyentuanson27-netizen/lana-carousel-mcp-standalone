@@ -27,6 +27,7 @@ const overview = {
 
 const pageHtml = `<!doctype html>
 <html lang="vi">
+<head><meta charset="utf-8"></head>
 <body>
   <div id="app" class="studio-app">
     <header class="studio-topbar">
