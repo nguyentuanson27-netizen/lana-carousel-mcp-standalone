@@ -61,3 +61,32 @@ test("Brand Kit can collapse to an accessible compact summary", async () => {
   assert.match(css, /\.brand-kit\.is-collapsed/u);
   assert.match(css, /\.brand-kit-toggle/u);
 });
+
+test("Carousel workflow moves out of the sidebar into a top horizontal navigation on every view", async () => {
+  const [html, css] = await Promise.all([read("widget.html"), read("stitch-layout.css")]);
+  const sidebarStart = html.indexOf('<aside id="studioSidebar"');
+  const sidebarEnd = html.indexOf("</aside>", sidebarStart);
+  const mainStart = html.indexOf('<main class="studio-main">');
+  const workflow = html.indexOf('<nav id="workflow"');
+
+  assert.ok(sidebarStart >= 0 && sidebarEnd > sidebarStart);
+  assert.ok(mainStart >= 0 && workflow > mainStart, "workflow phải nằm trong vùng workspace phía trên");
+  assert.equal(html.slice(sidebarStart, sidebarEnd).includes('id="workflow"'), false, "sidebar không còn phần Quy trình");
+  assert.doesNotMatch(html, /workflow-caption/u);
+  assert.match(html, /class="workflow-nav workspace-workflow"/u);
+  assert.match(css, /\.workspace-workflow\s*\{[^}]*display:flex/su);
+  assert.doesNotMatch(css, /\.studio-app:not\(\.studio-view-edit\) \.workspace-header\s*\{[^}]*display:none/su);
+});
+
+test("edit preview is sticky, reduced to viewport-safe height, and wheel navigation loops edit slides", async () => {
+  const [css, source] = await Promise.all([read("stitch-layout.css"), read("studio-layout.js")]);
+  assert.match(css, /#edit\s*\{[^}]*--edit-preview-height:/su);
+  assert.match(css, /#edit \.preview-column\s*\{[^}]*position:sticky/su);
+  assert.match(css, /#edit \.preview-column \.canvas\s*\{[^}]*max-height:var\(--edit-preview-height\)/su);
+  assert.match(css, /#edit \.preview-column \.canvas\s*\{[^}]*460px/su);
+  assert.match(source, /installEditWheelNavigation/u);
+  assert.match(source, /#edit \.preview-column/u);
+  assert.match(source, /event\.ctrlKey \|\| event\.metaKey/u);
+  assert.match(source, /\(currentIndex \+ direction \+ buttons\.length\) % buttons\.length/u);
+  assert.match(source, /buttons\[nextIndex\]\.click\(\)/u);
+});

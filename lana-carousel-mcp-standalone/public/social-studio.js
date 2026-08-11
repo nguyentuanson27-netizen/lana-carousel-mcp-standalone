@@ -104,6 +104,15 @@
     state.compose.expanded = panel.querySelector(".social-caption-grid details")?.open === true;
   }
 
+  function syncWorkspaceHeader() {
+    const eyebrow = document.getElementById("workspaceEyebrow");
+    const title = document.getElementById("workspaceTitle");
+    const description = document.getElementById("workspaceDescription");
+    if (eyebrow) eyebrow.textContent = "Bước 6 · Publish";
+    if (title) title.textContent = "Đăng mạng xã hội";
+    if (description) description.textContent = "Đăng Carousel hoặc video đã duyệt lên các kênh đã kết nối.";
+  }
+
   function deliveryActions(delivery) {
     const actions = [];
     if (delivery.remoteUrl) actions.push(`<a href="${escapeHtml(delivery.remoteUrl)}" target="_blank" rel="noopener">Xem bài</a>`);
@@ -274,6 +283,7 @@
     state.active = true;
     app.dataset.socialActive = "true";
     workflow.querySelector(".social-step")?.setAttribute("aria-current", "step");
+    syncWorkspaceHeader();
     document.querySelectorAll(".workspace-shell > .panel:not(#social)").forEach(item => { item.style.display = "none"; });
     panel.style.display = "block";
     if (slideNavigation) slideNavigation.hidden = true;
