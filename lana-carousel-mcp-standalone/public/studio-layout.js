@@ -10,6 +10,7 @@
   const desktopQuery = window.matchMedia('(min-width: 851px)');
   let preferredCollapsed = localStorage.getItem(storageKey) === '1';
   let brandKitCollapsed = localStorage.getItem(brandKitStorageKey) !== '0';
+  let editWheelLockAt = 0;
 
   const toggle = document.createElement('button');
   toggle.id = 'desktopSidebarToggle';
@@ -98,6 +99,33 @@
     promoteProofActions();
   }
 
+  function installEditWheelNavigation() {
+    const workspaceShell = document.querySelector('.workspace-shell');
+    if (!workspaceShell || workspaceShell.dataset.editWheelNavigation === 'true') return;
+    workspaceShell.dataset.editWheelNavigation = 'true';
+    workspaceShell.addEventListener('wheel', event => {
+      if (!app.classList.contains('studio-view-edit')) return;
+      if (event.ctrlKey || event.metaKey || Math.abs(event.deltaY) < 6) return;
+      if (!event.target.closest?.('#edit .preview-column')) return;
+
+      const buttons = [...document.querySelectorAll('#slideRail [data-slide-target]')];
+      if (buttons.length < 2) return;
+      const activeIndex = buttons.findIndex(button => button.classList.contains('active'));
+      const currentIndex = activeIndex >= 0 ? activeIndex : 0;
+      const now = Date.now();
+      if (now - editWheelLockAt < 320) {
+        event.preventDefault();
+        return;
+      }
+
+      const direction = event.deltaY > 0 ? 1 : -1;
+      const nextIndex = (currentIndex + direction + buttons.length) % buttons.length;
+      editWheelLockAt = now;
+      event.preventDefault();
+      buttons[nextIndex].click();
+    }, { passive: false });
+  }
+
   function syncActiveView() {
     const view = workflow.querySelector('.step.active')?.dataset.view || 'content';
     [...app.classList]
@@ -122,5 +150,6 @@
   desktopQuery.addEventListener?.('change', syncToggle);
   syncToggle();
   syncActiveView();
+  installEditWheelNavigation();
   enhanceEditChrome();
 })();
