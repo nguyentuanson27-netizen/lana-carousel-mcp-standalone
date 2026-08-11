@@ -1,6 +1,7 @@
 import React from "react";
 import {AbsoluteFill, Audio, Composition, Img, Sequence, interpolate, spring, useCurrentFrame, useVideoConfig} from "remotion";
 import {LanaAnalyzedVideoComposition} from "./video-analysis-root.jsx";
+import {VideoFonts} from "./fonts.jsx";
 
 const clamp = {extrapolateLeft:"clamp",extrapolateRight:"clamp"};
 const dims = {vertical:[1080,1920],square:[1080,1080],landscape:[1920,1080]};
@@ -104,7 +105,7 @@ const Scene=({scene})=>{
 
 export const LanaVideo=({scenes=[],audioUrl="",audioVolume=.6,voiceUrl="",voiceVolume=1,voicePlaybackRate=1})=>{
   const {fps}=useVideoConfig();let cursor=0;
-  return <AbsoluteFill style={{background:"#111"}}>{audioUrl?<Audio src={audioUrl} volume={audioVolume}/>:null}{voiceUrl?<Audio src={voiceUrl} volume={voiceVolume} playbackRate={voicePlaybackRate}/>:null}{scenes.filter(scene=>scene.enabled!==false).map(scene=>{const from=cursor;const frames=Math.max(fps,Math.round(scene.duration*fps));cursor+=frames;return <Sequence key={scene.id} from={from} durationInFrames={frames} premountFor={fps}><Scene scene={scene}/></Sequence>})}</AbsoluteFill>;
+  return <AbsoluteFill style={{background:"#111"}}><VideoFonts/>{audioUrl?<Audio src={audioUrl} volume={audioVolume}/>:null}{voiceUrl?<Audio src={voiceUrl} volume={voiceVolume} playbackRate={voicePlaybackRate}/>:null}{scenes.filter(scene=>scene.enabled!==false).map(scene=>{const from=cursor;const frames=Math.max(fps,Math.round(scene.duration*fps));cursor+=frames;return <Sequence key={scene.id} from={from} durationInFrames={frames} premountFor={fps}><Scene scene={scene}/></Sequence>})}</AbsoluteFill>;
 };
 
 export const LanaVideoRoot=()=> <><Composition id="LanaCarouselVideo" component={LanaVideo} width={1080} height={1920} fps={30} durationInFrames={300} defaultProps={{scenes:[]}} calculateMetadata={({props})=>{const [width,height]=dims[props.aspectRatio]||dims.vertical;const fps=props.fps||30;const duration=(props.scenes||[]).filter(scene=>scene.enabled!==false).reduce((total,scene)=>total+Number(scene.duration||3),0);return{width,height,fps,durationInFrames:Math.max(fps,Math.ceil(duration*fps))}}}/><LanaAnalyzedVideoComposition/></>;

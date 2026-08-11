@@ -164,9 +164,18 @@ function renderCaptionText(caption,segment,style,time){
   }
 }
 
+// Preview phải nghe giống bản render: Remotion bỏ hẳn tiếng gốc khi âm lượng bằng 0,
+// nên thẻ <video> cũng phải mute thay vì giữ nguyên âm lượng của trình duyệt.
+function applyPreviewVolume(currentSettings){
+  const video=$("#video"),level=clamp(Number(currentSettings.originalAudioVolume)||0,0,1);
+  video.muted=level<=0;
+  video.volume=level;
+}
+
 function renderPreview(){
   if(!project)return;
   const currentSettings=settings(),video=$("#video"),time=video.currentTime;
+  applyPreviewVolume(currentSettings);
   const segment=segments().find(item=>item.enabled!==false&&time>=item.start&&time<item.end);
   const caption=$("#caption"),stage=$("#stage");
   caption.hidden=!currentSettings.subtitleEnabled||!segment;
@@ -224,6 +233,7 @@ $("#render").onclick=async()=>{
   try{
     if(project.status!=="APPROVED")throw new Error("Hãy duyệt script trước khi render.");
     $("#render").disabled=true;
+    $("#download").removeAttribute("href");
     $("#job").textContent="Đang lưu thiết lập mới nhất…";
     await save(true,{refresh:false});
     const job=await api(`/api/video-analysis/projects/${projectId}/render-jobs`,{method:"POST"});

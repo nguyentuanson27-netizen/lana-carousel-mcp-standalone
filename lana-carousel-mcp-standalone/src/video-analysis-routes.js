@@ -28,6 +28,7 @@ import {
  videoAnalysisAssetDir
 } from "./video-analysis-service.js";
 import {getVideoAnalysisFile,getVideoAnalysisJob,startVideoAnalysisJob} from "./video-analysis-jobs.js";
+import {probeVideoDurationSeconds} from "./video-source-importer.js";
 
 export const videoAnalysisRouter=express.Router();
 const safe=handler=>async(req,res)=>{try{await handler(req,res)}catch(error){const response=publicError(error);res.status(response.status).json(response)}};
@@ -124,7 +125,8 @@ videoAnalysisRouter.post(
     url,
     filename:String(req.query.filename||name),
     mime,
-    size:req.body.length
+    size:req.body.length,
+    duration:await probeVideoDurationSeconds(absolutePath)
    });
    res.status(201).json(project);
   }catch(error){
