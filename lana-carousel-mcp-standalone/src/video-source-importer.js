@@ -47,6 +47,20 @@ export function isManagedVideoSourceUrl(rawUrl){
  return Boolean(managedAssetName(rawUrl));
 }
 
+// Không đo được độ dài video nguồn thì composition chỉ dài bằng segment cuối cùng,
+// nên phần video sau câu phụ đề cuối bị cắt mất khi render.
+export async function probeVideoDurationSeconds(absolutePath){
+ if(!absolutePath)return 0;
+ try{
+  const {getVideoMetadata}=await import("@remotion/renderer");
+  const metadata=await getVideoMetadata(absolutePath);
+  const duration=Number(metadata?.durationInSeconds||0);
+  return Number.isFinite(duration)&&duration>0?duration:0;
+ }catch{
+  return 0;
+ }
+}
+
 export function assertManagedVideoSourceUrl(rawUrl){
  if(!isManagedVideoSourceUrl(rawUrl)){
   throw new AppError(
@@ -182,6 +196,7 @@ export async function importRemoteVideoSource({url:rawUrl,filename="video.mp4"})
    filename:safeDisplayFilename(filename||path.basename(url.pathname),fallbackName),
    mime:detected.mime,
    size:response.size,
+   duration:await probeVideoDurationSeconds(absolutePath),
    absolutePath,
    finalRemoteUrl:url.toString()
   };

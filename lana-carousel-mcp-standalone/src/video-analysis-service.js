@@ -185,15 +185,22 @@ function resolveManagedSettings(currentSettings,editableSettings,managedSettings
   throw new AppError("INVALID_VIDEO_SCRIPT_OPTION","Phương án script được chọn không hợp lệ.",422);
  }
  const preparedScriptOptions=hasManagedPrepared?managedSettings.preparedScriptOptions:null;
+ const editable=sanitizeVideoAnalysisEditableSettings(editableSettings);
  const nextSettings={
   ...currentSettings,
-  ...sanitizeVideoAnalysisEditableSettings(editableSettings),
+  ...editable,
   analysisBrief,
   selectedScriptOption,
   preparedScriptOptions
  };
  if(analysisBrief){
-  nextSettings.ttsSpeed=analysisBrief.ttsSpeed;
+  // Trong luồng prepared option và khôi phục phiên bản, brief là nguồn sự thật vì hai phương án
+  // đã được chấm theo đúng tốc độ đó. Còn khi người dùng tự chỉnh trong studio thì lựa chọn của
+  // họ phải thắng, và brief được cập nhật theo để hai nơi không lệch nhau.
+  const editedTtsSpeed=!hasManagedBrief&&Object.prototype.hasOwnProperty.call(editable,"ttsSpeed");
+  const ttsSpeed=editedTtsSpeed?editable.ttsSpeed:analysisBrief.ttsSpeed;
+  nextSettings.ttsSpeed=ttsSpeed;
+  nextSettings.analysisBrief={...analysisBrief,ttsSpeed};
   nextSettings.geminiStylePrompt=getVideoTonePrompt(analysisBrief.toneStyle);
  }
  return nextSettings;
@@ -236,7 +243,8 @@ export async function createVideoAnalysisProjectFromRemoteSource({sourceUrl,sour
    sourceUrl:imported.url,
    sourceFilename:imported.filename,
    sourceMime:imported.mime,
-   sourceSize:imported.size
+   sourceSize:imported.size,
+   duration:Number(input.duration||imported.duration||0)
   });
  }catch(error){
   await deleteManagedVideoSource(imported.url);
@@ -285,7 +293,7 @@ export async function attachRemoteVideoSource({
     filename:imported.filename,
     mime:imported.mime,
     size:imported.size,
-    duration
+    duration:Number(duration||imported.duration||0)
    });
    if(previousSourceUrl&&previousSourceUrl!==imported.url){
     await deleteManagedVideoSource(previousSourceUrl);

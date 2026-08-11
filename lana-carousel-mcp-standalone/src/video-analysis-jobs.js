@@ -134,6 +134,7 @@ async function work(job){
    inputProps:props,
    concurrency:1,
    crf:20,
+   browserExecutable:process.env.REMOTION_BROWSER_EXECUTABLE||undefined,
    chromiumOptions:{disableWebSecurity:true},
    onProgress:({progress})=>{
     job.progress=20+Math.round(progress*78);

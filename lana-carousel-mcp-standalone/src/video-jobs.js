@@ -199,6 +199,7 @@ async function work(job) {
     await renderMedia({
       composition, serveUrl: url, codec: "h264", outputLocation: output, inputProps,
       concurrency: 1, crf: 20, chromiumOptions: { disableWebSecurity: false },
+      browserExecutable: process.env.REMOTION_BROWSER_EXECUTABLE || undefined,
       onProgress: ({ progress }) => {
         const next = 20 + Math.round(progress * 78);
         if (next >= lastProgress + 5) { lastProgress = next; updateJob(job, { progress: next }); }

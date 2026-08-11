@@ -213,3 +213,50 @@ test("deletes completed jobs, render files, managed source and in-memory records
  await assertMissing(sourcePath);
  await assertMissing(outputPath);
 });
+
+test("keeps a zero original audio volume instead of falling back to the default",()=>{
+ const project=createProject();
+ const saved=service.saveVideoAnalysisScript({
+  projectId:project.id,
+  approved:true,
+  script:{summary:"",language:"vi-VN",segments:[{start:0,end:3,subtitleText:"a",voiceOverText:"a"}]},
+  settings:{originalAudioVolume:0,ttsVolume:0}
+ });
+ assert.equal(saved.settings.originalAudioVolume,0);
+ assert.equal(saved.settings.ttsVolume,0);
+ assert.equal(service.getVideoAnalysisProject(project.id).settings.originalAudioVolume,0);
+});
+
+test("an explicit tts speed edit wins over the brief and stays in sync with it",()=>{
+ const project=createProject();
+ assert.equal(project.settings.ttsSpeed,brief.ttsSpeed);
+ const saved=service.saveVideoAnalysisScript({
+  projectId:project.id,
+  script:{summary:"",language:"vi-VN",segments:[{start:0,end:3,subtitleText:"a",voiceOverText:"a"}]},
+  settings:{ttsSpeed:1.5}
+ });
+ assert.equal(saved.settings.ttsSpeed,1.5);
+ assert.equal(saved.settings.analysisBrief.ttsSpeed,1.5);
+ const untouched=service.saveVideoAnalysisScript({
+  projectId:project.id,
+  script:{summary:"",language:"vi-VN",segments:[{start:0,end:3,subtitleText:"a",voiceOverText:"a"}]},
+  settings:{originalAudioVolume:.5}
+ });
+ assert.equal(untouched.settings.ttsSpeed,1.5);
+});
+
+test("keeps the probed source duration so a render is not cut at the last segment",async()=>{
+ const project=service.createVideoAnalysisProject({title:"Duration"});
+ const attached=await service.attachRemoteVideoSource({
+  projectId:project.id,
+  url:"https://cdn.example.com/source.mp4",
+  importer:async()=>({
+   url:managedUrl(`${project.id}-remote.mp4`),
+   filename:"remote.mp4",
+   mime:"video/mp4",
+   size:1024,
+   duration:23.4
+  })
+ });
+ assert.equal(attached.source.duration,23.4);
+});
