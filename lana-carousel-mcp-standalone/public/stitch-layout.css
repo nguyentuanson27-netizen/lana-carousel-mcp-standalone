@@ -14,30 +14,104 @@
   padding:14px 18px 28px;
 }
 
-/* Không còn tiêu đề bước lớn. Riêng bước Sửa thiết kế giữ Brand Kit thành toolbar mỏng. */
-.workspace-header>div:first-child,
+/* Quy trình nằm ngang ở đầu workspace; sidebar chỉ còn danh sách slide. */
+.workspace-header{
+  display:flex!important;
+  min-height:0;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px 14px;
+  padding:8px 18px 10px!important;
+}
+.workspace-heading{
+  min-width:0;
+  flex:1 1 220px;
+}
+.workspace-heading .workspace-eyebrow{
+  display:block;
+  font-size:9px;
+}
+.workspace-heading h1{
+  margin:1px 0 0!important;
+  font-size:20px;
+  line-height:1.15;
+}
 #workspaceStats{
   display:none!important;
 }
-.workspace-header{
-  min-height:0;
+.workspace-workflow{
+  order:-2;
+  display:flex;
+  flex:1 1 100%;
   align-items:center;
-  justify-content:flex-end;
-  gap:10px;
-  padding:7px 18px!important;
+  gap:6px;
+  width:100%;
+  padding:0 0 7px;
+  border-bottom:1px solid var(--line-soft);
+  overflow-x:auto;
+  scrollbar-width:thin;
 }
-.studio-app:not(.studio-view-edit) .workspace-header{
-  display:none!important;
+.workspace-workflow .step{
+  display:flex;
+  flex:0 0 auto;
+  align-items:center;
+  gap:7px;
+  width:auto;
+  min-height:34px;
+  padding:5px 9px;
+  border-radius:9px;
+  white-space:nowrap;
 }
-.studio-view-edit .workspace-header{
-  display:flex!important;
+.workspace-workflow .step>span{
+  grid-row:auto;
+  width:22px;
+  height:22px;
+  flex:0 0 22px;
+  margin:0;
+  font-size:9px;
+}
+.workspace-workflow .step b{
+  font-size:11px;
+}
+.workspace-workflow .step small{
+  display:none;
+}
+.workspace-workflow .step[aria-current="step"]{
+  border-color:rgba(141,63,61,.35);
+  background:var(--primary-soft);
+  color:var(--primary);
+}
+.workspace-workflow .step[aria-current="step"]>span{
+  border-color:var(--primary);
+  background:var(--primary);
+  color:#fff;
+}
+.workspace-workflow .step[aria-current="step"] b{
+  color:var(--primary);
+}
+.studio-app[data-social-active="true"] .workspace-workflow .step.active:not(.social-step){
+  border-color:transparent;
+  background:transparent;
+  color:var(--muted);
+}
+.studio-app[data-social-active="true"] .workspace-workflow .step.active:not(.social-step)>span{
+  border-color:var(--line);
+  background:var(--surface-alt);
+  color:var(--muted);
+}
+.studio-app[data-social-active="true"] .workspace-workflow .step.active:not(.social-step) b{
+  color:var(--ink);
 }
 .studio-view-edit .workspace-header .brand-kit{
   position:relative;
   top:auto;
-  margin:0;
+  margin:0 0 0 auto;
   padding:0;
   box-shadow:none;
+}
+.studio-app[data-social-active="true"] .workspace-header>.brand-kit{
+  display:none!important;
 }
 .studio-view-edit .workspace-header .brand-kit .field{
   min-width:150px;
@@ -92,7 +166,7 @@
   transform:rotate(-90deg);
 }
 
-/* Sidebar desktop có thể thu gọn / mở rộng. */
+/* Sidebar desktop có thể thu gọn / mở rộng mà không tác động navigation phía trên. */
 .sidebar-desktop-toggle{
   flex:0 0 auto;
 }
@@ -108,9 +182,6 @@
   padding:10px 7px;
 }
 .studio-app.sidebar-collapsed .sidebar-brand>div,
-.studio-app.sidebar-collapsed .workflow-caption,
-.studio-app.sidebar-collapsed .step b,
-.studio-app.sidebar-collapsed .step small,
 .studio-app.sidebar-collapsed .slide-navigation{
   display:none!important;
 }
@@ -119,26 +190,13 @@
   height:38px;
   font-size:22px;
 }
-.studio-app.sidebar-collapsed .workflow-nav{
-  gap:6px;
-  padding:10px 7px;
-  border-bottom:0;
-}
-.studio-app.sidebar-collapsed .step{
-  display:grid;
-  grid-template-columns:1fr;
-  grid-template-rows:auto;
-  place-items:center;
-  padding:8px 5px;
-}
-.studio-app.sidebar-collapsed .step>span{
-  grid-row:auto;
-  margin:0;
-}
 
-/* Bước Sửa thiết kế: preview lớn hơn nhưng luôn vừa chiều cao viewport. */
+/* Bước Sửa thiết kế: preview nhỏ hơn, ghim cố định và luôn nằm trọn trong viewport. */
+#edit{
+  --edit-preview-height:min(72dvh,calc(100dvh - var(--topbar) - 170px));
+}
 #edit .visual{
-  grid-template-columns:minmax(560px,760px) minmax(340px,1fr);
+  grid-template-columns:minmax(500px,620px) minmax(340px,1fr);
   gap:20px;
   align-items:start;
 }
@@ -149,14 +207,15 @@
   gap:12px;
   align-items:start;
   position:sticky;
-  top:0;
+  top:12px;
+  align-self:start;
 }
 #edit .preview-column .canvas{
   grid-column:2;
   grid-row:1;
-  width:min(100%,calc((100dvh - var(--topbar) - 92px) * .5625),620px)!important;
+  width:min(100%,calc(var(--edit-preview-height) * .5625),460px)!important;
   height:auto!important;
-  max-height:calc(100dvh - var(--topbar) - 92px);
+  max-height:var(--edit-preview-height);
   justify-self:center;
   margin:0 auto!important;
 }
@@ -168,7 +227,7 @@
   flex-wrap:nowrap;
   align-items:stretch;
   gap:8px;
-  max-height:calc(100dvh - var(--topbar) - 92px);
+  max-height:var(--edit-preview-height);
   overflow:auto;
   padding:9px;
 }
@@ -224,7 +283,7 @@
 
 @media(max-width:1360px) and (min-width:1201px){
   #edit .visual{
-    grid-template-columns:minmax(500px,650px) minmax(300px,1fr);
+    grid-template-columns:minmax(470px,560px) minmax(300px,1fr);
   }
   #edit .preview-column{
     grid-template-columns:104px minmax(0,1fr);
@@ -237,6 +296,7 @@
   }
   #edit .preview-column{
     position:relative;
+    top:auto;
     grid-template-columns:104px minmax(0,1fr);
     max-width:720px;
     margin-inline:auto;
@@ -264,32 +324,26 @@
     padding:18px;
   }
   .studio-app.sidebar-collapsed .sidebar-brand>div,
-  .studio-app.sidebar-collapsed .workflow-caption,
-  .studio-app.sidebar-collapsed .step b,
-  .studio-app.sidebar-collapsed .step small,
   .studio-app.sidebar-collapsed .slide-navigation{
     display:initial!important;
   }
-  .studio-app.sidebar-collapsed .workflow-nav{
-    display:grid;
-    padding:0 10px 14px;
-    border-bottom:1px solid var(--line);
+  .workspace-header{
+    gap:7px 10px!important;
+    padding:7px 12px 8px!important;
   }
-  .studio-app.sidebar-collapsed .step{
-    display:grid;
-    grid-template-columns:30px 1fr;
-    grid-template-rows:auto auto;
-    place-items:initial;
-    padding:10px;
+  .workspace-workflow{
+    gap:5px;
+    padding-bottom:6px;
   }
-  .studio-app.sidebar-collapsed .step>span{
-    grid-row:1/3;
+  .workspace-workflow .step{
+    min-height:32px;
+    padding:4px 8px;
+  }
+  .workspace-heading h1{
+    font-size:18px;
   }
   .workspace-shell{
     padding:12px 12px 90px;
-  }
-  .studio-view-edit .workspace-header{
-    padding:6px 12px!important;
   }
   .studio-view-edit .workspace-header .brand-kit{
     width:100%;
@@ -304,6 +358,9 @@
     overflow:hidden;
     text-overflow:ellipsis;
   }
+  #edit{
+    --edit-preview-height:min(64dvh,calc(100dvh - var(--topbar) - 210px));
+  }
   #edit .preview-column{
     grid-template-columns:1fr;
     gap:10px;
@@ -311,8 +368,8 @@
   #edit .preview-column .canvas{
     grid-column:1;
     grid-row:1;
-    width:min(100%,calc((100dvh - var(--topbar) - 170px) * .5625))!important;
-    max-height:calc(100dvh - var(--topbar) - 170px);
+    width:min(100%,calc(var(--edit-preview-height) * .5625),460px)!important;
+    max-height:var(--edit-preview-height);
   }
   #edit .direct-toolbar{
     grid-column:1;
