@@ -316,7 +316,7 @@
   }
 
   function enhance() {
-    if (state.enhancing || q('#app')?.classList.contains('hidden')) return;
+    if (state.enhancing || q('#app')?.classList.contains('hidden') || q('#app')?.dataset.socialActive === 'true') return;
     state.enhancing = true;
     observer?.disconnect();
     try {
