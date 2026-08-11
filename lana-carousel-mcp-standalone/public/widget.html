@@ -7,7 +7,7 @@
   <title>Lana Content Studio</title>
   <link rel="stylesheet" href="/fonts.css?v=1.0.0">
   <link rel="stylesheet" href="/stitch-ui.css?v=1.1.0">
-  <link rel="stylesheet" href="/stitch-layout.css?v=1.0.0">
+  <link rel="stylesheet" href="/stitch-layout.css?v=1.1.0">
   <link rel="stylesheet" href="/social-studio.css?v=1.0.0">
   <style>
     .workspace-header.compact-workspace-header{align-items:center;gap:18px;padding:12px 28px 10px}
@@ -26,7 +26,7 @@
   <div id="app" class="studio-app hidden">
     <header class="studio-topbar">
       <div class="topbar-leading">
-        <button id="mobileSidebarToggle" class="icon-button mobile-only" type="button" aria-label="Mở quy trình và danh sách slide">
+        <button id="mobileSidebarToggle" class="icon-button mobile-only" type="button" aria-label="Mở danh sách slide">
           <span aria-hidden="true">☰</span>
         </button>
         <a href="/projects" class="back-link" aria-label="Quay lại tất cả dự án">← <span>Tất cả dự án</span></a>
@@ -41,7 +41,7 @@
     </header>
 
     <div class="studio-body">
-      <aside id="studioSidebar" class="studio-sidebar" aria-label="Quy trình Carousel">
+      <aside id="studioSidebar" class="studio-sidebar" aria-label="Danh sách slide Carousel">
         <div class="sidebar-brand">
           <span class="brand-mark">L</span>
           <div>
@@ -50,16 +50,6 @@
           </div>
           <button id="sidebarClose" class="icon-button mobile-only" type="button" aria-label="Đóng thanh bên">×</button>
         </div>
-
-        <div class="workflow-caption">Quy trình</div>
-        <nav id="workflow" class="workflow-nav">
-          <button class="step" data-view="content" type="button"><span>1</span><b>Duyệt nội dung</b><small>Nội dung từng slide</small></button>
-          <button class="step" data-view="images" type="button"><span>2</span><b>Duyệt ảnh</b><small>Ảnh chính hoặc ghép lưới</small></button>
-          <button class="step" data-view="edit" type="button"><span>3</span><b>Sửa thiết kế</b><small>Chữ, crop và Brand Kit</small></button>
-          <button class="step" data-view="download" type="button"><span>4</span><b>Render & tải</b><small>Xuất bộ ảnh ZIP</small></button>
-          <button class="step" data-view="video" type="button"><span>5</span><b>Video tùy chọn</b><small>Timeline, TTS và MP4</small></button>
-          <button class="step social-step" data-view="social" type="button"><span>6</span><b>Đăng mạng xã hội</b><small>TikTok, Facebook, Instagram</small></button>
-        </nav>
 
         <section id="slideNavigation" class="slide-navigation">
           <div class="slide-nav-head">
@@ -84,7 +74,15 @@
 
       <main class="studio-main">
         <header class="workspace-header compact-workspace-header">
-          <div>
+          <nav id="workflow" class="workflow-nav workspace-workflow" aria-label="Quy trình Carousel">
+            <button class="step" data-view="content" type="button"><span>1</span><b>Duyệt nội dung</b><small>Nội dung từng slide</small></button>
+            <button class="step" data-view="images" type="button"><span>2</span><b>Duyệt ảnh</b><small>Ảnh chính hoặc ghép lưới</small></button>
+            <button class="step" data-view="edit" type="button"><span>3</span><b>Sửa thiết kế</b><small>Chữ, crop và Brand Kit</small></button>
+            <button class="step" data-view="download" type="button"><span>4</span><b>Render & tải</b><small>Xuất bộ ảnh ZIP</small></button>
+            <button class="step" data-view="video" type="button"><span>5</span><b>Video tùy chọn</b><small>Timeline, TTS và MP4</small></button>
+            <button class="step social-step" data-view="social" type="button"><span>6</span><b>Đăng mạng xã hội</b><small>TikTok, Facebook, Instagram</small></button>
+          </nav>
+          <div class="workspace-heading">
             <span id="workspaceEyebrow" class="workspace-eyebrow">Bước 1 · Carousel</span>
             <h1 id="workspaceTitle">Duyệt nội dung</h1>
             <p id="workspaceDescription" class="hidden">Kiểm tra tiêu đề và nội dung trước khi chọn ảnh.</p>
@@ -112,7 +110,7 @@
 
   <script type="module" src="/widget.js?v=3.0.0"></script>
   <script src="/stitch-ui.js?v=1.1.0"></script>
-  <script src="/studio-layout.js?v=1.0.0"></script>
+  <script src="/studio-layout.js?v=1.1.0"></script>
   <script src="/social-studio.js?v=1.0.0"></script>
 </body>
 </html>
