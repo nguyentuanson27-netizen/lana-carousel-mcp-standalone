@@ -17,6 +17,7 @@ let running=false;
 let bundlePromise;
 const TTS_CONCURRENCY=3;
 const MAX_TTS_FIT_RATE=1.25;
+const UNMEASURED_DURATION_HEADROOM=2;
 const insert=db.prepare(`INSERT INTO video_analysis_jobs(id,project_id,status,progress,created_at,updated_at,expires_at) VALUES(?,?,?,?,?,?,?)`);
 const update=db.prepare(`UPDATE video_analysis_jobs SET status=?,progress=?,error=?,output_path=?,updated_at=? WHERE id=?`);
 const get=db.prepare(`SELECT * FROM video_analysis_jobs WHERE id=?`);
@@ -73,8 +74,8 @@ function decodeAudioDataUrl(dataUrl){
  return{buffer,extension};
 }
 
-// getVideoMetadata của Remotion treo trên file thuần audio, nên đo trực tiếp bằng header WAV.
-// Vertex luôn trả WAV; nhánh Google trả MP3 và chỉ có độ dài ước lượng theo số từ.
+// getVideoMetadata của Remotion treo trên file thuần audio, nên tự đọc header.
+// Vertex luôn trả WAV, nhánh Google trả MP3 — cả hai đều phải đo được độ dài thật.
 export function wavDurationSeconds(buffer){
  if(buffer.length<44)return 0;
  if(buffer.toString("ascii",0,4)!=="RIFF"||buffer.toString("ascii",8,12)!=="WAVE")return 0;
@@ -90,6 +91,50 @@ export function wavDurationSeconds(buffer){
  return 0;
 }
 
+const MP3_LAYER_III=1;
+const MP3_VERSION_1=3;
+const MP3_TRAILING_SLACK=512;
+const MP3_BITRATES={
+ 1:[0,32,40,48,56,64,80,96,112,128,160,192,224,256,320,0],
+ 2:[0,8,16,24,32,40,48,56,64,80,96,112,128,144,160,0]
+};
+const MP3_SAMPLE_RATES={3:[44100,48000,32000],2:[22050,24000,16000],0:[11025,12000,8000]};
+
+// Nhánh TTS Google trả MP3 kèm độ dài chỉ ước lượng theo số từ. Cộng dồn độ dài từng frame
+// cho ra độ dài thật, đúng cho cả CBR lẫn VBR, và không có rủi ro treo như getVideoMetadata.
+export function mp3DurationSeconds(buffer){
+ let offset=0;
+ if(buffer.length>10&&buffer.toString("ascii",0,3)==="ID3"){
+  const tagSize=(buffer[6]<<21)|(buffer[7]<<14)|(buffer[8]<<7)|buffer[9];
+  offset=10+tagSize+((buffer[5]&0x10)?10:0);
+ }
+ let duration=0;
+ let frames=0;
+ while(offset+4<=buffer.length){
+  if(buffer[offset]!==0xff||(buffer[offset+1]&0xe0)!==0xe0)break;
+  const version=(buffer[offset+1]>>3)&0x03;
+  const layer=(buffer[offset+1]>>1)&0x03;
+  if(version===1||layer!==MP3_LAYER_III)break;
+  const bitrate=MP3_BITRATES[version===MP3_VERSION_1?1:2][(buffer[offset+2]>>4)&0x0f]*1000;
+  const sampleRate=MP3_SAMPLE_RATES[version][(buffer[offset+2]>>2)&0x03];
+  if(!bitrate||!sampleRate)break;
+  const frameLength=Math.floor((version===MP3_VERSION_1?144:72)*bitrate/sampleRate)+((buffer[offset+2]>>1)&0x01);
+  if(frameLength<4)break;
+  duration+=(version===MP3_VERSION_1?1152:576)/sampleRate;
+  frames+=1;
+  offset+=frameLength;
+ }
+ // Chỉ tin kết quả khi đã duyệt gần hết file. Dừng giữa chừng nghĩa là gặp dữ liệu không
+ // đọc được, và con số thu được sẽ ngắn hơn thật — đúng hướng gây cắt mất tiếng.
+ return frames>0&&buffer.length-offset<=MP3_TRAILING_SLACK?duration:0;
+}
+
+function measureAudioDuration(buffer,extension){
+ if(extension==="wav")return wavDurationSeconds(buffer);
+ if(extension==="mp3")return mp3DurationSeconds(buffer);
+ return 0;
+}
+
 async function materializeTtsTrack(jobId,index,dataUrl){
  const {buffer,extension}=decodeAudioDataUrl(dataUrl);
  const filename=`tts-${jobId}-${index}.${extension}`;
@@ -97,7 +142,7 @@ async function materializeTtsTrack(jobId,index,dataUrl){
  await fs.writeFile(filePath,buffer,{flag:"wx"});
  return{
   filePath,
-  measuredDuration:wavDurationSeconds(buffer),
+  measuredDuration:measureAudioDuration(buffer,extension),
   url:`${config.publicBaseUrl.replace(/\/$/u,"")}/video-analysis-assets/${encodeURIComponent(filename)}`
  };
 }
@@ -183,6 +228,17 @@ export function planVoiceTracks({segments,clips,ttsSpeed}){
  return tracks;
 }
 
+// calculateMetadata chốt độ dài composition từ con số này, nên nó cũng là một điểm cắt:
+// clip nào kết thúc sau mốc đó vẫn mất phần cuối câu dù <Sequence> không còn cắt nữa.
+// Định dạng nào đo được thì mốc là chính xác; định dạng lạ chỉ có độ dài ước lượng nên
+// phải chừa biên an toàn thay vì tin vào con số đoán.
+export function voiceTracksDuration(tracks){
+ return tracks.reduce((longest,track)=>Math.max(
+  longest,
+  Number(track.start||0)+Number(track.duration||0)*(track.measured===false?UNMEASURED_DURATION_HEADROOM:1)
+ ),0);
+}
+
 async function buildVoiceTracks({jobId,settings,segments,mediaScope,temporaryVoicePaths}){
  const clips=await mapWithLimit(segments,TTS_CONCURRENCY,(segment,index)=>
   synthesizeSegmentVoice({jobId,settings,segment,index,temporaryVoicePaths}));
@@ -213,7 +269,7 @@ async function work(job){
     temporaryVoicePaths
    });
    if(!voiceTracks.length)throw new Error("TTS đã bật nhưng script không có nội dung giọng đọc.");
-   voiceDuration=voiceTracks.reduce((longest,track)=>Math.max(longest,track.start+track.duration),0);
+   voiceDuration=voiceTracksDuration(voiceTracks);
   }
 
   const props={

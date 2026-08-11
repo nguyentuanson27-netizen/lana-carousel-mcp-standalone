@@ -313,3 +313,62 @@ test("returns results in the original order when nothing fails",async()=>{
  });
  assert.deepEqual(results,["item-30","item-0","item-10"]);
 });
+
+// Frame Layer III hợp lệ: MPEG1 (1152 mẫu) hoặc MPEG2 (576 mẫu), thân frame để trống.
+function mp3Fixture({frames=10,mpegVersion=1,bitrateKbps=64,sampleRate=24000,id3=false,trailingJunk=0}={}){
+ const version=mpegVersion===1?0b11:0b10;
+ const rateIndex=(mpegVersion===1?[44100,48000,32000]:[22050,24000,16000]).indexOf(sampleRate);
+ const bitrateIndex=(mpegVersion===1
+  ?[0,32,40,48,56,64,80,96,112,128,160,192,224,256,320]
+  :[0,8,16,24,32,40,48,56,64,80,96,112,128,144,160]).indexOf(bitrateKbps);
+ const frameLength=Math.floor((mpegVersion===1?144:72)*bitrateKbps*1000/sampleRate);
+ const parts=[];
+ if(id3){
+  const tag=Buffer.alloc(10+64);
+  tag.write("ID3",0);
+  tag[3]=3;
+  tag.writeUInt32BE(64,6);
+  parts.push(tag);
+ }
+ for(let index=0;index<frames;index+=1){
+  const frame=Buffer.alloc(frameLength);
+  frame[0]=0xff;
+  frame[1]=0xe0|(version<<3)|(0b01<<1);
+  frame[2]=(bitrateIndex<<4)|(rateIndex<<2);
+  frame[3]=0;
+  parts.push(frame);
+ }
+ if(trailingJunk)parts.push(Buffer.alloc(trailingJunk,0x55));
+ return Buffer.concat(parts);
+}
+
+test("measures a real mp3 by walking its frames rather than trusting the word-count estimate",()=>{
+ const mpeg1=jobs.mp3DurationSeconds(mp3Fixture({frames:40,mpegVersion:1,bitrateKbps:128,sampleRate:44100}));
+ assert.equal(Number(mpeg1.toFixed(4)),Number((40*1152/44100).toFixed(4)));
+ const mpeg2=jobs.mp3DurationSeconds(mp3Fixture({frames:50,mpegVersion:2,bitrateKbps:64,sampleRate:24000}));
+ assert.equal(Number(mpeg2.toFixed(4)),Number((50*576/24000).toFixed(4)));
+});
+
+test("skips an id3 tag and tolerates a short trailer when measuring an mp3",()=>{
+ const expected=Number((20*576/24000).toFixed(4));
+ assert.equal(Number(jobs.mp3DurationSeconds(mp3Fixture({frames:20,mpegVersion:2,id3:true})).toFixed(4)),expected);
+ // 128 byte cuối là thẻ ID3v1, vẫn nằm trong biên bỏ qua cho phép.
+ assert.equal(Number(jobs.mp3DurationSeconds(mp3Fixture({frames:20,mpegVersion:2,trailingJunk:128})).toFixed(4)),expected);
+});
+
+test("refuses to report a duration it could not read to the end of the file",()=>{
+ // Dừng giữa chừng sẽ ra con số ngắn hơn thật và gây cắt tiếng, nên phải trả 0.
+ assert.equal(jobs.mp3DurationSeconds(mp3Fixture({frames:5,mpegVersion:2,trailingJunk:4096})),0);
+ assert.equal(jobs.mp3DurationSeconds(Buffer.from("khong phai mp3 gi ca, chi la text thuan")),0);
+ assert.equal(jobs.mp3DurationSeconds(Buffer.alloc(0)),0);
+});
+
+test("sizes the composition from measured clips and leaves headroom for estimated ones",()=>{
+ assert.equal(jobs.voiceTracksDuration([
+  {start:0,duration:1.5,measured:true},
+  {start:6,duration:2,measured:true}
+ ]),8);
+ // Độ dài ước lượng không đáng tin, phải chừa biên để không cắt mất phần cuối câu.
+ assert.equal(jobs.voiceTracksDuration([{start:6,duration:2,measured:false}]),10);
+ assert.equal(jobs.voiceTracksDuration([]),0);
+});

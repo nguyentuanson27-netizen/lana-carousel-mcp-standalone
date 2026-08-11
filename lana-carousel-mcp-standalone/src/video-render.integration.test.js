@@ -11,6 +11,11 @@ import { renderMedia, selectComposition } from "@remotion/renderer";
 
 const enabled = process.env.RUN_REMOTION_INTEGRATION === "1";
 
+// Dùng đúng helper của production để tính voiceDuration, nhưng module đó mở SQLite khi nạp
+// nên phải trỏ database sang thư mục tạm trước.
+process.env.DATABASE_PATH ??= path.join(await fs.mkdtemp(path.join(os.tmpdir(), "lana-render-test-")), "render.sqlite");
+const { voiceTracksDuration } = await import("./video-analysis-jobs.js");
+
 test("renders a real landscape Remotion MP4 with animated rich text near the edge", { skip: !enabled }, async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "lana-remotion-"));
   const output = path.join(directory, "render.mp4");
@@ -106,16 +111,17 @@ async function withMediaServer(files, run) {
   }
 }
 
-// Nhánh TTS trả MP3 chỉ kèm độ dài ước lượng theo số từ. Nếu độ dài đó được dùng làm
-// điểm cắt của <Sequence> thì clip nào đọc dài hơn ước lượng sẽ mất phần cuối câu.
-test("a voice clip with an estimated duration plays to its real end instead of being cut", { skip: !enabled }, async () => {
+// Composition dài bao nhiêu là do voiceDuration quyết định, nên nó cũng là một điểm cắt:
+// nếu source và segment đều ngắn hơn tiếng đọc thật thì phần cuối câu vẫn mất, dù <Sequence>
+// không còn cắt nữa. Dựng đúng props như production: voiceDuration lấy từ voiceTracksDuration().
+test("a voice clip outlasting the source and segments still keeps the end of the sentence", { skip: !enabled }, async () => {
   const entryPoint = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../video/index.jsx");
   const serveUrl = await bundle({ entryPoint });
   const browserExecutable = process.env.REMOTION_BROWSER_EXECUTABLE || undefined;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920"><rect width="1080" height="1920" fill="#222"/></svg>`;
   const sourceProps = {
     scenes: [{
-      id: "backdrop", enabled: true, duration: 3, motion: "none", transition: "cut", subtitles: false,
+      id: "backdrop", enabled: true, duration: 1, motion: "none", transition: "cut", subtitles: false,
       textLayers: [], imageUrl: `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`,
       focusX: 50, focusY: 50
     }],
@@ -123,25 +129,25 @@ test("a voice clip with an estimated duration plays to its real end instead of b
   };
   const sourceComposition = await selectComposition({ serveUrl, id: "LanaCarouselVideo", inputProps: sourceProps, browserExecutable });
 
-  await withMediaServer({ "voice.wav": toneWav({ seconds: 1 }) }, async ({ directory, origin }) => {
+  await withMediaServer({ "voice.wav": toneWav({ seconds: 2.5 }) }, async ({ directory, origin }) => {
     const sourceVideo = path.join(directory, "source.mp4");
     await renderMedia({
       composition: sourceComposition, serveUrl, codec: "h264", outputLocation: sourceVideo,
       inputProps: sourceProps, concurrency: 1, crf: 30, browserExecutable
     });
 
-    // Clip thật dài 1s nhưng chỉ khai báo 0.3s, đúng kiểu độ dài ước lượng của nhánh Google.
-    const renderVoice = async measured => {
+    const renderVoice = async track => {
       const props = {
         sourceVideoUrl: `${origin}/source.mp4`,
-        sourceDuration: 3,
-        segments: [{ id: "s1", start: 0, end: 3, subtitleText: "x", voiceOverText: "x", enabled: true }],
+        // Cả video nguồn lẫn segment đều kết thúc rất sớm so với tiếng đọc thật 2.5s.
+        sourceDuration: 1,
+        segments: [{ id: "s1", start: 0, end: 1, subtitleText: "x", voiceOverText: "x", enabled: true }],
         settings: { originalAudioVolume: 0, ttsVolume: 1, subtitleEnabled: false },
-        voiceTracks: [{ id: "s1", url: `${origin}/voice.wav`, start: 0, duration: .3, playbackRate: 1, measured }],
-        voiceDuration: 3
+        voiceTracks: [track],
+        voiceDuration: voiceTracksDuration([track])
       };
       const composition = await selectComposition({ serveUrl, id: "LanaAnalyzedVideo", inputProps: props, browserExecutable });
-      const output = path.join(directory, `voice-${measured}.wav`);
+      const output = path.join(directory, `voice-${track.measured}.wav`);
       await renderMedia({
         composition, serveUrl, codec: "wav", outputLocation: output, inputProps: props,
         concurrency: 1, browserExecutable, chromiumOptions: { disableWebSecurity: true }
@@ -149,9 +155,12 @@ test("a voice clip with an estimated duration plays to its real end instead of b
       return lastAudibleSecond(await fs.readFile(output));
     };
 
-    const estimated = await renderVoice(false);
-    assert.ok(estimated > .9, `Clip ước lượng phải đọc hết 1s, tiếng dừng ở ${estimated}s`);
-    const measured = await renderVoice(true);
-    assert.ok(measured < .35, `Clip đã đo được phép cắt đúng 0.3s, tiếng dừng ở ${measured}s`);
+    // Định dạng đo được: duration là số đo thật nên composition tự dài ra đủ chứa cả clip.
+    const measured = await renderVoice({ id: "s1", url: `${origin}/voice.wav`, start: 0, duration: 2.5, playbackRate: 1, measured: true });
+    assert.ok(measured > 2.4, `Clip đo được phải đọc hết 2.5s, tiếng dừng ở ${measured}s`);
+
+    // Định dạng lạ chỉ có độ dài ước lượng: biên an toàn phải giữ được phần cuối câu.
+    const estimated = await renderVoice({ id: "s1", url: `${origin}/voice.wav`, start: 0, duration: 1.3, playbackRate: 1, measured: false });
+    assert.ok(estimated > 2.4, `Clip ước lượng phải đọc hết 2.5s, tiếng dừng ở ${estimated}s`);
   });
 });
