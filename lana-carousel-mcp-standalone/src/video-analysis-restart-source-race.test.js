@@ -168,3 +168,98 @@ test("render creation is rejected while a source replacement lock is pending",as
  await replacement;
  await service.deleteVideoAnalysisProject(project.id);
 });
+
+const voiceSegments=[
+ {id:"s1",start:0,end:1},
+ {id:"s2",start:2.5,end:3.5},
+ {id:"s3",start:6,end:8}
+];
+
+test("places every voice clip at its own segment start instead of stacking them back to back",()=>{
+ const tracks=jobs.planVoiceTracks({
+  segments:voiceSegments,
+  clips:[
+   {url:"a.wav",rawDuration:.8},
+   {url:"b.wav",rawDuration:.9},
+   {url:"c.wav",rawDuration:1.2}
+  ],
+  ttsSpeed:1
+ });
+ assert.deepEqual(tracks.map(track=>track.start),[0,2.5,6]);
+ assert.deepEqual(tracks.map(track=>track.id),["s1","s2","s3"]);
+ assert.deepEqual(tracks.map(track=>track.playbackRate),[1,1,1]);
+ assert.deepEqual(tracks.map(track=>Number(track.duration.toFixed(3))),[.8,.9,1.2]);
+});
+
+test("speeds a clip up only far enough to stop it running into the next segment",()=>{
+ const [tooLong,fits]=jobs.planVoiceTracks({
+  segments:[{id:"s1",start:0,end:2},{id:"s2",start:2,end:4}],
+  clips:[{url:"a.wav",rawDuration:2.4},{url:"b.wav",rawDuration:1}],
+  ttsSpeed:1
+ });
+ assert.equal(Number(tooLong.playbackRate.toFixed(3)),1.2);
+ assert.equal(Number(tooLong.duration.toFixed(3)),2);
+ assert.equal(fits.playbackRate,1);
+});
+
+test("caps the catch-up rate so an over-long clip overlaps rather than losing words",()=>{
+ const [track]=jobs.planVoiceTracks({
+  segments:[{id:"s1",start:0,end:1},{id:"s2",start:1,end:2}],
+  clips:[{url:"a.wav",rawDuration:10},null],
+  ttsSpeed:1
+ });
+ assert.equal(track.playbackRate,1.25);
+ assert.equal(track.duration,8);
+});
+
+test("keeps the reading speed as the baseline playback rate and skips silent segments",()=>{
+ const tracks=jobs.planVoiceTracks({
+  segments:voiceSegments,
+  clips:[{url:"a.wav",rawDuration:1.2},null,{url:"c.wav",rawDuration:1}],
+  ttsSpeed:1.2
+ });
+ assert.deepEqual(tracks.map(track=>track.id),["s1","s3"]);
+ assert.deepEqual(tracks.map(track=>track.playbackRate),[1.2,1.2]);
+ assert.equal(Number(tracks[0].duration.toFixed(3)),1);
+});
+
+function wavFixture({seconds=1,sampleRate=24000,extraChunk=false}={}){
+ const data=Buffer.alloc(Math.round(sampleRate*seconds)*2);
+ const chunks=[Buffer.from("WAVE","ascii")];
+ const fmt=Buffer.alloc(24);
+ fmt.write("fmt ",0);
+ fmt.writeUInt32LE(16,4);
+ fmt.writeUInt16LE(1,8);
+ fmt.writeUInt16LE(1,10);
+ fmt.writeUInt32LE(sampleRate,12);
+ fmt.writeUInt32LE(sampleRate*2,16);
+ fmt.writeUInt16LE(2,20);
+ fmt.writeUInt16LE(16,22);
+ chunks.push(fmt);
+ if(extraChunk){
+  const list=Buffer.alloc(14);
+  list.write("LIST",0);
+  list.writeUInt32LE(6,4);
+  chunks.push(list.subarray(0,14));
+ }
+ const header=Buffer.alloc(8);
+ header.write("data",0);
+ header.writeUInt32LE(data.length,4);
+ chunks.push(header,data);
+ const body=Buffer.concat(chunks);
+ const riff=Buffer.alloc(8);
+ riff.write("RIFF",0);
+ riff.writeUInt32LE(body.length,4);
+ return Buffer.concat([riff,body]);
+}
+
+test("measures the real length of a generated wav clip",()=>{
+ assert.equal(jobs.wavDurationSeconds(wavFixture({seconds:2.5})),2.5);
+ assert.equal(jobs.wavDurationSeconds(wavFixture({seconds:1.25,sampleRate:48000})),1.25);
+ assert.equal(jobs.wavDurationSeconds(wavFixture({seconds:.5,extraChunk:true})),.5);
+});
+
+test("reports no duration for audio that is not a readable wav",()=>{
+ assert.equal(jobs.wavDurationSeconds(Buffer.alloc(0)),0);
+ assert.equal(jobs.wavDurationSeconds(Buffer.from("ID3 this is an mp3 payload padded out to be long enough")),0);
+});
