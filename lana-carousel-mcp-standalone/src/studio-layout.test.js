@@ -79,11 +79,14 @@ test("Carousel workflow moves out of the sidebar into a top horizontal navigatio
 });
 
 test("edit preview is sticky, reduced to viewport-safe height, and wheel navigation loops edit slides", async () => {
-  const [css, source] = await Promise.all([read("stitch-layout.css"), read("stitch-ui.js")]);
+  const [css, source] = await Promise.all([read("stitch-layout.css"), read("studio-layout.js")]);
   assert.match(css, /#edit\s*\{[^}]*--edit-preview-height:/su);
   assert.match(css, /#edit \.preview-column\s*\{[^}]*position:sticky/su);
   assert.match(css, /#edit \.preview-column \.canvas\s*\{[^}]*max-height:var\(--edit-preview-height\)/su);
   assert.match(css, /#edit \.preview-column \.canvas\s*\{[^}]*460px/su);
-  assert.match(source, /\['images','edit'\]\.includes\(view\)/u);
-  assert.match(source, /view === 'edit'[\s\S]*stepSlide\('edit', direction\)/u);
+  assert.match(source, /installEditWheelNavigation/u);
+  assert.match(source, /#edit \.preview-column/u);
+  assert.match(source, /event\.ctrlKey \|\| event\.metaKey/u);
+  assert.match(source, /\(currentIndex \+ direction \+ buttons\.length\) % buttons\.length/u);
+  assert.match(source, /buttons\[nextIndex\]\.click\(\)/u);
 });
