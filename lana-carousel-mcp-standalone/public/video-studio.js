@@ -34,6 +34,7 @@ const settings=()=>({
   ttsProvider:$("#ttsProvider").value,
   ttsSpeed:+$("#ttsSpeed").value,
   geminiSpeaker1Voice:$("#voice").value,
+  ttsVoice:$("#googleVoice").value,
   originalAudioVolume:+$("#originalVolume").value,
   ttsVolume:+$("#ttsVolume").value,
   subtitleEnabled:$("#subtitleEnabled").checked,
@@ -90,6 +91,37 @@ function syncWordBudgets(){
 function setControl(id,value,fallback){
   const element=$("#"+id);
   element.value=value??fallback;
+  // Giá trị không nằm trong danh sách lựa chọn làm select rỗng đi. Rơi về mặc định để lần lưu
+  // sau không gửi lên chuỗi rỗng.
+  if(element.value==="")element.value=fallback;
+}
+
+const GOOGLE_DEFAULT_VOICE="vi-VN-Neural2-D";
+const usingGoogleVoice=()=>$("#ttsProvider").value==="google";
+const pickedVoice=()=>usingGoogleVoice()?$("#googleVoice").value:$("#voice").value;
+
+// Hai nhà cung cấp đặt tên giọng theo hai hệ khác nhau và không đọc được tên của nhau. Chỉ hiện
+// bộ chọn của nhà cung cấp đang bật, để không ai chọn được "Google + Kore" rồi nghe ra một giọng
+// khác hẳn lúc nghe thử và lúc render.
+function syncVoiceFields(){
+  const google=usingGoogleVoice();
+  $("#voiceField").hidden=google;
+  $("#voice").disabled=google;
+  $("#googleVoiceField").hidden=!google;
+  $("#googleVoice").disabled=!google;
+  $("#voiceNote").textContent=google
+    ?`Google TTS đọc bằng ${$("#googleVoice").value}. Giọng Vertex (Kore, Puck…) không dùng được ở đây.`
+    :`Vertex Gemini đọc bằng ${$("#voice").value}.`;
+}
+
+// Brief do AI sinh có thể đã lưu một giọng ngoài danh sách. Giữ lại làm một lựa chọn để lần lưu
+// sau không âm thầm đổi giọng của dự án.
+function fillGoogleVoice(saved){
+  const select=$("#googleVoice");
+  if(saved&&![...select.options].some(option=>option.value===saved)){
+    select.append(new Option(saved,saved));
+  }
+  setControl("googleVoice",saved,GOOGLE_DEFAULT_VOICE);
 }
 
 function syncRangeOutputs(){
@@ -110,6 +142,7 @@ function fill(){
   setControl("ttsProvider",saved.ttsProvider,"vertex");
   setControl("ttsSpeed",saved.ttsSpeed,1);
   setControl("voice",saved.geminiSpeaker1Voice,"Kore");
+  fillGoogleVoice(saved.ttsVoice);
   setControl("originalVolume",saved.originalAudioVolume,.25);
   setControl("ttsVolume",saved.ttsVolume,1);
   setControl("subtitleStyle",saved.subtitleStyle,"karaoke");
@@ -123,6 +156,7 @@ function fill(){
   $("#segments").innerHTML="";
   (project.script.segments||[]).forEach(addSegment);
   syncRangeOutputs();
+  syncVoiceFields();
   syncWordBudgets();
   renderPreview();
 }
@@ -293,13 +327,15 @@ $("#voiceSample").onclick=async()=>{
     const response=await api(`/api/video-analysis/projects/${projectId}/voice-sample`,{
       method:"POST",
       headers:{"content-type":"application/json"},
-      body:JSON.stringify({ttsProvider:$("#ttsProvider").value,voice:$("#voice").value})
+      body:JSON.stringify({ttsProvider:$("#ttsProvider").value,voice:pickedVoice()})
     });
     sampleAudio?.pause();
     sampleAudio=new Audio(response.url);
     sampleAudio.volume=clamp(+$("#ttsVolume").value,0,1)||1;
+    // Server mới là nơi quyết định giọng nào được đọc, nên nói lại đúng tên nó trả về.
+    $("#voiceNote").textContent=`Đang đọc thử bằng ${response.voice}.`;
     await sampleAudio.play();
-  }catch(error){alert(error.message)}
+  }catch(error){syncVoiceFields();alert(error.message)}
   finally{button.disabled=false}
 };
 
@@ -360,8 +396,8 @@ for(const event of ["timeupdate","play","pause","seeking","seeked","ratechange"]
 $("#segments").addEventListener("input",event=>{
   if(voicePreviewOn()&&event.target.matches(".voice,.start,.end"))stopVoicePreview();
 });
-for(const id of ["#voice","#ttsProvider","#ttsSpeed"]){
-  $(id).addEventListener("change",()=>{if(voicePreviewOn())stopVoicePreview()});
+for(const id of ["#voice","#googleVoice","#ttsProvider","#ttsSpeed"]){
+  $(id).addEventListener("change",()=>{syncVoiceFields();if(voicePreviewOn())stopVoicePreview()});
 }
 
 $("#newBtn").onclick=()=>{location.href="/video-studio"};

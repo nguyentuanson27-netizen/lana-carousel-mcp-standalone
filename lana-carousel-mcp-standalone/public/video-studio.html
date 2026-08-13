@@ -159,6 +159,8 @@
     .inline-actions .muted{margin-left:auto}
     .voice-row{display:flex;gap:8px;align-items:end}
     .voice-row label{flex:1;min-width:0}
+    .voice-row label[hidden]{display:none}
+    .voice-note{margin:-2px 0 0;font-size:12px;color:var(--muted)}
     .segments-empty{padding:20px;border:1px dashed var(--line);border-radius:var(--radius-sm);color:var(--muted);text-align:center;font-size:13px}
 
     /* Versions */
@@ -306,11 +308,26 @@
                 <select id="ttsProvider"><option value="vertex">Vertex Gemini</option><option value="google">Google TTS</option></select>
               </label>
               <div class="voice-row">
-                <label>Giọng
+                <label id="voiceField">Giọng Vertex
                   <select id="voice"><option>Kore</option><option>Puck</option><option>Aoede</option><option>Charon</option><option>Fenrir</option></select>
+                </label>
+                <label id="googleVoiceField" hidden>Giọng Google
+                  <select id="googleVoice">
+                    <option value="vi-VN-Neural2-A">vi-VN-Neural2-A</option>
+                    <option value="vi-VN-Neural2-D">vi-VN-Neural2-D</option>
+                    <option value="vi-VN-Wavenet-A">vi-VN-Wavenet-A</option>
+                    <option value="vi-VN-Wavenet-B">vi-VN-Wavenet-B</option>
+                    <option value="vi-VN-Wavenet-C">vi-VN-Wavenet-C</option>
+                    <option value="vi-VN-Wavenet-D">vi-VN-Wavenet-D</option>
+                    <option value="vi-VN-Standard-A">vi-VN-Standard-A</option>
+                    <option value="vi-VN-Standard-B">vi-VN-Standard-B</option>
+                    <option value="vi-VN-Standard-C">vi-VN-Standard-C</option>
+                    <option value="vi-VN-Standard-D">vi-VN-Standard-D</option>
+                  </select>
                 </label>
                 <button class="btn secondary small" id="voiceSample" type="button">▶ Nghe thử</button>
               </div>
+              <p class="voice-note full" id="voiceNote"></p>
               <label class="full">Tốc độ đọc
                 <div class="range-control">
                   <select id="ttsSpeed"><option value="0.8">Chậm (x0.8)</option><option value="1">Bình thường (x1)</option><option value="1.2">Nhanh (x1.2)</option><option value="1.5">Rất nhanh (x1.5)</option><option value="1.8">Siêu nhanh (x1.8)</option><option value="2">Tối đa (x2)</option></select>

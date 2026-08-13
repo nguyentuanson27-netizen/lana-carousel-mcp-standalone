@@ -29,7 +29,7 @@ import {
 } from "./video-analysis-service.js";
 import {buildVoiceTracks,getVideoAnalysisFile,getVideoAnalysisJob,startVideoAnalysisJob} from "./video-analysis-jobs.js";
 import {synthesizeCachedSpeech} from "./video-tts-cache.js";
-import {sampledVoiceName,voiceSampleSettings} from "./video-tts.js";
+import {allowedSampleVoices,sampledVoiceName,voiceSampleSettings} from "./video-tts.js";
 import {buildSubtitleFile} from "./video-subtitles.js";
 import {createSignedMediaUrl} from "./media-access.js";
 import {probeVideoDurationSeconds} from "./video-source-importer.js";
@@ -224,6 +224,12 @@ videoAnalysisRouter.post("/projects/:id/voice-sample",safe(async(req,res)=>{
   throw new AppError("INVALID_VOICE_SAMPLE_REQUEST",`Yêu cầu nghe thử không hợp lệ ở "${field}": ${issue?.message||"dữ liệu sai"}.`,422);
  }
  const project=getVideoAnalysisProject(req.params.id);
+ // Giong cua nha cung cap kia se bi bo qua khi tong hop, nen tu choi thang tai day thay vi im
+ // lang doc ra mot giong khac voi thu nguoi dung vua chon.
+ const allowed=allowedSampleVoices(project.settings,parsed.data.ttsProvider);
+ if(!allowed.includes(parsed.data.voice)){
+  throw new AppError("INVALID_VOICE_SAMPLE_REQUEST",`Yêu cầu nghe thử không hợp lệ ở "voice": ${parsed.data.ttsProvider} chỉ đọc được ${allowed.join(", ")}.`,422);
+ }
  const settings=voiceSampleSettings(project.settings,parsed.data);
  const clip=await synthesizeCachedSpeech({text:VOICE_SAMPLE_TEXT,settings});
  if(!clip)throw new AppError("VOICE_SAMPLE_FAILED","Không tạo được giọng đọc mẫu.",502);
@@ -231,8 +237,7 @@ videoAnalysisRouter.post("/projects/:id/voice-sample",safe(async(req,res)=>{
  res.json({
   url:createSignedMediaUrl(clip.url,scope),
   text:VOICE_SAMPLE_TEXT,
-  // Nhánh Google bỏ qua bộ chọn giọng, nên trả về giọng thật sự được đọc để giao diện
-  // không nói một đằng phát một nẻo.
+  // Trả về giọng thật sự được đọc để giao diện không nói một đằng phát một nẻo.
   voice:sampledVoiceName(settings),
   cached:clip.cached
  });

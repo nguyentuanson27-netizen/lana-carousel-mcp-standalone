@@ -85,16 +85,34 @@ async function generateGoogle(project,settings){
 export const GOOGLE_DEFAULT_VOICE="vi-VN-Neural2-D";
 export const isVertexProvider=provider=>["gemini","vertex"].includes(provider);
 
-// Bo chon giong trong studio liet ke giong cua Vertex (Kore, Puck...), khong phai voice id day
-// du cua Google Cloud TTS (vi-VN-Neural2-D). Nhet ten Vertex vao ttsVoice se lam loi goi Google
-// hong; va du co anh xa duoc ten thi van nghe ra giong khac luc render, vi render doc ttsVoice
-// tu settings cua project chu khong doc bo chon nay. Nen nhanh Google nghe thu dung giong ma
-// render se dung, con bo chon chi ap cho nhanh Vertex.
+// Hai nha cung cap dat ten giong theo hai he khac han nhau: Vertex nhan ten ngan (Kore, Puck),
+// Google Cloud TTS nhan voice id day du (vi-VN-Neural2-D). Danh sach nay la nguon duy nhat cho
+// ca bo chon trong studio lan phan kiem o route, de giao dien khong bao gio moi nguoi dung chon
+// mot giong ma nha cung cap dang bat khong doc duoc.
+export const VERTEX_VOICES=["Kore","Puck","Aoede","Charon","Fenrir"];
+export const GOOGLE_VOICES=[
+ "vi-VN-Neural2-A","vi-VN-Neural2-D",
+ "vi-VN-Wavenet-A","vi-VN-Wavenet-B","vi-VN-Wavenet-C","vi-VN-Wavenet-D",
+ "vi-VN-Standard-A","vi-VN-Standard-B","vi-VN-Standard-C","vi-VN-Standard-D"
+];
+
+// Brief do AI sinh ra co quyen ghi ttsVoice, nen mot du an co the dang giu giong nam ngoai danh
+// sach tren. Giong do van phai nghe thu duoc, neu khong studio se tu choi doc dung thu ma ban
+// render se doc.
+export function allowedSampleVoices(projectSettings={},provider){
+ if(isVertexProvider(provider))return VERTEX_VOICES;
+ const persisted=projectSettings.ttsVoice;
+ return persisted&&!GOOGLE_VOICES.includes(persisted)?[...GOOGLE_VOICES,persisted]:GOOGLE_VOICES;
+}
+
+// Nghe thu phai doc dung giong ma render se doc: nhanh Vertex lay geminiSpeaker1Voice, nhanh
+// Google lay ttsVoice. Gia tri gui len chi duoc dung khi no thuoc he ten cua nha cung cap dang
+// bat; ten cua he kia bi bo qua de roi ve dung giong cua render thay vi lam hong loi goi.
 export function voiceSampleSettings(projectSettings={},{ttsProvider,voice}={}){
  const base={...projectSettings,ttsProvider,geminiMultiSpeaker:false};
- return isVertexProvider(ttsProvider)
-  ?{...base,geminiSpeaker1Voice:voice}
-  :{...base,ttsVoice:projectSettings.ttsVoice||GOOGLE_DEFAULT_VOICE};
+ if(isVertexProvider(ttsProvider))return{...base,geminiSpeaker1Voice:voice};
+ const picked=allowedSampleVoices(projectSettings,ttsProvider).includes(voice)?voice:"";
+ return{...base,ttsVoice:picked||projectSettings.ttsVoice||GOOGLE_DEFAULT_VOICE};
 }
 
 export const sampledVoiceName=settings=>isVertexProvider(settings.ttsProvider)

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import test from "node:test";
 import { chromium } from "playwright";
+import { GOOGLE_VOICES, VERTEX_VOICES } from "./video-tts.js";
 
 // Dùng thẳng trang thật thay vì dựng lại một bản rút gọn: studio gắn handler cho nhiều nút ngay
 // lúc nạp, nên một trang giả thiếu phần tử sẽ làm cả script chết mà test lại không thấy.
@@ -35,7 +36,7 @@ const project = {
   currentVersion: 1
 };
 
-async function withPage(run) {
+async function withPage(run, served = project) {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   await page.route("http://lana.local/**", async route => {
@@ -51,7 +52,7 @@ async function withPage(run) {
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ versions: [] }) });
     }
     if (url.pathname.startsWith("/api/video-analysis/projects/")) {
-      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(project) });
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(served) });
     }
     return route.fulfill({ status: 404, body: "not found" });
   });
@@ -89,6 +90,59 @@ test("moving the original volume slider retunes the preview without a reload", a
     await page.locator("#originalVolume").dispatchEvent("input");
     assert.deepEqual(await previewAudio(page), { volume: 0, muted: true });
   });
+});
+
+const voiceFields = page => page.evaluate(() => ({
+  vertexShown: !document.querySelector("#voiceField").hidden,
+  vertexDisabled: document.querySelector("#voice").disabled,
+  googleShown: !document.querySelector("#googleVoiceField").hidden,
+  googleDisabled: document.querySelector("#googleVoice").disabled,
+  note: document.querySelector("#voiceNote").textContent
+}));
+
+const options = (page, id) => page.locator(id).evaluate(select => [...select.options].map(option => option.value));
+
+// Hai nhà cung cấp không đọc được tên giọng của nhau, nên bộ chọn phải đổi theo nhà cung cấp:
+// để nguyên bộ chọn Vertex khi đang ở Google là mời người dùng chọn một thứ không hề được dùng.
+test("swaps the voice picker to the provider that will actually read", async () => {
+  await withPage(async page => {
+    assert.deepEqual(await voiceFields(page), {
+      vertexShown: true,
+      vertexDisabled: false,
+      googleShown: false,
+      googleDisabled: true,
+      note: "Vertex Gemini đọc bằng Kore."
+    });
+
+    await page.locator("#ttsProvider").selectOption("google");
+    assert.deepEqual(await voiceFields(page), {
+      vertexShown: false,
+      vertexDisabled: true,
+      googleShown: true,
+      googleDisabled: false,
+      note: "Google TTS đọc bằng vi-VN-Neural2-D. Giọng Vertex (Kore, Puck…) không dùng được ở đây."
+    });
+
+    await page.locator("#googleVoice").selectOption("vi-VN-Wavenet-C");
+    assert.match((await voiceFields(page)).note, /vi-VN-Wavenet-C/u);
+  });
+});
+
+// Bộ chọn phải liệt kê đúng những giọng route chấp nhận, nếu không studio sẽ mời chọn một giọng
+// mà chính server từ chối nghe thử.
+test("offers exactly the voices the server accepts for each provider", async () => {
+  await withPage(async page => {
+    assert.deepEqual(await options(page, "#voice"), VERTEX_VOICES);
+    assert.deepEqual(await options(page, "#googleVoice"), GOOGLE_VOICES);
+  });
+});
+
+test("keeps a saved Google voice that the picker does not list", async () => {
+  const saved = { ...project, settings: { ...project.settings, ttsProvider: "google", ttsVoice: "vi-VN-Chirp3-HD-Aoede" } };
+  await withPage(async page => {
+    assert.equal(await page.locator("#googleVoice").inputValue(), "vi-VN-Chirp3-HD-Aoede");
+    assert.match((await voiceFields(page)).note, /vi-VN-Chirp3-HD-Aoede/u);
+  }, saved);
 });
 
 const budgets = page => page.locator(".segment .budget").evaluateAll(nodes => nodes.map(node => ({

@@ -10,7 +10,7 @@ process.env.DATABASE_PATH = path.join(tempRoot, "voice-sample.sqlite");
 process.env.ASSET_DIRECTORY = path.join(tempRoot, "assets");
 process.env.PUBLIC_BASE_URL = "https://voice-sample.test";
 
-const { GOOGLE_DEFAULT_VOICE, voiceSampleSettings, sampledVoiceName } = await import("./video-tts.js");
+const { GOOGLE_DEFAULT_VOICE, GOOGLE_VOICES, allowedSampleVoices, voiceSampleSettings, sampledVoiceName } = await import("./video-tts.js");
 const { videoAnalysisRouter } = await import("./video-analysis-routes.js");
 const service = await import("./video-analysis-service.js");
 
@@ -52,6 +52,36 @@ test("rejects a malformed voice sample request with 4xx instead of a server erro
 test("names the offending field so the studio can say what went wrong", async () => {
  const { json } = await postSample({ ttsProvider: "vertex" });
  assert.match(json.message, /voice/u);
+});
+
+// Giọng của nhà cung cấp kia sẽ bị bỏ qua lúc tổng hợp, nên phải từ chối thẳng thay vì im lặng
+// đọc ra một giọng khác với thứ vừa chọn.
+test("refuses a voice belonging to the other provider instead of quietly reading another one", async () => {
+ const google = await postSample({ ttsProvider: "google", voice: "Kore" });
+ assert.equal(google.status, 422);
+ assert.equal(google.json.code, "INVALID_VOICE_SAMPLE_REQUEST");
+ assert.match(google.json.message, /vi-VN-Neural2-D/u);
+
+ const vertex = await postSample({ ttsProvider: "vertex", voice: "vi-VN-Neural2-D" });
+ assert.equal(vertex.status, 422);
+ assert.match(vertex.json.message, /Kore/u);
+});
+
+test("applies a Google voice that the picker actually offers", () => {
+ const settings = voiceSampleSettings({}, { ttsProvider: "google", voice: "vi-VN-Wavenet-C" });
+ assert.equal(settings.ttsVoice, "vi-VN-Wavenet-C");
+ assert.equal(sampledVoiceName(settings), "vi-VN-Wavenet-C");
+});
+
+// Brief do AI sinh có quyền ghi ttsVoice, nên một dự án có thể đang giữ giọng ngoài danh sách.
+// Giọng đó vẫn phải nghe thử được, nếu không studio sẽ từ chối đọc đúng thứ bản render sẽ đọc.
+test("keeps a persisted voice outside the picker list sampleable", () => {
+ const persisted = { ttsVoice: "vi-VN-Chirp3-HD-Aoede" };
+ assert.ok(allowedSampleVoices(persisted, "google").includes("vi-VN-Chirp3-HD-Aoede"));
+ assert.deepEqual(allowedSampleVoices({}, "google"), GOOGLE_VOICES);
+
+ const settings = voiceSampleSettings(persisted, { ttsProvider: "google", voice: "vi-VN-Chirp3-HD-Aoede" });
+ assert.equal(settings.ttsVoice, "vi-VN-Chirp3-HD-Aoede");
 });
 
 // Bộ chọn giọng trong studio chỉ liệt kê giọng Vertex; nhánh Google đọc ttsVoice như một
