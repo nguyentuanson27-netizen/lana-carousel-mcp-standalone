@@ -42,16 +42,34 @@ async function readCachedEstimate(key) {
  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
+// Dùng lại một câu và dọn tệp cũ là hai việc chạy song song trên cùng một tệp: vòng dọn đọc
+// mtime cũ, lượt render chen vào chạm lại tệp, rồi vòng dọn xoá bằng quyết định đã lỡ thời.
+// Lúc đó render cầm một URL trỏ vào tệp không còn và chết giữa chừng. Xếp hai đoạn tranh chấp
+// vào cùng một hàng để quyết định xoá và việc chạm tệp không bao giờ xen kẽ nhau.
+let cacheLock = Promise.resolve();
+function withCacheLock(run) {
+ const result = cacheLock.then(run, run);
+ cacheLock = result.then(() => {}, () => {});
+ return result;
+}
+
+const fileExists = filePath => fs.stat(filePath).then(() => true, () => false);
+
 async function readCachedTts(key) {
  for (const extension of AUDIO_EXTENSIONS) {
   const filename = cacheFilename(key, extension);
   const filePath = path.join(videoAnalysisAssetDir, filename);
-  const buffer = await fs.readFile(filePath).catch(() => null);
-  if (!buffer?.length) continue;
-  // Chạm vào tệp để vòng dọn dẹp theo thời gian giữ lại những câu còn đang dùng.
-  const touched = new Date();
-  await fs.utimes(filePath, touched, touched).catch(() => {});
-  return { filename, filePath, extension, buffer, cached: true };
+  const entry = await withCacheLock(async () => {
+   const buffer = await fs.readFile(filePath).catch(() => null);
+   if (!buffer?.length) return null;
+   // Chạm vào tệp để vòng dọn dẹp theo thời gian giữ lại những câu còn đang dùng.
+   const touched = new Date();
+   const kept = await fs.utimes(filePath, touched, touched).then(() => true, () => fileExists(filePath));
+   // Chạm hụt mà tệp cũng không còn thì coi như trượt cache: thà tổng hợp lại còn hơn trả về
+   // URL của một tệp đã bị tiến trình khác xoá.
+   return kept ? { filename, filePath, extension, buffer, cached: true } : null;
+  });
+  if (entry) return entry;
  }
  return null;
 }
@@ -97,7 +115,9 @@ export async function synthesizeCachedSpeech({ text, settings, synthesize = gene
  };
 }
 
-export async function purgeExpiredTtsCache({ retentionMs = CACHE_RETENTION_MS } = {}) {
+// beforeUnlink là chỗ để test chèn đúng vào khoảnh khắc giữa lúc quyết định xoá và lúc xoá thật,
+// nơi một lượt dùng lại có thể chen ngang. Chạy thật thì nó không làm gì.
+export async function purgeExpiredTtsCache({ retentionMs = CACHE_RETENTION_MS, beforeUnlink = () => {} } = {}) {
  const entries = await fs.readdir(videoAnalysisAssetDir, { withFileTypes: true }).catch(() => []);
  const deadline = Date.now() - retentionMs;
  let removed = 0;
@@ -105,12 +125,17 @@ export async function purgeExpiredTtsCache({ retentionMs = CACHE_RETENTION_MS } 
   const match = entry.isFile() && /^tts-([0-9a-f]{40})\.(wav|mp3|ogg|webm)$/u.exec(entry.name);
   if (!match) continue;
   const filePath = path.join(videoAnalysisAssetDir, entry.name);
-  const stat = await fs.stat(filePath).catch(() => null);
-  if (!stat || stat.mtimeMs >= deadline) continue;
-  await fs.unlink(filePath).catch(() => {});
-  // Tệp ước lượng đi kèm phải ra đi cùng lúc, nếu không nó sẽ ở lại vĩnh viễn.
-  await fs.unlink(estimatePath(match[1])).catch(() => {});
-  removed += 1;
+  // Đọc mtime và xoá phải nằm trong cùng một lượt khoá: một câu vừa được dùng lại giữa hai bước
+  // này sẽ có mtime mới, và tệp phải sống sót.
+  removed += await withCacheLock(async () => {
+   const stat = await fs.stat(filePath).catch(() => null);
+   if (!stat || stat.mtimeMs >= deadline) return 0;
+   await beforeUnlink(entry.name);
+   await fs.unlink(filePath).catch(() => {});
+   // Tệp ước lượng đi kèm phải ra đi cùng lúc, nếu không nó sẽ ở lại vĩnh viễn.
+   await fs.unlink(estimatePath(match[1])).catch(() => {});
+   return 1;
+  });
  }
  return { removed };
 }

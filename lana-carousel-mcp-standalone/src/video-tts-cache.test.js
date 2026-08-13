@@ -119,3 +119,32 @@ test("drops recordings nobody has used for a while and keeps the fresh ones", as
  assert.equal(await fs.access(estimateFile).then(() => true, () => false), false);
  assert.equal(await fs.access(fresh.filePath).then(() => true, () => false), true);
 });
+
+// Vòng dọn đọc mtime rồi mới xoá. Nếu một lượt render dùng lại đúng câu đó ở giữa hai bước,
+// tệp bị xoá bằng quyết định đã lỡ thời còn render thì cầm URL trỏ vào chỗ trống.
+test("never hands out a clip that the purge sweep is about to delete", async () => {
+ const provider = stubProvider();
+ const text = "Câu bị dọn giữa chừng";
+ const clip = await cache.synthesizeCachedSpeech({ text, settings: vertexSettings, synthesize: provider.synthesize });
+
+ const old = new Date(Date.now() - 40 * 864e5);
+ await fs.utimes(clip.filePath, old, old);
+
+ let reuse;
+ await cache.purgeExpiredTtsCache({
+  retentionMs: 30 * 864e5,
+  // Vòng dọn đã coi tệp là cũ; đúng lúc này thì một lượt render đòi dùng lại nó.
+  beforeUnlink: async () => {
+   reuse = cache.synthesizeCachedSpeech({ text, settings: vertexSettings, synthesize: provider.synthesize });
+   // Chờ đủ lâu để lượt đọc chạy hết hai thao tác tệp nếu không có gì chặn nó. Khoảng chờ này
+   // không làm test hên xui: khi đã có hàng đợi thì chờ bao lâu lượt đọc cũng vẫn phải nằm im.
+   await new Promise(resolve => setTimeout(resolve, 50));
+  }
+ });
+
+ const reused = await reuse;
+ // Xoá trước rồi tổng hợp lại, hay giữ tệp lại rồi dùng tiếp, đều chấp nhận được. Thứ không
+ // được phép xảy ra là trả về một URL mà tệp đằng sau đã bị xoá.
+ assert.ok(reused, "lượt dùng lại phải có clip để render");
+ assert.equal(await fs.access(reused.filePath).then(() => true, () => false), true, "URL trả về phải còn tệp thật");
+});
