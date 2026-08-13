@@ -29,6 +29,7 @@ import {
 } from "./video-analysis-service.js";
 import {buildVoiceTracks,getVideoAnalysisFile,getVideoAnalysisJob,startVideoAnalysisJob} from "./video-analysis-jobs.js";
 import {synthesizeCachedSpeech} from "./video-tts-cache.js";
+import {sampledVoiceName,voiceSampleSettings} from "./video-tts.js";
 import {buildSubtitleFile} from "./video-subtitles.js";
 import {createSignedMediaUrl} from "./media-access.js";
 import {probeVideoDurationSeconds} from "./video-source-importer.js";
@@ -208,22 +209,33 @@ videoAnalysisRouter.get("/projects/:id/subtitles",safe((req,res)=>{
 // Nghe thử giọng đọc một câu cố định. Câu mẫu do server giữ chứ không nhận từ client, để một
 // endpoint gọi được API tính phí không thể bị dùng làm cổng đọc văn bản tuỳ ý.
 const VOICE_SAMPLE_TEXT="Xin chào, đây là giọng đọc mẫu cho video của bạn.";
+const voiceSampleBody=z.object({
+ ttsProvider:z.enum(["vertex","gemini","google"]).default("vertex"),
+ voice:z.string().min(1).max(100)
+}).strict();
+
 videoAnalysisRouter.post("/projects/:id/voice-sample",safe(async(req,res)=>{
+ // publicError chưa nhận diện ZodError nên .parse() sẽ thành 500. Tự kiểm rồi ném AppError
+ // để yêu cầu sai định dạng ở lại nhánh 4xx.
+ const parsed=voiceSampleBody.safeParse(req.body);
+ if(!parsed.success){
+  const issue=parsed.error.issues[0];
+  const field=issue?.path?.join(".")||"body";
+  throw new AppError("INVALID_VOICE_SAMPLE_REQUEST",`Yêu cầu nghe thử không hợp lệ ở "${field}": ${issue?.message||"dữ liệu sai"}.`,422);
+ }
  const project=getVideoAnalysisProject(req.params.id);
- const body=z.object({
-  ttsProvider:z.enum(["vertex","gemini","google"]).default("vertex"),
-  voice:z.string().min(1).max(100)
- }).strict().parse(req.body);
- const settings={
-  ttsProvider:body.ttsProvider,
-  geminiSpeaker1Voice:body.voice,
-  ttsVoice:body.voice,
-  geminiStylePrompt:"Đọc tiếng Việt tự nhiên, rõ ràng."
- };
+ const settings=voiceSampleSettings(project.settings,parsed.data);
  const clip=await synthesizeCachedSpeech({text:VOICE_SAMPLE_TEXT,settings});
  if(!clip)throw new AppError("VOICE_SAMPLE_FAILED","Không tạo được giọng đọc mẫu.",502);
  const scope={resourceType:"video-analysis",resourceId:project.id};
- res.json({url:createSignedMediaUrl(clip.url,scope),text:VOICE_SAMPLE_TEXT,cached:clip.cached});
+ res.json({
+  url:createSignedMediaUrl(clip.url,scope),
+  text:VOICE_SAMPLE_TEXT,
+  // Nhánh Google bỏ qua bộ chọn giọng, nên trả về giọng thật sự được đọc để giao diện
+  // không nói một đằng phát một nẻo.
+  voice:sampledVoiceName(settings),
+  cached:clip.cached
+ });
 }));
 
 videoAnalysisRouter.post("/projects/:id/voice-preview",safe(async(req,res)=>{

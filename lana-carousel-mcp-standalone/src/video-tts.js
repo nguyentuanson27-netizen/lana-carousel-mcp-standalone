@@ -71,7 +71,7 @@ async function generateGoogle(project,settings){
  let buffer;
  if(process.env.GOOGLE_APPLICATION_CREDENTIALS||process.env.GOOGLE_CLOUD_PROJECT){
   const client=new TextToSpeechClient();
-  const [response]=await client.synthesizeSpeech({input:{text},voice:{languageCode:"vi-VN",name:settings.ttsVoice||"vi-VN-Neural2-D"},audioConfig:{audioEncoding:"MP3",speakingRate:1}});
+  const [response]=await client.synthesizeSpeech({input:{text},voice:{languageCode:"vi-VN",name:settings.ttsVoice||GOOGLE_DEFAULT_VOICE},audioConfig:{audioEncoding:"MP3",speakingRate:1}});
   buffer=typeof response.audioContent==="string"?Buffer.from(response.audioContent,"base64"):Buffer.from(response.audioContent);
  }else{
   const chunks=text.match(/.{1,180}(?:\s|$)/gu)||[text],parts=[];
@@ -82,8 +82,27 @@ async function generateGoogle(project,settings){
  return {dataUrl:`data:audio/mpeg;base64,${buffer.toString("base64")}`,durationSeconds:Math.max(1,words/2.7)};
 }
 
+export const GOOGLE_DEFAULT_VOICE="vi-VN-Neural2-D";
+export const isVertexProvider=provider=>["gemini","vertex"].includes(provider);
+
+// Bo chon giong trong studio liet ke giong cua Vertex (Kore, Puck...), khong phai voice id day
+// du cua Google Cloud TTS (vi-VN-Neural2-D). Nhet ten Vertex vao ttsVoice se lam loi goi Google
+// hong; va du co anh xa duoc ten thi van nghe ra giong khac luc render, vi render doc ttsVoice
+// tu settings cua project chu khong doc bo chon nay. Nen nhanh Google nghe thu dung giong ma
+// render se dung, con bo chon chi ap cho nhanh Vertex.
+export function voiceSampleSettings(projectSettings={},{ttsProvider,voice}={}){
+ const base={...projectSettings,ttsProvider,geminiMultiSpeaker:false};
+ return isVertexProvider(ttsProvider)
+  ?{...base,geminiSpeaker1Voice:voice}
+  :{...base,ttsVoice:projectSettings.ttsVoice||GOOGLE_DEFAULT_VOICE};
+}
+
+export const sampledVoiceName=settings=>isVertexProvider(settings.ttsProvider)
+ ?settings.geminiSpeaker1Voice
+ :settings.ttsVoice;
+
 export async function generateVideoTtsTrack(project,settings={}){
- return ["gemini","vertex"].includes(settings.ttsProvider)?generateVertex(project,settings):generateGoogle(project,settings);
+ return isVertexProvider(settings.ttsProvider)?generateVertex(project,settings):generateGoogle(project,settings);
 }
 
 // Doc mot cau don le: dung cho tung doan voice-over, cho nghe thu giong va cho preview.
