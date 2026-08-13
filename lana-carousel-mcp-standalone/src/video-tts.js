@@ -14,11 +14,26 @@ const pcmToWav=(pcm,sampleRate=24000)=>{
 };
 const voiceConfig=name=>({prebuiltVoiceConfig:{voiceName:name||"Kore"}});
 
+// Voice-over được tong hop theo tung doan nen ham nay bi goi nhieu lan trong mot render.
+// Giu lai client de khong phai lay access token lai tu dau moi doan; getAccessToken cua
+// google-auth-library tu cache va tu lam moi token khi sap het han.
+let vertexClientPromise;
+function vertexClient(){
+ vertexClientPromise??=(async()=>{
+  const auth=new GoogleAuth({scopes:["https://www.googleapis.com/auth/cloud-platform"]});
+  const projectId=process.env.VERTEX_AI_PROJECT||process.env.GOOGLE_CLOUD_PROJECT||await auth.getProjectId();
+  if(!projectId)throw new Error("Chua cau hinh project cho Vertex AI.");
+  return{projectId,client:await auth.getClient()};
+ })().catch(error=>{
+  vertexClientPromise=undefined;
+  throw error;
+ });
+ return vertexClientPromise;
+}
+
 async function generateVertex(project,settings){
- const auth=new GoogleAuth({scopes:["https://www.googleapis.com/auth/cloud-platform"]});
- const projectId=process.env.VERTEX_AI_PROJECT||process.env.GOOGLE_CLOUD_PROJECT||await auth.getProjectId();
- if(!projectId)throw new Error("Chua cau hinh project cho Vertex AI.");
- const client=await auth.getClient(),tokenResult=await client.getAccessToken(),accessToken=typeof tokenResult==="string"?tokenResult:tokenResult?.token;
+ const {projectId,client}=await vertexClient();
+ const tokenResult=await client.getAccessToken(),accessToken=typeof tokenResult==="string"?tokenResult:tokenResult?.token;
  if(!accessToken)throw new Error("Khong lay duoc access token Vertex AI.");
  const slides=enabledSlides(project).filter(slideText);
  if(!slides.length)return emptyTrack();
@@ -69,6 +84,13 @@ async function generateGoogle(project,settings){
 
 export async function generateVideoTtsTrack(project,settings={}){
  return ["gemini","vertex"].includes(settings.ttsProvider)?generateVertex(project,settings):generateGoogle(project,settings);
+}
+
+// Doc mot cau don le: dung cho tung doan voice-over, cho nghe thu giong va cho preview.
+export async function generateSpeechForText(text,settings={}){
+ const content=String(text||"").trim();
+ if(!content)return emptyTrack();
+ return generateVideoTtsTrack({slides:[{headline:content,body:content,video:{enabled:true,caption:content}}]},settings);
 }
 export async function generateVideoTtsData(project,settings={}){
  return (await generateVideoTtsTrack(project,settings))?.dataUrl||"";
