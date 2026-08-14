@@ -14,11 +14,26 @@ const pcmToWav=(pcm,sampleRate=24000)=>{
 };
 const voiceConfig=name=>({prebuiltVoiceConfig:{voiceName:name||"Kore"}});
 
+// Voice-over được tong hop theo tung doan nen ham nay bi goi nhieu lan trong mot render.
+// Giu lai client de khong phai lay access token lai tu dau moi doan; getAccessToken cua
+// google-auth-library tu cache va tu lam moi token khi sap het han.
+let vertexClientPromise;
+function vertexClient(){
+ vertexClientPromise??=(async()=>{
+  const auth=new GoogleAuth({scopes:["https://www.googleapis.com/auth/cloud-platform"]});
+  const projectId=process.env.VERTEX_AI_PROJECT||process.env.GOOGLE_CLOUD_PROJECT||await auth.getProjectId();
+  if(!projectId)throw new Error("Chua cau hinh project cho Vertex AI.");
+  return{projectId,client:await auth.getClient()};
+ })().catch(error=>{
+  vertexClientPromise=undefined;
+  throw error;
+ });
+ return vertexClientPromise;
+}
+
 async function generateVertex(project,settings){
- const auth=new GoogleAuth({scopes:["https://www.googleapis.com/auth/cloud-platform"]});
- const projectId=process.env.VERTEX_AI_PROJECT||process.env.GOOGLE_CLOUD_PROJECT||await auth.getProjectId();
- if(!projectId)throw new Error("Chua cau hinh project cho Vertex AI.");
- const client=await auth.getClient(),tokenResult=await client.getAccessToken(),accessToken=typeof tokenResult==="string"?tokenResult:tokenResult?.token;
+ const {projectId,client}=await vertexClient();
+ const tokenResult=await client.getAccessToken(),accessToken=typeof tokenResult==="string"?tokenResult:tokenResult?.token;
  if(!accessToken)throw new Error("Khong lay duoc access token Vertex AI.");
  const slides=enabledSlides(project).filter(slideText);
  if(!slides.length)return emptyTrack();
@@ -56,7 +71,7 @@ async function generateGoogle(project,settings){
  let buffer;
  if(process.env.GOOGLE_APPLICATION_CREDENTIALS||process.env.GOOGLE_CLOUD_PROJECT){
   const client=new TextToSpeechClient();
-  const [response]=await client.synthesizeSpeech({input:{text},voice:{languageCode:"vi-VN",name:settings.ttsVoice||"vi-VN-Neural2-D"},audioConfig:{audioEncoding:"MP3",speakingRate:1}});
+  const [response]=await client.synthesizeSpeech({input:{text},voice:{languageCode:"vi-VN",name:settings.ttsVoice||GOOGLE_DEFAULT_VOICE},audioConfig:{audioEncoding:"MP3",speakingRate:1}});
   buffer=typeof response.audioContent==="string"?Buffer.from(response.audioContent,"base64"):Buffer.from(response.audioContent);
  }else{
   const chunks=text.match(/.{1,180}(?:\s|$)/gu)||[text],parts=[];
@@ -67,8 +82,52 @@ async function generateGoogle(project,settings){
  return {dataUrl:`data:audio/mpeg;base64,${buffer.toString("base64")}`,durationSeconds:Math.max(1,words/2.7)};
 }
 
+export const GOOGLE_DEFAULT_VOICE="vi-VN-Neural2-D";
+export const isVertexProvider=provider=>["gemini","vertex"].includes(provider);
+
+// Hai nha cung cap dat ten giong theo hai he khac han nhau: Vertex nhan ten ngan (Kore, Puck),
+// Google Cloud TTS nhan voice id day du (vi-VN-Neural2-D). Danh sach nay la nguon duy nhat cho
+// ca bo chon trong studio lan phan kiem o route, de giao dien khong bao gio moi nguoi dung chon
+// mot giong ma nha cung cap dang bat khong doc duoc.
+export const VERTEX_VOICES=["Kore","Puck","Aoede","Charon","Fenrir"];
+export const GOOGLE_VOICES=[
+ "vi-VN-Neural2-A","vi-VN-Neural2-D",
+ "vi-VN-Wavenet-A","vi-VN-Wavenet-B","vi-VN-Wavenet-C","vi-VN-Wavenet-D",
+ "vi-VN-Standard-A","vi-VN-Standard-B","vi-VN-Standard-C","vi-VN-Standard-D"
+];
+
+// Brief do AI sinh ra co quyen ghi ttsVoice, nen mot du an co the dang giu giong nam ngoai danh
+// sach tren. Giong do van phai nghe thu duoc, neu khong studio se tu choi doc dung thu ma ban
+// render se doc.
+export function allowedSampleVoices(projectSettings={},provider){
+ if(isVertexProvider(provider))return VERTEX_VOICES;
+ const persisted=projectSettings.ttsVoice;
+ return persisted&&!GOOGLE_VOICES.includes(persisted)?[...GOOGLE_VOICES,persisted]:GOOGLE_VOICES;
+}
+
+// Nghe thu phai doc dung giong ma render se doc: nhanh Vertex lay geminiSpeaker1Voice, nhanh
+// Google lay ttsVoice. Gia tri gui len chi duoc dung khi no thuoc he ten cua nha cung cap dang
+// bat; ten cua he kia bi bo qua de roi ve dung giong cua render thay vi lam hong loi goi.
+export function voiceSampleSettings(projectSettings={},{ttsProvider,voice}={}){
+ const base={...projectSettings,ttsProvider,geminiMultiSpeaker:false};
+ if(isVertexProvider(ttsProvider))return{...base,geminiSpeaker1Voice:voice};
+ const picked=allowedSampleVoices(projectSettings,ttsProvider).includes(voice)?voice:"";
+ return{...base,ttsVoice:picked||projectSettings.ttsVoice||GOOGLE_DEFAULT_VOICE};
+}
+
+export const sampledVoiceName=settings=>isVertexProvider(settings.ttsProvider)
+ ?settings.geminiSpeaker1Voice
+ :settings.ttsVoice;
+
 export async function generateVideoTtsTrack(project,settings={}){
- return ["gemini","vertex"].includes(settings.ttsProvider)?generateVertex(project,settings):generateGoogle(project,settings);
+ return isVertexProvider(settings.ttsProvider)?generateVertex(project,settings):generateGoogle(project,settings);
+}
+
+// Doc mot cau don le: dung cho tung doan voice-over, cho nghe thu giong va cho preview.
+export async function generateSpeechForText(text,settings={}){
+ const content=String(text||"").trim();
+ if(!content)return emptyTrack();
+ return generateVideoTtsTrack({slides:[{headline:content,body:content,video:{enabled:true,caption:content}}]},settings);
 }
 export async function generateVideoTtsData(project,settings={}){
  return (await generateVideoTtsTrack(project,settings))?.dataUrl||"";

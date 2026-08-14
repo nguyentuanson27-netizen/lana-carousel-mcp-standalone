@@ -372,3 +372,53 @@ test("sizes the composition from measured clips and leaves headroom for estimate
  assert.equal(jobs.voiceTracksDuration([{start:6,duration:2,measured:false}]),10);
  assert.equal(jobs.voiceTracksDuration([]),0);
 });
+
+// buildVoiceTracks là chỗ nối giữa kho clip và bản render: tổng hợp từng đoạn, xếp vào mốc thời
+// gian, rồi ký URL. Ba mảnh đó đều có test riêng, nhưng phần nối thì chỉ bài render thật chạm
+// tới — mà bài đó cần browser. Nạp sẵn kho clip để phần nối chạy được mà không gọi ra mạng.
+test("wires cached clips into signed, correctly placed voice tracks",async()=>{
+ const cache=await import("./video-tts-cache.js");
+ // WAV thật để độ dài được đo từ header, không phải con số ước lượng.
+ const wavDataUrl=seconds=>{
+  const sampleRate=24000,data=Buffer.alloc(Math.round(sampleRate*seconds)*2),header=Buffer.alloc(44);
+  header.write("RIFF",0);header.writeUInt32LE(36+data.length,4);header.write("WAVE",8);header.write("fmt ",12);
+  header.writeUInt32LE(16,16);header.writeUInt16LE(1,20);header.writeUInt16LE(1,22);header.writeUInt32LE(sampleRate,24);
+  header.writeUInt32LE(sampleRate*2,28);header.writeUInt16LE(2,32);header.writeUInt16LE(16,34);
+  header.write("data",36);header.writeUInt32LE(data.length,40);
+  return `data:audio/wav;base64,${Buffer.concat([header,data]).toString("base64")}`;
+ };
+ const settings={ttsProvider:"vertex",geminiSpeaker1Voice:"Kore",ttsSpeed:1};
+ const segments=[
+  {id:"s1",start:0,end:1,voiceOverText:"Câu một"},
+  {id:"s2",start:2.5,end:3.5,voiceOverText:"Câu hai"},
+  {id:"s3",start:6,end:8,voiceOverText:""}
+ ];
+ // Nạp trước đúng những câu sẽ được đọc, nên lượt dựng track dưới đây chỉ đọc lại từ kho.
+ const seeded=[];
+ for(const segment of segments.filter(item=>item.voiceOverText)){
+  seeded.push(await cache.synthesizeCachedSpeech({
+   text:segment.voiceOverText,
+   settings,
+   synthesize:async()=>({dataUrl:wavDataUrl(.8),durationSeconds:0})
+  }));
+ }
+
+ const tracks=await jobs.buildVoiceTracks({
+  settings,
+  segments,
+  mediaScope:{resourceType:"video-analysis",resourceId:"11111111-1111-4111-8111-111111111111"}
+ });
+
+ // Đoạn không có lời đọc không sinh clip, và không được làm lệch mốc của các đoạn còn lại.
+ assert.deepEqual(tracks.map(track=>track.id),["s1","s2"]);
+ assert.deepEqual(tracks.map(track=>track.start),[0,2.5]);
+ assert.deepEqual(tracks.map(track=>track.measured),[true,true]);
+ assert.deepEqual(tracks.map(track=>Number(track.duration.toFixed(3))),[.8,.8]);
+
+ for(const [index,track] of tracks.entries()){
+  // Phải trỏ đúng tệp trong kho, và tệp đó phải còn sau khi dựng xong: cơ chế tệp tạm cũ dọn
+  // sạch ngay sau render, nên đây chính là chỗ từng sinh ra clip mồ côi.
+  assert.ok(track.url.startsWith(seeded[index].url),"phải trỏ đúng clip trong kho");
+  assert.equal(await fs.access(seeded[index].filePath).then(()=>true,()=>false),true,"tệp phải còn sau khi dựng track");
+ }
+});

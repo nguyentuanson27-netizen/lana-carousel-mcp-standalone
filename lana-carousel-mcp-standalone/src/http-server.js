@@ -19,6 +19,7 @@ import { getRenderJob, getRenderJobBuffer, startRenderJob } from "./render-jobs.
 import { deleteVideoRenderJob, getVideoRenderFile, getVideoRenderJob, startVideoRenderJob } from "./video-jobs.js";
 import { videoAnalysisAssetDir, purgeExpiredVideoAnalysis } from "./video-analysis-service.js";
 import { videoAnalysisRouter } from "./video-analysis-routes.js";
+import { purgeExpiredTtsCache } from "./video-tts-cache.js";
 import { registerSocialRoutes } from "./social-routes.js";
 import {
   addSlide, approveProjectContent, approveSlideAsset, approveSlideAssets, cloneProject,
@@ -311,5 +312,9 @@ app.listen(config.port, () => console.log(`Lana Carousel HTTP server: ${config.p
 purgeOrphanedProjectAudio().catch(error => console.error("Initial project audio cleanup failed", error));
 purgeExpiredProjects().catch(error => console.error("Initial project expiry cleanup failed", error));
 purgeExpiredVideoAnalysis().catch(error => console.error("Initial video analysis cleanup failed", error));
+purgeExpiredTtsCache().catch(error => console.error("Initial TTS cache cleanup failed", error));
 const expiryTimer = setInterval(() => purgeExpiredProjects().catch(error => console.error("Scheduled project expiry cleanup failed", error)), 6 * 60 * 60 * 1000);
 expiryTimer.unref();
+// Clip giọng đọc được giữ lại để render sau khỏi gọi TTS lần nữa, nên phải có vòng dọn riêng.
+const ttsCacheTimer = setInterval(() => purgeExpiredTtsCache().catch(error => console.error("Scheduled TTS cache cleanup failed", error)), 12 * 60 * 60 * 1000);
+ttsCacheTimer.unref();

@@ -4,7 +4,7 @@ import path from "node:path";
 import {randomUUID} from "node:crypto";
 import {z} from "zod";
 import {config} from "./config.js";
-import {publicError} from "./errors.js";
+import {AppError,publicError} from "./errors.js";
 import {
  VIDEO_CONTENT_DOMAINS,
  VIDEO_CONTENT_GOALS,
@@ -27,7 +27,11 @@ import {
  saveVideoAnalysisScript,
  videoAnalysisAssetDir
 } from "./video-analysis-service.js";
-import {getVideoAnalysisFile,getVideoAnalysisJob,startVideoAnalysisJob} from "./video-analysis-jobs.js";
+import {buildVoiceTracks,getVideoAnalysisFile,getVideoAnalysisJob,startVideoAnalysisJob} from "./video-analysis-jobs.js";
+import {synthesizeCachedSpeech} from "./video-tts-cache.js";
+import {allowedSampleVoices,sampledVoiceName,voiceSampleSettings} from "./video-tts.js";
+import {buildSubtitleFile} from "./video-subtitles.js";
+import {createSignedMediaUrl} from "./media-access.js";
 import {probeVideoDurationSeconds} from "./video-source-importer.js";
 
 export const videoAnalysisRouter=express.Router();
@@ -179,6 +183,78 @@ videoAnalysisRouter.put("/projects/:id/script",safe((req,res)=>{
   settings:editableVideoSettingsSchema.default({})
  }).strict().parse(req.body);
  res.json(saveVideoAnalysisScript({projectId:req.params.id,...body}));
+}));
+
+// "đ" không tách được bằng NFKD nên phải thay tay, nếu không tên tệp tiếng Việt sẽ rụng chữ.
+const filenameSlug=value=>String(value||"")
+ .normalize("NFKD")
+ .replace(/[̀-ͯ]/gu,"")
+ .replace(/đ/gu,"d")
+ .replace(/Đ/gu,"D")
+ .replace(/[^A-Za-z0-9]+/gu,"-")
+ .replace(/^-+|-+$/gu,"")
+ .toLowerCase();
+
+videoAnalysisRouter.get("/projects/:id/subtitles",safe((req,res)=>{
+ // Để buildSubtitleFile tự từ chối định dạng lạ: lỗi Zod ở đây sẽ thành 500 chứ không phải 422.
+ const format=String(req.query.format||"srt").toLowerCase();
+ const project=getVideoAnalysisProject(req.params.id);
+ const body=buildSubtitleFile(project.script.segments,format);
+ const name=`${filenameSlug(project.title)||"phu-de"}.${format}`;
+ res.type(format==="vtt"?"text/vtt; charset=utf-8":"application/x-subrip; charset=utf-8");
+ res.setHeader("Content-Disposition",`attachment; filename="${name}"`);
+ res.send(body);
+}));
+
+// Nghe thử giọng đọc một câu cố định. Câu mẫu do server giữ chứ không nhận từ client, để một
+// endpoint gọi được API tính phí không thể bị dùng làm cổng đọc văn bản tuỳ ý.
+const VOICE_SAMPLE_TEXT="Xin chào, đây là giọng đọc mẫu cho video của bạn.";
+const voiceSampleBody=z.object({
+ ttsProvider:z.enum(["vertex","gemini","google"]).default("vertex"),
+ voice:z.string().min(1).max(100)
+}).strict();
+
+videoAnalysisRouter.post("/projects/:id/voice-sample",safe(async(req,res)=>{
+ // publicError chưa nhận diện ZodError nên .parse() sẽ thành 500. Tự kiểm rồi ném AppError
+ // để yêu cầu sai định dạng ở lại nhánh 4xx.
+ const parsed=voiceSampleBody.safeParse(req.body);
+ if(!parsed.success){
+  const issue=parsed.error.issues[0];
+  const field=issue?.path?.join(".")||"body";
+  throw new AppError("INVALID_VOICE_SAMPLE_REQUEST",`Yêu cầu nghe thử không hợp lệ ở "${field}": ${issue?.message||"dữ liệu sai"}.`,422);
+ }
+ const project=getVideoAnalysisProject(req.params.id);
+ // Giong cua nha cung cap kia se bi bo qua khi tong hop, nen tu choi thang tai day thay vi im
+ // lang doc ra mot giong khac voi thu nguoi dung vua chon.
+ const allowed=allowedSampleVoices(project.settings,parsed.data.ttsProvider);
+ if(!allowed.includes(parsed.data.voice)){
+  throw new AppError("INVALID_VOICE_SAMPLE_REQUEST",`Yêu cầu nghe thử không hợp lệ ở "voice": ${parsed.data.ttsProvider} chỉ đọc được ${allowed.join(", ")}.`,422);
+ }
+ const settings=voiceSampleSettings(project.settings,parsed.data);
+ const clip=await synthesizeCachedSpeech({text:VOICE_SAMPLE_TEXT,settings});
+ if(!clip)throw new AppError("VOICE_SAMPLE_FAILED","Không tạo được giọng đọc mẫu.",502);
+ const scope={resourceType:"video-analysis",resourceId:project.id};
+ res.json({
+  url:createSignedMediaUrl(clip.url,scope),
+  text:VOICE_SAMPLE_TEXT,
+  // Trả về giọng thật sự được đọc để giao diện không nói một đằng phát một nẻo.
+  voice:sampledVoiceName(settings),
+  cached:clip.cached
+ });
+}));
+
+videoAnalysisRouter.post("/projects/:id/voice-preview",safe(async(req,res)=>{
+ const project=getVideoAnalysisProject(req.params.id);
+ if(!project.settings.ttsEnabled)throw new AppError("TTS_DISABLED","Hãy bật TTS trước khi nghe thử.",409);
+ const segments=project.script.segments.filter(segment=>segment.enabled!==false);
+ // Dùng chung hàm dựng track với luồng render, nên thứ nghe thử khớp đúng bản MP4 sẽ xuất ra.
+ const voiceTracks=await buildVoiceTracks({
+  settings:project.settings,
+  segments,
+  mediaScope:{resourceType:"video-analysis",resourceId:project.id}
+ });
+ if(!voiceTracks.length)throw new AppError("EMPTY_VOICE_SCRIPT","Script chưa có nội dung giọng đọc.",422);
+ res.json({voiceTracks});
 }));
 
 videoAnalysisRouter.get("/projects/:id/versions",safe((req,res)=>res.json({versions:getVideoAnalysisVersions(req.params.id)})));

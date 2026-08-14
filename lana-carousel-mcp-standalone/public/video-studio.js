@@ -34,6 +34,7 @@ const settings=()=>({
   ttsProvider:$("#ttsProvider").value,
   ttsSpeed:+$("#ttsSpeed").value,
   geminiSpeaker1Voice:$("#voice").value,
+  ttsVoice:$("#googleVoice").value,
   originalAudioVolume:+$("#originalVolume").value,
   ttsVolume:+$("#ttsVolume").value,
   subtitleEnabled:$("#subtitleEnabled").checked,
@@ -62,16 +63,65 @@ function addSegment(segment={}){
   const element=document.createElement("div");
   element.className="segment";
   element.dataset.id=segment.id||crypto.randomUUID();
-  element.innerHTML=`<input class="start" type="number" min="0" step=".1" value="${Number(segment.start||0)}" title="Bắt đầu"><input class="end" type="number" min=".1" step=".1" value="${Number(segment.end||3)}" title="Kết thúc"><textarea class="sub" placeholder="Phụ đề"></textarea><textarea class="voice" placeholder="Voice-over"></textarea><button class="remove">Xóa</button>`;
+  element.innerHTML=`<input class="start" type="number" min="0" step=".1" value="${Number(segment.start||0)}" title="Bắt đầu"><input class="end" type="number" min=".1" step=".1" value="${Number(segment.end||3)}" title="Kết thúc"><textarea class="sub" placeholder="Phụ đề"></textarea><textarea class="voice" placeholder="Voice-over"></textarea><span class="budget"></span><button class="remove">Xóa</button>`;
   element.querySelector(".sub").value=segment.subtitleText||"";
   element.querySelector(".voice").value=segment.voiceOverText||"";
-  element.querySelector(".remove").onclick=()=>{element.remove();renderPreview()};
+  element.querySelector(".remove").onclick=()=>{element.remove();syncWordBudgets();renderPreview()};
   $("#segments").append(element);
+}
+
+// Người dùng gõ lời đọc mà không biết đoạn có đủ thời gian để đọc hết hay không. Ngân sách chữ
+// dùng đúng công thức phía render nên con số hiện ở đây khớp với thứ sẽ xảy ra khi xuất video.
+function syncWordBudgets(){
+  const ttsSpeed=+$("#ttsSpeed").value;
+  for(const element of document.querySelectorAll(".segment")){
+    const badge=element.querySelector(".budget");
+    if(!badge)continue;
+    const budget=LanaWordBudget.segmentWordBudget({
+      start:+element.querySelector(".start").value,
+      end:+element.querySelector(".end").value,
+      text:element.querySelector(".voice").value,
+      ttsSpeed
+    });
+    badge.textContent=LanaWordBudget.describeBudget(budget);
+    badge.className=`budget ${["good","tight","over"].includes(budget.status)?budget.status:""}`.trim();
+  }
 }
 
 function setControl(id,value,fallback){
   const element=$("#"+id);
   element.value=value??fallback;
+  // Giá trị không nằm trong danh sách lựa chọn làm select rỗng đi. Rơi về mặc định để lần lưu
+  // sau không gửi lên chuỗi rỗng.
+  if(element.value==="")element.value=fallback;
+}
+
+const GOOGLE_DEFAULT_VOICE="vi-VN-Neural2-D";
+const usingGoogleVoice=()=>$("#ttsProvider").value==="google";
+const pickedVoice=()=>usingGoogleVoice()?$("#googleVoice").value:$("#voice").value;
+
+// Hai nhà cung cấp đặt tên giọng theo hai hệ khác nhau và không đọc được tên của nhau. Chỉ hiện
+// bộ chọn của nhà cung cấp đang bật, để không ai chọn được "Google + Kore" rồi nghe ra một giọng
+// khác hẳn lúc nghe thử và lúc render.
+function syncVoiceFields(){
+  const google=usingGoogleVoice();
+  $("#voiceField").hidden=google;
+  $("#voice").disabled=google;
+  $("#googleVoiceField").hidden=!google;
+  $("#googleVoice").disabled=!google;
+  $("#voiceNote").textContent=google
+    ?`Google TTS đọc bằng ${$("#googleVoice").value}. Giọng Vertex (Kore, Puck…) không dùng được ở đây.`
+    :`Vertex Gemini đọc bằng ${$("#voice").value}.`;
+}
+
+// Brief do AI sinh có thể đã lưu một giọng ngoài danh sách. Giữ lại làm một lựa chọn để lần lưu
+// sau không âm thầm đổi giọng của dự án.
+function fillGoogleVoice(saved){
+  const select=$("#googleVoice");
+  if(saved&&![...select.options].some(option=>option.value===saved)){
+    select.append(new Option(saved,saved));
+  }
+  setControl("googleVoice",saved,GOOGLE_DEFAULT_VOICE);
 }
 
 function syncRangeOutputs(){
@@ -92,6 +142,7 @@ function fill(){
   setControl("ttsProvider",saved.ttsProvider,"vertex");
   setControl("ttsSpeed",saved.ttsSpeed,1);
   setControl("voice",saved.geminiSpeaker1Voice,"Kore");
+  fillGoogleVoice(saved.ttsVoice);
   setControl("originalVolume",saved.originalAudioVolume,.25);
   setControl("ttsVolume",saved.ttsVolume,1);
   setControl("subtitleStyle",saved.subtitleStyle,"karaoke");
@@ -105,6 +156,8 @@ function fill(){
   $("#segments").innerHTML="";
   (project.script.segments||[]).forEach(addSegment);
   syncRangeOutputs();
+  syncVoiceFields();
+  syncWordBudgets();
   renderPreview();
 }
 
@@ -220,8 +273,9 @@ caption.addEventListener("pointercancel",stopDragging);
 $("#video").addEventListener("timeupdate",renderPreview);
 $("#video").addEventListener("loadedmetadata",renderPreview);
 window.addEventListener("resize",renderPreview);
-document.addEventListener("input",event=>{if(event.target.closest("details")){syncRangeOutputs();renderPreview()}});
-document.addEventListener("change",event=>{if(event.target.closest("details")){syncRangeOutputs();renderPreview()}});
+const onStudioEdit=event=>{if(!event.target.closest("details"))return;syncRangeOutputs();syncWordBudgets();renderPreview();syncVoicePreview()};
+document.addEventListener("input",onStudioEdit);
+document.addEventListener("change",onStudioEdit);
 document.fonts?.ready.then(renderPreview).catch(()=>{});
 
 $("#addSegment").onclick=()=>addSegment({start:$("#video").currentTime,end:$("#video").currentTime+3});
@@ -255,6 +309,95 @@ async function poll(id){
   };
   await run();
   jobTimer=setInterval(run,2000);
+}
+
+// Xuất phụ đề từ bản đã lưu, nên lưu nháp trước để tệp tải về khớp đúng thứ đang thấy.
+async function downloadSubtitles(format){
+  await save(false,{refresh:false});
+  location.href=`/api/video-analysis/projects/${projectId}/subtitles?format=${format}`;
+}
+$("#downloadSrt").onclick=()=>downloadSubtitles("srt").catch(error=>alert(error.message));
+$("#downloadVtt").onclick=()=>downloadSubtitles("vtt").catch(error=>alert(error.message));
+
+let sampleAudio;
+$("#voiceSample").onclick=async()=>{
+  const button=$("#voiceSample");
+  button.disabled=true;
+  try{
+    const response=await api(`/api/video-analysis/projects/${projectId}/voice-sample`,{
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({ttsProvider:$("#ttsProvider").value,voice:pickedVoice()})
+    });
+    sampleAudio?.pause();
+    sampleAudio=new Audio(response.url);
+    sampleAudio.volume=clamp(+$("#ttsVolume").value,0,1)||1;
+    // Server mới là nơi quyết định giọng nào được đọc, nên nói lại đúng tên nó trả về.
+    $("#voiceNote").textContent=`Đang đọc thử bằng ${response.voice}.`;
+    await sampleAudio.play();
+  }catch(error){syncVoiceFields();alert(error.message)}
+  finally{button.disabled=false}
+};
+
+// Nghe thử giọng đọc ngay trên preview: dùng đúng các clip mà bản render sẽ dùng, đặt đúng mốc
+// thời gian của từng đoạn, trộn với tiếng gốc theo hai thanh âm lượng.
+let voiceClips=[];
+const voicePreviewOn=()=>voiceClips.length>0;
+
+function stopVoicePreview(){
+  for(const {audio} of voiceClips){audio.pause();audio.removeAttribute("src");audio.load()}
+  voiceClips=[];
+  $("#voicePreview").textContent="▶ Nghe thử giọng đọc trên video";
+  $("#voicePreviewInfo").textContent="";
+}
+
+function syncVoicePreview(){
+  if(!voicePreviewOn())return;
+  const video=$("#video"),time=video.currentTime,volume=clamp(+$("#ttsVolume").value,0,1);
+  for(const {track,audio} of voiceClips){
+    const offset=time-track.start;
+    audio.volume=volume;
+    if(offset<0||offset>=track.duration||video.paused||volume<=0){
+      if(!audio.paused)audio.pause();
+      continue;
+    }
+    const target=offset*(Number(track.playbackRate)||1);
+    if(Math.abs(audio.currentTime-target)>.25)audio.currentTime=target;
+    if(audio.paused)audio.play().catch(()=>{});
+  }
+}
+
+$("#voicePreview").onclick=async()=>{
+  if(voicePreviewOn()){stopVoicePreview();return}
+  const button=$("#voicePreview");
+  button.disabled=true;
+  $("#voicePreviewInfo").textContent="Đang tạo giọng đọc…";
+  try{
+    await save(false,{refresh:false});
+    const response=await api(`/api/video-analysis/projects/${projectId}/voice-preview`,{method:"POST"});
+    voiceClips=response.voiceTracks.map(track=>{
+      const audio=new Audio(track.url);
+      audio.preload="auto";
+      audio.playbackRate=Number(track.playbackRate)||1;
+      return{track,audio};
+    });
+    $("#voicePreview").textContent="■ Tắt nghe thử";
+    $("#voicePreviewInfo").textContent=`${voiceClips.length} đoạn đã sẵn sàng`;
+    syncVoicePreview();
+  }catch(error){stopVoicePreview();alert(error.message)}
+  finally{button.disabled=false}
+};
+
+for(const event of ["timeupdate","play","pause","seeking","seeked","ratechange"]){
+  $("#video").addEventListener(event,syncVoicePreview);
+}
+// Sửa lời đọc hay mốc thời gian thì các clip đang giữ không còn đúng nữa. Riêng phụ đề thì
+// không đụng tới giọng đọc nên không cần dựng lại.
+$("#segments").addEventListener("input",event=>{
+  if(voicePreviewOn()&&event.target.matches(".voice,.start,.end"))stopVoicePreview();
+});
+for(const id of ["#voice","#googleVoice","#ttsProvider","#ttsSpeed"]){
+  $(id).addEventListener("change",()=>{syncVoiceFields();if(voicePreviewOn())stopVoicePreview()});
 }
 
 $("#newBtn").onclick=()=>{location.href="/video-studio"};

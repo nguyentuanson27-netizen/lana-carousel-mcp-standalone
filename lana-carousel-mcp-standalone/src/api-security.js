@@ -158,7 +158,7 @@ function isHeavyRestOperation(req) {
   if (/(?:assets\/import-url|video-audio|\/clone$)/u.test(path)) return true;
   if (/^\/api\/(?:video-)?render-jobs(?:\/|$)/u.test(path)) return true;
   if (/^\/api\/projects\/[^/]+\/(?:render-jobs|video-render-jobs)(?:\/|$)/u.test(path)) return true;
-  if (/^\/api\/video-analysis\/projects\/[^/]+\/(?:source-reference|source-upload|render-jobs)(?:\/|$)/u.test(path)) return true;
+  if (/^\/api\/video-analysis\/projects\/[^/]+\/(?:source-reference|source-upload|render-jobs|voice-preview|voice-sample)(?:\/|$)/u.test(path)) return true;
   if (req.method === "POST" && path === "/api/video-analysis/projects") return true;
   return false;
 }
