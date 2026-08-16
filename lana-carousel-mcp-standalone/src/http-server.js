@@ -8,7 +8,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { config } from "./config.js";
-import { publicError } from "./errors.js";
+import { AppError, publicError } from "./errors.js";
 import { apiSecurity } from "./api-security.js";
 import { consumeApiQuota } from "./api-quota.js";
 import { mcpPrincipalBindings } from "./mcp-principal-binding.js";
@@ -239,9 +239,12 @@ app.post("/api/projects/:projectId/slides/:slideId/assets/import-url", handle(as
 
 app.post("/api/projects/:projectId/video-audio", express.raw({ type: ["audio/mpeg", "audio/mp3", "application/octet-stream"], limit: "25mb" }), handle(async (req, res) => {
   getProject(req.params.projectId);
-  if (!Buffer.isBuffer(req.body) || req.body.length < 128) throw new Error("File MP3 rỗng hoặc không hợp lệ.");
+  // Error thường bị publicError thay bằng "Lỗi hệ thống.", nuốt mất chính câu giải thích viết ở
+  // đây. Người tải nhạc nền lên cần biết tệp sai ở đâu.
+  if (!Buffer.isBuffer(req.body)) throw new AppError("UNSUPPORTED_AUDIO_FORMAT", "Chỉ nhận file MP3. Hãy chuyển đổi tệp rồi tải lên lại.", 415);
+  if (req.body.length < 128) throw new AppError("EMPTY_AUDIO_FILE", "File MP3 rỗng hoặc không hợp lệ.", 422);
   const header = req.body.subarray(0, 3).toString("ascii"), isId3 = header === "ID3", isFrame = req.body[0] === 0xff && (req.body[1] & 0xe0) === 0xe0;
-  if (!isId3 && !isFrame) throw new Error("Chỉ chấp nhận file MP3 hợp lệ.");
+  if (!isId3 && !isFrame) throw new AppError("INVALID_AUDIO_FILE", "Chỉ chấp nhận file MP3 hợp lệ.", 422);
   const uploaded = await createProjectAudioAsset({ projectId: req.params.projectId, buffer: req.body, mimeType: "audio/mpeg" });
   res.status(201).json({ url: uploaded.url, size: uploaded.size });
 }));
@@ -307,6 +310,32 @@ app.get("/api/projects/:projectId/download-images.zip", handle(async (req, res) 
   for (const file of files) archive.append(file.buffer, { name: file.name });
   await archive.finalize();
 }));
+
+// Lỗi ném ra từ middleware — body-parser gặp tệp quá lớn hay JSON hỏng, express.static không
+// thấy tệp — không đi qua `safe()`/`handle()` của các route, nên rơi vào bộ xử lý mặc định của
+// Express và trả về HTML kèm stack trace. Giao diện chỉ đọc JSON: gặp HTML là `response.json()`
+// ném lỗi và nút bấm im lặng không báo gì. Trả JSON đúng mã trạng thái để mọi nhánh lỗi đều nói
+// được thành lời.
+const MIDDLEWARE_ERRORS = {
+  400: { code: "INVALID_REQUEST", message: "Dữ liệu gửi lên không đọc được." },
+  404: { code: "NOT_FOUND", message: "Không tìm thấy tài nguyên." },
+  413: { code: "PAYLOAD_TOO_LARGE", message: "Nội dung gửi lên vượt quá giới hạn cho phép." },
+  415: { code: "UNSUPPORTED_MEDIA_TYPE", message: "Định dạng nội dung không được hỗ trợ." }
+};
+
+app.use((error, _req, res, next) => {
+  if (res.headersSent) return next(error);
+  const status = Number(error?.status || error?.statusCode) || 0;
+  // Middleware gắn sẵn mã trạng thái đúng cho lỗi của người gọi; chỉ cần thay thân HTML bằng
+  // JSON. Không tin mã 5xx: chúng có thể mang theo chi tiết nội bộ, để publicError xử lý.
+  if (status >= 400 && status < 500) {
+    const known = MIDDLEWARE_ERRORS[status] || { code: "BAD_REQUEST", message: "Yêu cầu không hợp lệ." };
+    const message = error?.type === "entity.parse.failed" ? "Dữ liệu gửi lên không phải JSON hợp lệ." : known.message;
+    return res.status(status).json({ status, code: known.code, message });
+  }
+  const response = publicError(error);
+  res.status(response.status).json(response);
+});
 
 app.listen(config.port, () => console.log(`Lana Carousel HTTP server: ${config.publicBaseUrl}`));
 purgeOrphanedProjectAudio().catch(error => console.error("Initial project audio cleanup failed", error));
