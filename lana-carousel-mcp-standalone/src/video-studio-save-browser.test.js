@@ -107,6 +107,15 @@ describe("các nút của video studio lưu được thiết lập", { skip: ski
   assert.notEqual(dialogs[0], "Lỗi hệ thống.", "thông báo phải nói được trường nào sai");
  });
 
+ // Thẻ a không có href thì bấm vào không xảy ra gì cả — nút vẫn sáng, vẫn bấm được, và người
+ // dùng không có cách nào biết là chưa có video để tải.
+ test("nút Tải MP4 chưa hiện khi chưa render xong", async () => {
+  const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } });
+  await page.goto(`${origin}/video-studio?projectId=${projectId}`, { waitUntil: "networkidle" });
+  assert.equal(await page.locator("#download").isVisible(), false, "chưa render thì không được hiện nút tải");
+  await page.close();
+ });
+
  test("duyệt script không báo lỗi hệ thống", async () => {
   const { dialogs, status } = await clickStudioButton("#approve");
   assert.equal(status, 200, `PUT /script phải trả 200, nhận ${status}`);
