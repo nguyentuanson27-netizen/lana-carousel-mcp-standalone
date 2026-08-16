@@ -1,5 +1,6 @@
 import textToSpeech from "@google-cloud/text-to-speech";
 import {GoogleAuth} from "google-auth-library";
+import {AppError} from "./errors.js";
 const {TextToSpeechClient}=textToSpeech;
 
 const enabledSlides=project=>project.slides.filter(s=>(s.video||{}).enabled!==false);
@@ -119,8 +120,19 @@ export const sampledVoiceName=settings=>isVertexProvider(settings.ttsProvider)
  ?settings.geminiSpeaker1Voice
  :settings.ttsVoice;
 
+// Thieu credential, het quota, model khong ton tai — nha cung cap nem ra Error thuong, va
+// publicError goi tat ca thanh 500 "Loi he thong.". Nguoi bam "Nghe thu" vi the khong biet phai
+// sua gi. Danh dau lai thanh 502 kem nguyen van ly do, va job render cung ghi lai duoc cau do.
 export async function generateVideoTtsTrack(project,settings={}){
- return isVertexProvider(settings.ttsProvider)?generateVertex(project,settings):generateGoogle(project,settings);
+ try{
+  return isVertexProvider(settings.ttsProvider)
+   ?await generateVertex(project,settings)
+   :await generateGoogle(project,settings);
+ }catch(error){
+  if(error instanceof AppError)throw error;
+  const provider=isVertexProvider(settings.ttsProvider)?"Vertex AI":"Google TTS";
+  throw new AppError("TTS_PROVIDER_FAILED",`${provider} không đọc được: ${error?.message||error}`,502);
+ }
 }
 
 // Doc mot cau don le: dung cho tung doan voice-over, cho nghe thu giong va cho preview.

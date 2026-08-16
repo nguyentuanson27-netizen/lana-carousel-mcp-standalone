@@ -53,7 +53,12 @@ const segmentSchema=z.object({
  subtitleText:z.string().max(2000),
  voiceOverText:z.string().max(4000),
  speaker:z.enum(["speaker1","speaker2"]).default("speaker1"),
- enabled:z.boolean().default(true)
+ enabled:z.boolean().default(true),
+ // saveVideoAnalysisScript tự đánh số `order` theo vị trí trong mảng rồi lưu kèm, nên GET trả
+ // về trường này và studio gửi nguyên mảng đó lên lại. Schema `.strict()` không nhận thì mọi
+ // lượt lưu, duyệt, render và nghe thử trên video đều chết. Giá trị gửi lên chỉ để round-trip
+ // được: thứ tự vẫn luôn được tính lại từ vị trí trong mảng.
+ order:z.number().int().min(0).optional()
 }).strict();
 const preparedSegmentSchema=segmentSchema.extend({
  id:z.string().min(1).max(100),
@@ -196,7 +201,7 @@ const filenameSlug=value=>String(value||"")
  .toLowerCase();
 
 videoAnalysisRouter.get("/projects/:id/subtitles",safe((req,res)=>{
- // Để buildSubtitleFile tự từ chối định dạng lạ: lỗi Zod ở đây sẽ thành 500 chứ không phải 422.
+ // buildSubtitleFile tự từ chối định dạng lạ bằng AppError, nên không cần thêm một lớp zod nữa.
  const format=String(req.query.format||"srt").toLowerCase();
  const project=getVideoAnalysisProject(req.params.id);
  const body=buildSubtitleFile(project.script.segments,format);
@@ -215,8 +220,8 @@ const voiceSampleBody=z.object({
 }).strict();
 
 videoAnalysisRouter.post("/projects/:id/voice-sample",safe(async(req,res)=>{
- // publicError chưa nhận diện ZodError nên .parse() sẽ thành 500. Tự kiểm rồi ném AppError
- // để yêu cầu sai định dạng ở lại nhánh 4xx.
+ // publicError đã biến ZodError thành 422, nhưng ở đây vẫn tự kiểm để thông báo nói đúng ngôn
+ // ngữ của tính năng ("nghe thử") thay vì câu chung cho mọi endpoint.
  const parsed=voiceSampleBody.safeParse(req.body);
  if(!parsed.success){
   const issue=parsed.error.issues[0];
