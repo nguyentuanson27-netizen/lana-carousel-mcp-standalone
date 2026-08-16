@@ -161,9 +161,19 @@ function fill(){
   renderPreview();
 }
 
+// `note` do người gọi API đặt (thân của PUT /script), nên nhét thẳng vào innerHTML là mở đường
+// cho script lạ chạy trong studio. Dựng bằng DOM để chuỗi luôn ở lại dạng văn bản.
+function versionButton(version){
+  const button=document.createElement("button");
+  button.dataset.id=version.id;
+  button.textContent=`v${version.version} · ${version.note} · ${new Date(version.created_at).toLocaleString("vi")}`;
+  return button;
+}
+
 async function loadVersions(){
   const response=await api(`/api/video-analysis/projects/${projectId}/versions`);
-  $("#versions").innerHTML=response.versions.map(version=>`<button data-id="${version.id}">v${version.version} · ${version.note} · ${new Date(version.created_at).toLocaleString("vi")}</button>`).join("")||"Chưa có phiên bản";
+  if(response.versions.length)$("#versions").replaceChildren(...response.versions.map(versionButton));
+  else $("#versions").textContent="Chưa có phiên bản";
   $("#versions").querySelectorAll("button").forEach(button=>button.onclick=()=>
     api(`/api/video-analysis/projects/${projectId}/versions/${button.dataset.id}/restore`,{method:"POST"})
       .then(load)
@@ -328,21 +338,33 @@ $("#render").onclick=async()=>{
 async function poll(id){
   clearInterval(jobTimer);
   const run=async()=>{
-    const job=await api(`/api/video-analysis/jobs/${id}`);
-    $("#job").textContent=`${job.status} · ${job.progress}%${job.error?" · "+job.error:""}`;
-    if(job.status==="READY"){
+    // Hàm này chạy trong setInterval nên không có ai bắt lỗi giùm: một lượt hỏi hỏng mà không
+    // xử lý sẽ thành unhandled rejection lặp lại mỗi 2 giây, vòng lặp không bao giờ dừng và
+    // dòng trạng thái đứng im ở con số cuối cùng.
+    try{
+      const job=await api(`/api/video-analysis/jobs/${id}`);
+      $("#job").textContent=`${job.status} · ${job.progress}%${job.error?" · "+job.error:""}`;
+      if(job.status==="READY"){
+        clearInterval(jobTimer);
+        $("#download").hidden=false;
+        $("#download").href=job.downloadUrl;
+      }else if(job.status==="FAILED")clearInterval(jobTimer);
+    }catch(error){
       clearInterval(jobTimer);
-      $("#download").hidden=false;
-      $("#download").href=job.downloadUrl;
-    }else if(job.status==="FAILED")clearInterval(jobTimer);
+      $("#job").textContent=`Mất liên lạc với job: ${error.message}`;
+    }
   };
   await run();
   jobTimer=setInterval(run,2000);
 }
 
-// Xuất phụ đề từ bản đã lưu, nên lưu nháp trước để tệp tải về khớp đúng thứ đang thấy.
+// Lưu trước khi tải để tệp khớp đúng thứ đang thấy trên màn hình. Phải giữ nguyên trạng thái
+// duyệt: `save(false)` hạ một dự án đã duyệt xuống DRAFT, và người dùng chỉ phát hiện ra ở lần
+// bấm Render kế tiếp khi nó đòi duyệt lại.
+const keepApproval=()=>project.status==="APPROVED";
+
 async function downloadSubtitles(format){
-  await save(false,{refresh:false});
+  await save(keepApproval(),{refresh:false});
   location.href=`/api/video-analysis/projects/${projectId}/subtitles?format=${format}`;
 }
 $("#downloadSrt").onclick=()=>downloadSubtitles("srt").catch(error=>alert(error.message));
@@ -402,7 +424,7 @@ $("#voicePreview").onclick=async()=>{
   button.disabled=true;
   $("#voicePreviewInfo").textContent="Đang tạo giọng đọc…";
   try{
-    await save(false,{refresh:false});
+    await save(keepApproval(),{refresh:false});
     const response=await api(`/api/video-analysis/projects/${projectId}/voice-preview`,{method:"POST"});
     voiceClips=response.voiceTracks.map(track=>{
       const audio=new Audio(track.url);

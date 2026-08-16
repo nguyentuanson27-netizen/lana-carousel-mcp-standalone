@@ -138,3 +138,22 @@ test("surfaces a provider failure with its reason instead of a generic server er
   globalThis.fetch = originalFetch;
  }
 });
+
+// Endpoint nghe thử mở cho cả phiên chia sẻ link, nên thông báo lỗi không được kéo theo nguyên
+// văn phản hồi của nhà cung cấp: chỗ đó chứa đường dẫn model kèm project id và chi tiết IAM.
+test("caps the provider message so a long error body cannot ride along", async () => {
+ const originalFetch = globalThis.fetch;
+ globalThis.fetch = async () => { throw new Error(`${"chi tiết nội bộ ".repeat(40)}projects/bi-mat/locations/global`); };
+ try {
+  await assert.rejects(
+   generateVideoTtsTrack({ slides: [{ headline: "Xin chào", body: "", video: { enabled: true } }] }, { ttsProvider: "google" }),
+   error => {
+    assert.ok(error.message.length < 200, `thông báo dài ${error.message.length} ký tự, phải được cắt ngắn`);
+    assert.doesNotMatch(error.message, /projects\/bi-mat/u, "không được lộ phần đuôi của lỗi gốc");
+    return true;
+   }
+  );
+ } finally {
+  globalThis.fetch = originalFetch;
+ }
+});

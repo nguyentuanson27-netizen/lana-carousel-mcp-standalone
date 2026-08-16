@@ -47,12 +47,31 @@ JSON. Mã 5xx vẫn đi qua `publicError()` vì có thể mang theo chi tiết n
 mọi route và middleware tĩnh — đặt sớm hơn là chặn mất cả trang bình thường, nên
 `src/http-error-shape.test.js` kiểm luôn cả nhánh phục vụ trang.
 
+Thông báo lỗi của nhà cung cấp cũng phải cắt ngắn và không kéo theo nguyên văn phản hồi HTTP:
+thân phản hồi của Vertex chứa đường dẫn model kèm project id và chi tiết IAM, còn `/voice-sample`
+với `/voice-preview` thì mở cho cả phiên chia sẻ link. Chi tiết đầy đủ đi vào log máy chủ.
+
 ## 2c. Mọi nút gọi mạng đều phải bắt lỗi
 
 `api()` ném khi phản hồi không `ok`. Nút nào gọi mà quên `.catch()` thì lỗi chỉ hiện trong console,
 người dùng thấy bấm xong không có gì xảy ra — khó lần ra hơn cả một thông báo sai. Riêng nút tải
 tệp lên không dùng `api()` nên phải tự đọc phản hồi kiểu phòng thủ: nhánh lỗi của nó có thể không
 phải JSON.
+
+Vòng theo dõi job trong `poll()` cũng vậy, mà còn nặng hơn: nó chạy trong `setInterval` nên không
+có ai bắt lỗi giùm. Một lượt hỏi hỏng thành unhandled rejection lặp lại mỗi 2 giây, vòng lặp không
+bao giờ dừng và dòng trạng thái đứng im ở con số cuối cùng.
+
+## 4. Lưu trước khi tải phải giữ nguyên trạng thái duyệt
+
+Xuất phụ đề và nghe thử giọng đọc đều lưu nháp trước để tệp khớp thứ đang thấy trên màn hình.
+Lưu bằng `save(false)` hạ một dự án **đã duyệt** xuống `DRAFT`, và người dùng chỉ phát hiện ra ở
+lần bấm Render kế tiếp khi nó đòi duyệt lại. Dùng `save(keepApproval())`.
+
+## 5. Chuỗi do người gọi API đặt không được vào `innerHTML`
+
+`note` của phiên bản đi thẳng từ thân `PUT /script`. Danh sách phiên bản dựng bằng DOM
+(`textContent` + `replaceChildren`) để những chuỗi đó ở lại dạng văn bản.
 
 ## 3. Thân yêu cầu chỉ tồn tại trong trình duyệt
 

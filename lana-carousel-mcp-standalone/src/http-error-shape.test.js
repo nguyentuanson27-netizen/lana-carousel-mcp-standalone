@@ -1,9 +1,31 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { after, before, describe, test } from "node:test";
+
+/**
+ * Mượn một cổng trống thay vì bốc số ngẫu nhiên trong một dải hẹp. Trùng cổng với tiến trình
+ * khác thì server không lên được và lỗi hiện ra ở tận nơi khác, dưới dạng một câu khó hiểu.
+ */
+async function freePort() {
+ const probe = net.createServer();
+ await new Promise(resolve => probe.listen(0, "127.0.0.1", resolve));
+ const { port } = probe.address();
+ await new Promise(resolve => probe.close(resolve));
+ return port;
+}
+
+/** Đợi server lên và nói rõ nếu nó không lên, thay vì để bài test đầu tiên báo một lỗi lạc đề. */
+async function waitForServer(origin) {
+ for (let attempt = 0; attempt < 80; attempt += 1) {
+  try { if ((await fetch(`${origin}/health`)).ok) return; } catch { /* server chưa lên */ }
+  await new Promise(resolve => setTimeout(resolve, 200));
+ }
+ throw new Error(`server không lên sau 16 giây tại ${origin}`);
+}
 
 // Giao diện chỉ hiểu JSON. Mọi nhánh lỗi — kể cả nhánh do middleware chặn trước khi request tới
 // được route — phải trả JSON kèm một câu nói được thành lời, nếu không nút bấm sẽ hiện
@@ -14,7 +36,7 @@ import { after, before, describe, test } from "node:test";
 // qua `safe()`/`handle()` của router.
 
 const tempDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "lana-error-shape-"));
-const PORT = 8991 + Math.floor(Math.random() * 30);
+const PORT = await freePort();
 const origin = `http://127.0.0.1:${PORT}`;
 const serverEnvironment = {
  ...process.env,
@@ -29,10 +51,7 @@ describe("mọi nhánh lỗi đều trả JSON nói được thành lời", () =
 
  before(async () => {
   server = spawn("node", ["src/http-server.js"], { env: serverEnvironment, stdio: ["ignore", "pipe", "pipe"] });
-  for (let attempt = 0; attempt < 80; attempt += 1) {
-   try { if ((await fetch(`${origin}/health`)).ok) break; } catch { /* server chưa lên */ }
-   await new Promise(resolve => setTimeout(resolve, 200));
-  }
+  await waitForServer(origin);
   const created = await fetch(`${origin}/api/video-analysis/projects`, {
    method: "POST",
    headers: { "content-type": "application/json" },

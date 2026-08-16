@@ -57,7 +57,14 @@ async function generateVertex(project,settings){
   if(response.ok||response.status<500)break;
   await new Promise(resolve=>setTimeout(resolve,400*(attempt+1)));
  }
- if(!response?.ok){const detail=await response.text().catch(()=>"");throw new Error(`Vertex AI TTS loi ${response?.status||"network"}: ${detail.slice(0,240)}`);}
+ if(!response?.ok){
+  // Than phan hoi cua Vertex chua duong dan model kem project id va chi tiet IAM. Ghi log cho
+  // nguoi van hanh doc, con phia nguoi goi chi can ma loi de phan biet thieu quyen (403) voi
+  // sai ten model (404) — endpoint nay mo cho ca phien chia se link.
+  const detail=await response.text().catch(()=>"");
+  console.error("Vertex AI TTS error body:",detail.slice(0,500));
+  throw new AppError("TTS_PROVIDER_FAILED",`Vertex AI TTS lỗi ${response?.status||"mạng"}. Xem log máy chủ để biết chi tiết.`,502);
+ }
  const body=await response.json(),part=body?.candidates?.[0]?.content?.parts?.find(p=>p.inlineData?.data||p.inline_data?.data),base64=part?.inlineData?.data||part?.inline_data?.data;
  if(!base64)throw new Error("Vertex AI TTS khong tra ve du lieu am thanh.");
  const mime=part?.inlineData?.mimeType||part?.inline_data?.mime_type||"audio/L16;rate=24000";
@@ -131,7 +138,9 @@ export async function generateVideoTtsTrack(project,settings={}){
  }catch(error){
   if(error instanceof AppError)throw error;
   const provider=isVertexProvider(settings.ttsProvider)?"Vertex AI":"Google TTS";
-  throw new AppError("TTS_PROVIDER_FAILED",`${provider} không đọc được: ${error?.message||error}`,502);
+  // Ghi nguyen ven de con dau vet; phia nguoi goi chi nhan cau mo ta cua thu vien, da cat ngan.
+  console.error(`${provider} TTS failed:`,error);
+  throw new AppError("TTS_PROVIDER_FAILED",`${provider} không đọc được: ${String(error?.message||error).slice(0,120)}`,502);
  }
 }
 

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -10,11 +11,20 @@ import { after, before, describe, test } from "node:test";
 // khỏi bản thật lúc nào không hay — chính khoảng trôi đó là chỗ lỗi "Lỗi hệ thống." đã nằm im
 // qua nhiều lần phát hành. Ở đây bấm đúng cái nút thật.
 
+/** Mượn một cổng trống: trùng cổng làm server không lên và lỗi hiện ra ở tận nơi khác. */
+async function freePort() {
+ const probe = net.createServer();
+ await new Promise(resolve => probe.listen(0, "127.0.0.1", resolve));
+ const { port } = probe.address();
+ await new Promise(resolve => probe.close(resolve));
+ return port;
+}
+
 let chromium = null;
 try { ({ chromium } = await import("playwright")); } catch { chromium = null; }
 
 const tempDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "lana-video-save-"));
-const PORT = 8961 + Math.floor(Math.random() * 30);
+const PORT = await freePort();
 const origin = `http://127.0.0.1:${PORT}`;
 const serverEnvironment = {
  ...process.env,
@@ -36,10 +46,12 @@ describe("các nút của video studio lưu được thiết lập", { skip: ski
 
  before(async () => {
   server = spawn("node", ["src/http-server.js"], { env: serverEnvironment, stdio: ["ignore", "pipe", "pipe"] });
-  for (let attempt = 0; attempt < 80; attempt += 1) {
-   try { if ((await fetch(`${origin}/health`)).ok) break; } catch { /* server chưa lên */ }
-   await new Promise(resolve => setTimeout(resolve, 200));
+  let ready = false;
+  for (let attempt = 0; attempt < 80 && !ready; attempt += 1) {
+   try { ready = (await fetch(`${origin}/health`)).ok; } catch { /* server chưa lên */ }
+   if (!ready) await new Promise(resolve => setTimeout(resolve, 200));
   }
+  assert.ok(ready, `server không lên sau 16 giây tại ${origin}`);
   const created = await fetch(`${origin}/api/video-analysis/projects`, {
    method: "POST",
    headers: { "content-type": "application/json" },
@@ -123,5 +135,62 @@ describe("các nút của video studio lưu được thiết lập", { skip: ski
 
   const project = await (await fetch(`${origin}/api/video-analysis/projects/${projectId}`)).json();
   assert.equal(project.status, "APPROVED");
+ });
+
+ // Tải phụ đề có lưu nháp trước để tệp khớp màn hình. Lưu với approved=false sẽ hạ dự án đã
+ // duyệt xuống DRAFT, và người dùng chỉ phát hiện ở lần bấm Render kế tiếp khi nó đòi duyệt lại.
+ test("tải phụ đề không hạ dự án đã duyệt xuống bản nháp", async () => {
+  const before = await (await fetch(`${origin}/api/video-analysis/projects/${projectId}`)).json();
+  assert.equal(before.status, "APPROVED", "bài này cần dự án đang ở trạng thái đã duyệt");
+
+  const page = await browser.newPage({ viewport: { width: 1500, height: 1000 }, acceptDownloads: true });
+  page.on("dialog", dialog => dialog.dismiss().catch(() => {}));
+  await page.goto(`${origin}/video-studio?projectId=${projectId}`, { waitUntil: "networkidle" });
+  await page.click("#downloadSrt");
+  await page.waitForTimeout(800);
+  await page.close();
+
+  const after = await (await fetch(`${origin}/api/video-analysis/projects/${projectId}`)).json();
+  assert.equal(after.status, "APPROVED", "tải phụ đề xong dự án vẫn phải ở trạng thái đã duyệt");
+ });
+
+ // `note` do người gọi API đặt, nên nhét thẳng vào innerHTML là mở đường cho script lạ chạy
+ // trong studio của người khác.
+ test("ghi chú phiên bản hiện thành chữ chứ không chạy thành mã", async () => {
+  const marker = "lana-xss-marker";
+  await fetch(`${origin}/api/video-analysis/projects/${projectId}/script`, {
+   method: "PUT",
+   headers: { "content-type": "application/json" },
+   body: JSON.stringify({
+    approved: true,
+    note: `<img src=x id="${marker}" onerror="window.__xss=1">`,
+    script: { summary: "", language: "vi-VN", segments: [] },
+    settings: {}
+   })
+  });
+
+  const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } });
+  await page.goto(`${origin}/video-studio?projectId=${projectId}`, { waitUntil: "networkidle" });
+  // Lịch sử phiên bản nằm trong <details> có thể đang đóng, nên chỉ chờ nút gắn vào DOM.
+  await page.waitForSelector("#versions button", { state: "attached" });
+
+  assert.equal(await page.locator(`#${marker}`).count(), 0, "không được dựng ra thẻ từ ghi chú");
+  assert.equal(await page.evaluate(() => window.__xss), undefined, "không được chạy mã trong ghi chú");
+  assert.match(await page.locator("#versions button").first().textContent(), /<img/u, "ghi chú phải hiện nguyên văn");
+  await page.close();
+ });
+
+ // `run()` chạy trong setInterval nên không ai bắt lỗi giùm: một lượt hỏi hỏng mà không xử lý
+ // sẽ lặp lại mỗi 2 giây và dòng trạng thái đứng im ở con số cuối cùng.
+ test("mất liên lạc giữa lúc theo dõi job thì nói ra chứ không đứng im", async () => {
+  const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } });
+  const dialogs = [];
+  page.on("dialog", dialog => { dialogs.push(dialog.message()); dialog.dismiss().catch(() => {}); });
+  await page.goto(`${origin}/video-studio?projectId=${projectId}`, { waitUntil: "networkidle" });
+  await page.route("**/api/video-analysis/jobs/**", route => route.abort());
+
+  await page.click("#render");
+  await page.waitForFunction(() => /Mất liên lạc/u.test(document.querySelector("#job").textContent), null, { timeout: 8000 });
+  await page.close();
  });
 });
