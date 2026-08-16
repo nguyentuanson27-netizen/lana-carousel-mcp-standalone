@@ -31,6 +31,29 @@ nhiều bản zod, mỗi bản một lớp riêng.
 Cũng vì vậy, lỗi từ nhà cung cấp TTS được `generateVideoTtsTrack()` gói thành `502 TTS_PROVIDER_FAILED`
 kèm nguyên văn lý do — thiếu credential hay sai tên model phải đọc được ngay trên giao diện.
 
+Hệ quả cho mọi route: **đừng `throw new Error("câu tiếng Việt")`**. `publicError()` thay câu đó bằng
+"Lỗi hệ thống." nên công sức viết thông báo đổ sông. Muốn câu đó tới được người dùng thì phải là
+`AppError` kèm mã trạng thái.
+
+## 2b. Lỗi của middleware cũng phải là JSON
+
+`express.json` gặp thân quá lớn hoặc JSON hỏng, `express.raw` gặp content-type ngoài danh sách,
+`express.static` không thấy tệp — cả ba đều ném lỗi **trước khi** request tới được route, nên không
+đi qua `safe()`/`handle()`. Bộ xử lý mặc định của Express trả về HTML kèm stack trace; giao diện gọi
+`response.json()` trên đó là ném lỗi và nút bấm chết lặng.
+
+Bộ xử lý lỗi cuối `src/http-server.js` giữ nguyên mã 4xx do middleware gắn và chỉ thay thân bằng
+JSON. Mã 5xx vẫn đi qua `publicError()` vì có thể mang theo chi tiết nội bộ. Nó phải đứng **sau**
+mọi route và middleware tĩnh — đặt sớm hơn là chặn mất cả trang bình thường, nên
+`src/http-error-shape.test.js` kiểm luôn cả nhánh phục vụ trang.
+
+## 2c. Mọi nút gọi mạng đều phải bắt lỗi
+
+`api()` ném khi phản hồi không `ok`. Nút nào gọi mà quên `.catch()` thì lỗi chỉ hiện trong console,
+người dùng thấy bấm xong không có gì xảy ra — khó lần ra hơn cả một thông báo sai. Riêng nút tải
+tệp lên không dùng `api()` nên phải tự đọc phản hồi kiểu phòng thủ: nhánh lỗi của nó có thể không
+phải JSON.
+
 ## 3. Thân yêu cầu chỉ tồn tại trong trình duyệt
 
 `settings()` và `segments()` trong `public/video-studio.js` ghép thân yêu cầu từ các ô của form

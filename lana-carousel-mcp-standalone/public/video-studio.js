@@ -164,7 +164,10 @@ function fill(){
 async function loadVersions(){
   const response=await api(`/api/video-analysis/projects/${projectId}/versions`);
   $("#versions").innerHTML=response.versions.map(version=>`<button data-id="${version.id}">v${version.version} · ${version.note} · ${new Date(version.created_at).toLocaleString("vi")}</button>`).join("")||"Chưa có phiên bản";
-  $("#versions").querySelectorAll("button").forEach(button=>button.onclick=async()=>{await api(`/api/video-analysis/projects/${projectId}/versions/${button.dataset.id}/restore`,{method:"POST"});await load()});
+  $("#versions").querySelectorAll("button").forEach(button=>button.onclick=()=>
+    api(`/api/video-analysis/projects/${projectId}/versions/${button.dataset.id}/restore`,{method:"POST"})
+      .then(load)
+      .catch(error=>alert(error.message)));
 }
 
 async function load(){
@@ -281,8 +284,34 @@ document.fonts?.ready.then(renderPreview).catch(()=>{});
 $("#addSegment").onclick=()=>addSegment({start:$("#video").currentTime,end:$("#video").currentTime+3});
 $("#save").onclick=()=>save(false).catch(error=>alert(error.message));
 $("#approve").onclick=()=>save(true).catch(error=>alert(error.message));
-$("#attach").onclick=async()=>{await api(`/api/video-analysis/projects/${projectId}/source-reference`,{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({url:$("#sourceUrl").value,filename:"video-remote.mp4"})});await load()};
-$("#upload").onchange=async event=>{const file=event.target.files[0];if(!file)return;const response=await fetch(`/api/video-analysis/projects/${projectId}/source-upload?filename=${encodeURIComponent(file.name)}`,{method:"POST",headers:{"content-type":file.type||"video/mp4"},body:file});if(!response.ok)alert((await response.json()).message||"Upload lỗi");else await load()};
+// Mọi nút gọi mạng đều phải bắt lỗi: promise bị bỏ rơi chỉ hiện trong console, còn người dùng
+// thấy một cái nút bấm xong không có gì xảy ra.
+$("#attach").onclick=()=>
+  api(`/api/video-analysis/projects/${projectId}/source-reference`,{
+    method:"PUT",
+    headers:{"content-type":"application/json"},
+    body:JSON.stringify({url:$("#sourceUrl").value,filename:"video-remote.mp4"})
+  }).then(load).catch(error=>alert(error.message));
+
+$("#upload").onchange=async event=>{
+  const file=event.target.files[0];
+  if(!file)return;
+  try{
+    const response=await fetch(`/api/video-analysis/projects/${projectId}/source-upload?filename=${encodeURIComponent(file.name)}`,{
+      method:"POST",
+      headers:{"content-type":file.type||"video/mp4"},
+      body:file
+    });
+    // Không phải nhánh lỗi nào cũng trả JSON — tệp vượt giới hạn bị middleware chặn trước cả
+    // route. Đọc kiểu phòng thủ để nút không chết lặng khi tải lên hỏng.
+    if(!response.ok){
+      const json=await response.json().catch(()=>({}));
+      throw new Error(json.message||`Tải video lên thất bại (${response.status}).`);
+    }
+    await load();
+  }catch(error){alert(error.message)}
+  finally{event.target.value=""}
+};
 $("#render").onclick=async()=>{
   try{
     if(project.status!=="APPROVED")throw new Error("Hãy duyệt script trước khi render.");

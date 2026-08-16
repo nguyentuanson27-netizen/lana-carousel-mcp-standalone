@@ -90,6 +90,23 @@ describe("các nút của video studio lưu được thiết lập", { skip: ski
   assert.equal(project.script.segments[0].voiceOverText, "Lời đọc thử");
  });
 
+ // Nút gọi mạng mà không bắt lỗi thì promise bị bỏ rơi: lỗi chỉ nằm trong console còn người dùng
+ // thấy một cái nút bấm xong không có gì xảy ra — khó lần ra hơn cả một thông báo sai.
+ test("gắn URL video hỏng thì báo lỗi chứ không im lặng", async () => {
+  const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } });
+  const dialogs = [];
+  page.on("dialog", dialog => { dialogs.push(dialog.message()); dialog.dismiss().catch(() => {}); });
+  await page.goto(`${origin}/video-studio?projectId=${projectId}`, { waitUntil: "networkidle" });
+
+  await page.fill("#sourceUrl", "không-phải-url");
+  await page.click("#attach");
+  await page.waitForTimeout(600);
+  await page.close();
+
+  assert.equal(dialogs.length, 1, "phải hiện đúng một thông báo lỗi");
+  assert.notEqual(dialogs[0], "Lỗi hệ thống.", "thông báo phải nói được trường nào sai");
+ });
+
  test("duyệt script không báo lỗi hệ thống", async () => {
   const { dialogs, status } = await clickStudioButton("#approve");
   assert.equal(status, 200, `PUT /script phải trả 200, nhận ${status}`);

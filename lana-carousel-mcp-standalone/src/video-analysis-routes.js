@@ -121,7 +121,13 @@ videoAnalysisRouter.post(
  express.raw({type:["video/mp4","video/webm","video/quicktime","application/octet-stream"],limit:"500mb"}),
  safe(async(req,res)=>{
   getVideoAnalysisProject(req.params.id);
-  if(!Buffer.isBuffer(req.body)||req.body.length<1024)throw new Error("File video trống hoặc không hợp lệ.");
+  // Định dạng không nằm trong danh sách của express.raw thì thân yêu cầu không được đọc thành
+  // Buffer. Hai nhánh này từng ném Error thường nên thông báo viết sẵn ở đây bị publicError thay
+  // bằng "Lỗi hệ thống." — người tải lên không biết tệp của mình sai ở đâu.
+  if(!Buffer.isBuffer(req.body)){
+   throw new AppError("UNSUPPORTED_VIDEO_FORMAT","Chỉ nhận video MP4, WebM hoặc MOV. Hãy chuyển đổi tệp rồi tải lên lại.",415);
+  }
+  if(req.body.length<1024)throw new AppError("EMPTY_VIDEO_FILE","File video trống hoặc không hợp lệ.",422);
   const mime=String(req.headers["content-type"]||"video/mp4").split(";")[0];
   const extension=mime.includes("webm")?"webm":mime.includes("quicktime")?"mov":"mp4";
   const name=`${req.params.id}-${randomUUID()}.${extension}`;
