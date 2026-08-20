@@ -27,10 +27,14 @@ const wrongTypeKey = path.join(workDirectory, "sai-loai.json");
 const directoryKey = workDirectory;
 await fs.writeFile(malformedKey, 'day-la-noi-dung-tep-khoa-bi-hong{{{');
 await fs.writeFile(wrongTypeKey, JSON.stringify({ type: "khong-phai-loai-nao", client_email: "x@y.z" }));
+// Loại được chấp nhận nhưng thiếu đúng những trường JWT.fromJSON() đòi. Kiểm mỗi `type` thì tệp
+// này đi lọt tới tận chỗ ngã.
+const incompleteKey = path.join(workDirectory, "thieu-truong.json");
+await fs.writeFile(incompleteKey, JSON.stringify({ type: "service_account" }));
 
 after(() => fs.rm(workDirectory, { recursive: true, force: true }));
 
-const { generateVideoTtsTrack } = await import("./video-tts.js");
+const { generateVideoTtsTrack, safeCause } = await import("./video-tts.js");
 
 const speak = settings => generateVideoTtsTrack(
  { slides: [{ headline: "Xin chào", body: "", video: { enabled: true, caption: "Xin chào" } }] },
@@ -69,7 +73,8 @@ const brokenKeys = [
  ["tệp không tồn tại", () => missingKey, /không đọc được/u],
  ["thư mục chứ không phải tệp", () => directoryKey, /thư mục/u],
  ["JSON hỏng", () => malformedKey, /JSON/u],
- ["JSON đúng nhưng không phải credential", () => wrongTypeKey, /định dạng/u]
+ ["JSON đúng nhưng không phải credential", () => wrongTypeKey, /định dạng/u],
+ ["loại đúng nhưng thiếu trường bắt buộc", () => incompleteKey, /thiếu trường/u]
 ];
 
 for (const [label, keyPath, expected] of brokenKeys) {
@@ -86,6 +91,67 @@ for (const [label, keyPath, expected] of brokenKeys) {
   }
  });
 }
+
+// getProjectId() tự đọc chính tệp khoá để dò project id, nên nếu kiểm tệp chạy sau nó thì tệp
+// hỏng bị quy thành "chưa đặt VERTEX_AI_PROJECT" — đẩy người vận hành đi đặt một biến vốn đã đúng.
+test("tệp khoá hỏng thì Vertex đổ lỗi cho tệp khoá chứ không cho VERTEX_AI_PROJECT", async () => {
+ for (const [label, keyPath] of brokenKeys) {
+  process.env.GOOGLE_APPLICATION_CREDENTIALS = keyPath();
+  try {
+   await assert.rejects(speak({ ttsProvider: "vertex" }), error => {
+    assert.equal(error.code, "TTS_NOT_CONFIGURED");
+    assert.doesNotMatch(error.message, /VERTEX_AI_PROJECT/u, `${label}: đổ nhầm sang biến project`);
+    return true;
+   });
+  } finally {
+   delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  }
+ }
+});
+
+// Log cũng là chỗ rò: lỗi JSON.parse của thư viện mang theo nội dung tệp khoá, lỗi ENOENT mang
+// theo đường dẫn. Log đi ra file và vào dịch vụ gom log, thường ở quyền đọc rộng hơn hẳn.
+test("không dấu vết nào của đường dẫn hay nội dung tệp khoá lọt vào log", async () => {
+ const written = [];
+ const realError = console.error;
+ console.error = (...parts) => { written.push(parts.map(String).join(" ")); };
+ try {
+  for (const [, keyPath] of brokenKeys) {
+   process.env.GOOGLE_APPLICATION_CREDENTIALS = keyPath();
+   for (const provider of ["google", "vertex"]) {
+    await speak({ ttsProvider: provider }).catch(() => {});
+   }
+   delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  }
+ } finally {
+  console.error = realError;
+  delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+ }
+ const joined = written.join("\n");
+ assert.ok(written.length, "phải có log, nếu không bài này không kiểm được gì");
+ for (const marker of ["lana-tts-config", ".json", "noi-dung-tep-khoa", os.tmpdir()]) {
+  assert.ok(!joined.includes(marker), `log để lọt "${marker}": ${joined.slice(0, 300)}`);
+ }
+});
+
+// Bài trên chứng minh hôm nay không có gì lọt vào log, nhưng nó chỉ đi qua các nhánh mà bản kiểm
+// tệp bắt được trước — ở đó `cause` rỗng, nên nó không hề chạm tới bộ lọc. Kiểm thẳng bộ lọc để
+// nhánh nào lỡ đưa nguyên lỗi vào log sau này vẫn bị chặn.
+test("bộ lọc log giữ lại tên lỗi và bỏ hết nguyên văn", () => {
+ const error = Object.assign(
+  new SyntaxError('Unexpected token \'d\', "day-la-noi-dung-tep-khoa" is not valid JSON'),
+  { code: "ERR_PARSE" }
+ );
+ const line = safeCause(error);
+ assert.match(line, /SyntaxError/u, "vẫn phải lần ra được lỗi gì");
+ assert.match(line, /code=ERR_PARSE/u);
+ assert.ok(!line.includes("noi-dung-tep-khoa"), `để lọt nội dung tệp: ${line}`);
+ assert.ok(!line.includes("Unexpected token"), `để lọt nguyên văn: ${line}`);
+
+ const withPath = safeCause(Object.assign(new Error("lstat '/etc/lana/khoa.json'"), { code: "ENOENT" }));
+ assert.ok(!withPath.includes("/etc/lana"), `để lọt đường dẫn: ${withPath}`);
+ assert.equal(safeCause(null), "", "không có cause thì không ghi gì thêm");
+});
 
 // Thông báo đi ra tới cả phiên chia sẻ link. Đường dẫn tệp khoá đã đành, lỗi JSON.parse của
 // google-auth-library còn nhét nguyên nội dung tệp khoá vào câu báo.
@@ -159,12 +225,14 @@ test("lý do đã biết vẫn được nói ra", async () => {
 // tiến trình. Bắt trong cùng tiến trình test không chứng minh được điều đó — phải chạy ra tiến
 // trình con rồi xem nó còn sống hay không.
 const run = promisify(execFile);
-test("tệp khoá hỏng kiểu nào cũng không hạ được tiến trình", async () => {
+test("tệp khoá hỏng kiểu nào, nhà cung cấp nào, cũng không hạ được tiến trình", async () => {
  const script = path.join(workDirectory, "chay-thu.mjs");
  await fs.writeFile(script, `
   const { generateVideoTtsTrack } = await import(${JSON.stringify(path.resolve("src/video-tts.js"))});
-  try { await generateVideoTtsTrack({slides:[{headline:"a",body:"",video:{enabled:true,caption:"a"}}]},{ttsProvider:"google"}); }
-  catch { /* lỗi có kiểm soát là điều mong đợi */ }
+  for (const provider of ["google", "vertex"]) {
+   try { await generateVideoTtsTrack({slides:[{headline:"a",body:"",video:{enabled:true,caption:"a"}}]},{ttsProvider:provider}); }
+   catch { /* lỗi có kiểm soát là điều mong đợi */ }
+  }
   await new Promise(resolve => setTimeout(resolve, 1500));
   console.log("SONG_SOT");
  `);

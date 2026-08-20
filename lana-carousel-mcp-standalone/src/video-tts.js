@@ -45,10 +45,20 @@ const providerReason=error=>{
 // Thieu cau hinh la chuyen cua nguoi van hanh, khong phai cua nguoi bam nut, nen cau bao phai noi
 // thang can dat bien nao va chi duoc loi di tam thoi. Dung 503 de phan biet voi 502 "da goi
 // provider nhung hong": o day chua he goi ra ngoai lan nao.
+// Ngay ca log cung khong duoc chua nguyen van loi: loi JSON.parse cua google-auth-library nhet
+// noi dung tep khoa vao message, con loi ENOENT thi nhet duong dan. Log di ra file, di vao dich
+// vu gom log, va thuong de o quyen doc rong hon han thu ma nguoi ngoai thay duoc. Ghi ten loi,
+// ma loi va nhom ly do — du de lan ra chuyen gi, khong mang theo bi mat nao.
+export const safeCause=error=>{
+ if(!error)return "";
+ const code=String(error?.code??"").slice(0,40);
+ return `${error?.name||"Error"}${code?` code=${code}`:""} → ${providerReason(error)}`;
+};
+
 const notConfigured=(detail,cause)=>{
  // generateVideoTtsTrack nem thang AppError ra ngoai truoc khi toi console.error cua no, nen
  // khong ghi o day thi cac ca thieu cau hinh khong de lai dau vet nao trong log.
- console.error("Vertex AI TTS not configured:",detail,cause??"");
+ console.error("Vertex AI TTS not configured:",detail,safeCause(cause));
  // Chi mach "doi sang Google TTS" khi loi di do that su thong: generateGoogle chuyen sang Cloud
  // TTS ngay khi GOOGLE_APPLICATION_CREDENTIALS co gia tri, nen luc bien do dang dat sai thi ca
  // hai nha cung cap cung hong va loi khuyen se thanh lac huong.
@@ -64,8 +74,17 @@ const notConfigured=(detail,cause)=>{
 // tu choi ma khong ai bat (createStub), va Node 22 bien no thanh uncaught exception — ca tien
 // trinh http-server chet vi mot khoa TTS het han. Kiem tep truoc khi cham vao client la chan duoc
 // ca duong do, dong thoi noi dung chuyen gi dang sai.
-const CREDENTIAL_TYPES=["service_account","authorized_user","external_account",
- "impersonated_service_account","gdch_service_account","external_account_authorized_user"];
+// Kiem dung `type` la chua du: JWT.fromJSON() cua google-auth-library@10.5.0 con doi client_email
+// va private_key, nen {"type":"service_account"} van di lot toi tan cho nga. Moi loai mot bo
+// truong bat buoc, lay theo cac fromJSON() tuong ung.
+const CREDENTIAL_REQUIREMENTS={
+ service_account:["client_email","private_key"],
+ authorized_user:["client_id","client_secret","refresh_token"],
+ external_account:["audience","subject_token_type","token_url"],
+ external_account_authorized_user:["audience","refresh_token","token_url"],
+ impersonated_service_account:["source_credentials","service_account_impersonation_url"],
+ gdch_service_account:["project","private_key","client_id"]
+};
 
 function credentialFileProblem(){
  const file=process.env.GOOGLE_APPLICATION_CREDENTIALS;
@@ -82,24 +101,31 @@ function credentialFileProblem(){
  let parsed;
  try{ parsed=JSON.parse(raw); }
  catch{ return "tệp credential không phải JSON hợp lệ"; }
- if(!CREDENTIAL_TYPES.includes(parsed?.type))return "tệp credential không đúng định dạng của Google";
+ const required=CREDENTIAL_REQUIREMENTS[parsed?.type];
+ if(!required)return "tệp credential không đúng định dạng của Google";
+ const missing=required.filter(field=>!parsed[field]);
+ // Ten truong la ten trong lieu do cua Google, khong phai gia tri — noi ra duoc ma khong lo gi.
+ if(missing.length)return `tệp credential thiếu trường ${missing.join(", ")}`;
  return "";
 }
 
 function vertexClient(){
  vertexClientPromise??=(async()=>{
   const auth=new GoogleAuth({scopes:["https://www.googleapis.com/auth/cloud-platform"]});
+  // Kiem tep khoa TRUOC getProjectId(): khi VERTEX_AI_PROJECT de trong, getProjectId() tu doc
+  // chinh tep nay de do project id, nghia la no cham vao tep hong truoc khi ban kiem kip chay.
+  // No con lam sai han cau bao — tep khoa hong lai bi quy thanh "chua dat VERTEX_AI_PROJECT",
+  // day nguoi van hanh di dat mot bien von da dung. Trong Docker chi ./data duoc mount nen duong
+  // dan cua host tro thanh tep khong ton tai ben trong container, ca dat nham pho bien nhat.
+  const fileProblem=credentialFileProblem();
+  if(fileProblem)throw notConfigured(fileProblem);
   // getProjectId() nem khi khong do ra project chu khong tra ve rong, nen nhanh `if(!projectId)`
   // truoc day la code chet: may chu chua cau hinh thi nguoi dung nhan nguyen cau tieng Anh cua
   // thu vien kem mot URL bi cat do, thay vi loi huong dan da viet san ngay duoi no.
-  let detectFailure="";
+  let detectFailure;
   const projectId=process.env.VERTEX_AI_PROJECT||process.env.GOOGLE_CLOUD_PROJECT
    ||await auth.getProjectId().catch(error=>{detectFailure=error;return""});
   if(!projectId)throw notConfigured("chưa đặt VERTEX_AI_PROJECT",detectFailure);
-  // Trong Docker chi ./data duoc mount, nen duong dan cua host tro thanh tep khong ton tai ben
-  // trong container — ca dat nham nay pho bien hon han ca quen dat.
-  const fileProblem=credentialFileProblem();
-  if(fileProblem)throw notConfigured(fileProblem);
   // Khong noi thang la "chua dat GOOGLE_APPLICATION_CREDENTIALS": tren GCE/Cloud Run bien do dung
   // ra phai de trong vi credential den tu metadata server, bao vay se day nguoi van hanh di gan
   // mot tep khoa von khong phai van de.
