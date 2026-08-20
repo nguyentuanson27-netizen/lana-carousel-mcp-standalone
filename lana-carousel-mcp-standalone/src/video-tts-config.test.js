@@ -31,6 +31,13 @@ await fs.writeFile(wrongTypeKey, JSON.stringify({ type: "khong-phai-loai-nao", c
 // này đi lọt tới tận chỗ ngã.
 const incompleteKey = path.join(workDirectory, "thieu-truong.json");
 await fs.writeFile(incompleteKey, JSON.stringify({ type: "service_account" }));
+// Loại này từng lọt qua cổng kiểm cũ: đủ audience/subject_token_type/token_url, nhưng
+// IdentityPoolClient vẫn ném ngay trong constructor vì thiếu credential_source hợp lệ. Ứng dụng
+// không dùng tới loại này, nên từ chối thẳng thay vì đoán bộ ràng buộc lồng nhau của nó.
+const exoticKey = path.join(workDirectory, "external-account.json");
+await fs.writeFile(exoticKey, JSON.stringify({
+ type: "external_account", audience: "//iam.googleapis.com/x", subject_token_type: "urn:x", token_url: "https://sts.googleapis.com/v1/token"
+}));
 
 after(() => fs.rm(workDirectory, { recursive: true, force: true }));
 
@@ -73,8 +80,9 @@ const brokenKeys = [
  ["tệp không tồn tại", () => missingKey, /không đọc được/u],
  ["thư mục chứ không phải tệp", () => directoryKey, /thư mục/u],
  ["JSON hỏng", () => malformedKey, /JSON/u],
- ["JSON đúng nhưng không phải credential", () => wrongTypeKey, /định dạng/u],
- ["loại đúng nhưng thiếu trường bắt buộc", () => incompleteKey, /thiếu trường/u]
+ ["JSON đúng nhưng không phải credential", () => wrongTypeKey, /chỉ nhận credential loại/u],
+ ["loại đúng nhưng thiếu trường bắt buộc", () => incompleteKey, /thiếu trường/u],
+ ["loại credential ứng dụng không dùng", () => exoticKey, /chỉ nhận credential loại/u]
 ];
 
 for (const [label, keyPath, expected] of brokenKeys) {
@@ -196,6 +204,36 @@ test("lỗi lạ chỉ ra câu chung, không mang theo chữ nào của lỗi g�
  } finally {
   globalThis.fetch = originalFetch;
  }
+});
+
+// Bịt đường ra phía người dùng mà để log ghi nguyên văn thì chỉ đổi chỗ rò. Nhánh catch chung
+// của generateVideoTtsTrack là một dòng khác hẳn với notConfigured(), nên phải kiểm riêng — chính
+// các fixture ở bài trên đã làm "BEGIN PRIVATE KEY" hiện ra trong log CI qua đúng dòng đó.
+test("nhánh catch chung cũng không ghi nguyên văn lỗi vào log", async () => {
+ const originalFetch = globalThis.fetch;
+ const written = [];
+ const realError = console.error;
+ console.error = (...parts) => { written.push(parts.map(String).join(" ")); };
+ try {
+  for (const raw of [
+   String.raw`Cannot read C:\Users\deploy\secret-key.json`,
+   String.raw`Failed on \\lana-nas\keys\vertex.json`,
+   "Cannot read /etc/lana/secret-key.json — see https://noi-bo.lanadesign.tech/help",
+   "BEGIN PRIVATE KEY MIIEvQIBADANBgkqhkiG9w0"
+  ]) {
+   globalThis.fetch = async () => { throw new Error(raw); };
+   await speak({ ttsProvider: "google" }).catch(() => {});
+  }
+ } finally {
+  console.error = realError;
+  globalThis.fetch = originalFetch;
+ }
+ const joined = written.join("\n");
+ assert.ok(written.length, "nhánh này phải có ghi log, nếu không bài test không kiểm được gì");
+ for (const marker of ["secret-key", "C:", "lana-nas", "/etc/", "noi-bo", "PRIVATE KEY", "MIIEvQ"]) {
+  assert.ok(!joined.includes(marker), `log để lọt "${marker}": ${joined.slice(0, 300)}`);
+ }
+ assert.match(joined, /TTS failed/u, "vẫn phải lần ra được là nhà cung cấp nào hỏng");
 });
 
 // Lý do đã biết vẫn phải nói được thành lời, nếu không thì bản sửa này chỉ đổi "Lỗi hệ thống."

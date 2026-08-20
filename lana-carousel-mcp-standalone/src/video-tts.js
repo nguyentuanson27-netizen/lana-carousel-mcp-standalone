@@ -52,7 +52,8 @@ const providerReason=error=>{
 export const safeCause=error=>{
  if(!error)return "";
  const code=String(error?.code??"").slice(0,40);
- return `${error?.name||"Error"}${code?` code=${code}`:""} → ${providerReason(error)}`;
+ const status=Number(error?.status??error?.statusCode)||0;
+ return `${error?.name||"Error"}${code?` code=${code}`:""}${status?` status=${status}`:""} → ${providerReason(error)}`;
 };
 
 const notConfigured=(detail,cause)=>{
@@ -74,16 +75,16 @@ const notConfigured=(detail,cause)=>{
 // tu choi ma khong ai bat (createStub), va Node 22 bien no thanh uncaught exception — ca tien
 // trinh http-server chet vi mot khoa TTS het han. Kiem tep truoc khi cham vao client la chan duoc
 // ca duong do, dong thoi noi dung chuyen gi dang sai.
-// Kiem dung `type` la chua du: JWT.fromJSON() cua google-auth-library@10.5.0 con doi client_email
-// va private_key, nen {"type":"service_account"} van di lot toi tan cho nga. Moi loai mot bo
-// truong bat buoc, lay theo cac fromJSON() tuong ung.
+// Chi nhan hai loai credential ma ung dung nay that su dung: tep service account cho may chu, va
+// authorized_user do `gcloud auth application-default login` sinh ra cho may lap trinh.
+//
+// Da thu nhan them external_account/impersonated/gdch va do la mot sai lam: moi loai con mot bo
+// rang buoc long nhau rieng (external_account phai co credential_source hop le, neu khong
+// IdentityPoolClient nem ngay trong constructor), nen kiem vai truong o tang tren chi tao ra cam
+// giac an toan. Duoi mot cong kiem, thu khong hieu ro thi tu choi thang van dung hon la doan.
 const CREDENTIAL_REQUIREMENTS={
  service_account:["client_email","private_key"],
- authorized_user:["client_id","client_secret","refresh_token"],
- external_account:["audience","subject_token_type","token_url"],
- external_account_authorized_user:["audience","refresh_token","token_url"],
- impersonated_service_account:["source_credentials","service_account_impersonation_url"],
- gdch_service_account:["project","private_key","client_id"]
+ authorized_user:["client_id","client_secret","refresh_token"]
 };
 
 function credentialFileProblem(){
@@ -102,7 +103,7 @@ function credentialFileProblem(){
  try{ parsed=JSON.parse(raw); }
  catch{ return "tệp credential không phải JSON hợp lệ"; }
  const required=CREDENTIAL_REQUIREMENTS[parsed?.type];
- if(!required)return "tệp credential không đúng định dạng của Google";
+ if(!required)return `chỉ nhận credential loại ${Object.keys(CREDENTIAL_REQUIREMENTS).join(" hoặc ")}`;
  const missing=required.filter(field=>!parsed[field]);
  // Ten truong la ten trong lieu do cua Google, khong phai gia tri — noi ra duoc ma khong lo gi.
  if(missing.length)return `tệp credential thiếu trường ${missing.join(", ")}`;
@@ -252,7 +253,10 @@ export async function generateVideoTtsTrack(project,settings={}){
   if(error instanceof AppError)throw error;
   const provider=isVertexProvider(settings.ttsProvider)?"Vertex AI":"Google TTS";
   // Ghi nguyen ven de con dau vet; phia nguoi goi chi nhan cau mo ta cua thu vien, da cat ngan.
-  console.error(`${provider} TTS failed:`,error);
+  // Nguyen van loi tu ben ngoai khong duoc ghi vao log: chinh cac fixture kiem ro ri cua bai test
+  // da lam "BEGIN PRIVATE KEY" va "C:\\Users\\..." hien ra trong log CI qua dung dong nay. Bit duong
+  // ra phia nguoi dung ma de log nguyen van thi chi doi cho ro chu khong bit duoc gi.
+  console.error(`${provider} TTS failed:`,safeCause(error));
   throw new AppError("TTS_PROVIDER_FAILED",`${provider} không đọc được: ${providerReason(error)}`,502);
  }
 }
