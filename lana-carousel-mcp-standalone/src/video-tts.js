@@ -19,12 +19,35 @@ const voiceConfig=name=>({prebuiltVoiceConfig:{voiceName:name||"Kore"}});
 // Giu lai client de khong phai lay access token lai tu dau moi doan; getAccessToken cua
 // google-auth-library tu cache va tu lam moi token khi sap het han.
 let vertexClientPromise;
+
+// Thieu cau hinh la chuyen cua nguoi van hanh, khong phai cua nguoi bam nut, nen cau bao phai noi
+// thang can dat bien nao va chi duoc loi di tam thoi. Dung 503 de phan biet voi 502 "da goi
+// provider nhung hong": o day chua he goi ra ngoai lan nao.
+const notConfigured=detail=>new AppError(
+ "TTS_NOT_CONFIGURED",
+ `Máy chủ chưa cấu hình Vertex AI (${detail}). Tạm thời hãy đổi Nhà cung cấp sang Google TTS.`,
+ 503
+);
+
 function vertexClient(){
  vertexClientPromise??=(async()=>{
   const auth=new GoogleAuth({scopes:["https://www.googleapis.com/auth/cloud-platform"]});
-  const projectId=process.env.VERTEX_AI_PROJECT||process.env.GOOGLE_CLOUD_PROJECT||await auth.getProjectId();
-  if(!projectId)throw new Error("Chua cau hinh project cho Vertex AI.");
-  return{projectId,client:await auth.getClient()};
+  // getProjectId() nem khi khong do ra project chu khong tra ve rong, nen nhanh `if(!projectId)`
+  // truoc day la code chet: may chu chua cau hinh thi nguoi dung nhan nguyen cau tieng Anh cua
+  // thu vien kem mot URL bi cat do, thay vi loi huong dan da viet san ngay duoi no.
+  const projectId=process.env.VERTEX_AI_PROJECT||process.env.GOOGLE_CLOUD_PROJECT
+   ||await auth.getProjectId().catch(()=>"");
+  if(!projectId)throw notConfigured("chưa đặt VERTEX_AI_PROJECT");
+  // Co project id van chua du: getClient() nem tiep neu khong tim thay credential nao. Phan biet
+  // "chua dat" voi "dat roi nhung khong doc duoc" — trong Docker chi ./data duoc mount, nen mot
+  // duong dan cua host se tro toi tep khong ton tai ben trong container, va bao nham la chua dat
+  // se khien nguoi van hanh di dat lai dung cai bien ho vua dat.
+  const client=await auth.getClient().catch(error=>{
+   throw notConfigured(process.env.GOOGLE_APPLICATION_CREDENTIALS
+    ?`không đọc được credential: ${providerReason(error)}`
+    :"chưa đặt GOOGLE_APPLICATION_CREDENTIALS");
+  });
+  return{projectId,client};
  })().catch(error=>{
   vertexClientPromise=undefined;
   throw error;
@@ -127,6 +150,14 @@ export const sampledVoiceName=settings=>isVertexProvider(settings.ttsProvider)
  ?settings.geminiSpeaker1Voice
  :settings.ttsVoice;
 
+// Loi cua thu vien Google thuong dai nhieu dong: dong dau la ly do, phan sau la link huong dan.
+// Cat cung theo so ky tu thi nguoi dung nhan mot mau URL dut doan ("...visit: h"); lay dong dau
+// roi moi gioi han do dai se giu dung phan noi duoc thanh loi.
+const providerReason=error=>{
+ const firstLine=String(error?.message||error).split("\n")[0].trim();
+ return firstLine.length>120?`${firstLine.slice(0,119)}…`:firstLine;
+};
+
 // Thieu credential, het quota, model khong ton tai — nha cung cap nem ra Error thuong, va
 // publicError goi tat ca thanh 500 "Loi he thong.". Nguoi bam "Nghe thu" vi the khong biet phai
 // sua gi. Danh dau lai thanh 502 kem nguyen van ly do, va job render cung ghi lai duoc cau do.
@@ -140,7 +171,7 @@ export async function generateVideoTtsTrack(project,settings={}){
   const provider=isVertexProvider(settings.ttsProvider)?"Vertex AI":"Google TTS";
   // Ghi nguyen ven de con dau vet; phia nguoi goi chi nhan cau mo ta cua thu vien, da cat ngan.
   console.error(`${provider} TTS failed:`,error);
-  throw new AppError("TTS_PROVIDER_FAILED",`${provider} không đọc được: ${String(error?.message||error).slice(0,120)}`,502);
+  throw new AppError("TTS_PROVIDER_FAILED",`${provider} không đọc được: ${providerReason(error)}`,502);
  }
 }
 
