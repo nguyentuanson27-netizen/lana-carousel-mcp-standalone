@@ -1,5 +1,6 @@
 import textToSpeech from "@google-cloud/text-to-speech";
 import {GoogleAuth} from "google-auth-library";
+import fs from "node:fs";
 import {AppError} from "./errors.js";
 const {TextToSpeechClient}=textToSpeech;
 
@@ -19,12 +20,120 @@ const voiceConfig=name=>({prebuiltVoiceConfig:{voiceName:name||"Kore"}});
 // Giu lai client de khong phai lay access token lai tu dau moi doan; getAccessToken cua
 // google-auth-library tu cache va tu lam moi token khi sap het han.
 let vertexClientPromise;
+
+// Thong bao nay di ra toi ca phien chia se link, nen chi nhung ly do da biet moi duoc noi ra.
+// Loc bang bieu thuc chinh quy la loc den va kieu gi cung sot: duong dan Windows "C:\\..." khong
+// co dau gach cheo xuoi nao de bat, va loi JSON.parse cua google-auth-library con nhet ca noi
+// dung tep khoa vao cau bao. Danh sach trang thi khong co khe nao de sot — nguyen van loi luon
+// nam trong log may chu.
+const KNOWN_REASONS=[
+ [/ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH/i,"không kết nối được tới nhà cung cấp"],
+ [/Unable to detect a Project Id/i,"không dò được project id"],
+ [/Could not load the default credentials|invalid_grant|unauthorized_client|invalid_client/i,"credential không dùng được"],
+ [/is not valid JSON|Unexpected token|JSON at position/i,"tệp credential không phải JSON hợp lệ"],
+ [/does not exist, or it is not a file|ENOENT/i,"không mở được tệp credential"],
+ [/permission|forbidden|PERMISSION_DENIED|\b403\b/i,"không đủ quyền trên project"],
+ [/RESOURCE_EXHAUSTED|quota|rate limit|\b429\b/i,"hết hạn mức của nhà cung cấp"],
+ [/NOT_FOUND|\b404\b/i,"không tìm thấy model hoặc endpoint"],
+ [/UNAUTHENTICATED|\b401\b/i,"credential bị từ chối"]
+];
+const providerReason=error=>{
+ const raw=String(error?.message||error);
+ return (KNOWN_REASONS.find(([pattern])=>pattern.test(raw))||[,"lỗi chưa rõ, xem log máy chủ"])[1];
+};
+
+// Thieu cau hinh la chuyen cua nguoi van hanh, khong phai cua nguoi bam nut, nen cau bao phai noi
+// thang can dat bien nao va chi duoc loi di tam thoi. Dung 503 de phan biet voi 502 "da goi
+// provider nhung hong": o day chua he goi ra ngoai lan nao.
+// Ngay ca log cung khong duoc chua nguyen van loi: loi JSON.parse cua google-auth-library nhet
+// noi dung tep khoa vao message, con loi ENOENT thi nhet duong dan. Log di ra file, di vao dich
+// vu gom log, va thuong de o quyen doc rong hon han thu ma nguoi ngoai thay duoc. Ghi ten loi,
+// ma loi va nhom ly do — du de lan ra chuyen gi, khong mang theo bi mat nao.
+export const safeCause=error=>{
+ if(!error)return "";
+ const code=String(error?.code??"").slice(0,40);
+ const status=Number(error?.status??error?.statusCode)||0;
+ return `${error?.name||"Error"}${code?` code=${code}`:""}${status?` status=${status}`:""} → ${providerReason(error)}`;
+};
+
+const notConfigured=(detail,cause)=>{
+ // generateVideoTtsTrack nem thang AppError ra ngoai truoc khi toi console.error cua no, nen
+ // khong ghi o day thi cac ca thieu cau hinh khong de lai dau vet nao trong log.
+ console.error("Vertex AI TTS not configured:",detail,safeCause(cause));
+ // Chi mach "doi sang Google TTS" khi loi di do that su thong: generateGoogle chuyen sang Cloud
+ // TTS ngay khi GOOGLE_APPLICATION_CREDENTIALS co gia tri, nen luc bien do dang dat sai thi ca
+ // hai nha cung cap cung hong va loi khuyen se thanh lac huong.
+ const fallbackWorks=!process.env.GOOGLE_APPLICATION_CREDENTIALS&&!process.env.GOOGLE_CLOUD_PROJECT;
+ return new AppError(
+  "TTS_NOT_CONFIGURED",
+  `Máy chủ chưa cấu hình Vertex AI (${detail}).${fallbackWorks?" Tạm thời hãy đổi Nhà cung cấp sang Google TTS." :" Xem log máy chủ để biết chi tiết."}`,
+  503
+ );
+};
+
+// GOOGLE_APPLICATION_CREDENTIALS tro toi tep khong doc duoc lam google-gax bo lai mot promise bi
+// tu choi ma khong ai bat (createStub), va Node 22 bien no thanh uncaught exception — ca tien
+// trinh http-server chet vi mot khoa TTS het han. Kiem tep truoc khi cham vao client la chan duoc
+// ca duong do, dong thoi noi dung chuyen gi dang sai.
+// Chi nhan hai loai credential ma ung dung nay that su dung: tep service account cho may chu, va
+// authorized_user do `gcloud auth application-default login` sinh ra cho may lap trinh.
+//
+// Da thu nhan them external_account/impersonated/gdch va do la mot sai lam: moi loai con mot bo
+// rang buoc long nhau rieng (external_account phai co credential_source hop le, neu khong
+// IdentityPoolClient nem ngay trong constructor), nen kiem vai truong o tang tren chi tao ra cam
+// giac an toan. Duoi mot cong kiem, thu khong hieu ro thi tu choi thang van dung hon la doan.
+const CREDENTIAL_REQUIREMENTS={
+ service_account:["client_email","private_key"],
+ authorized_user:["client_id","client_secret","refresh_token"]
+};
+
+function credentialFileProblem(){
+ const file=process.env.GOOGLE_APPLICATION_CREDENTIALS;
+ if(!file)return "";
+ // Kiem doc duoc thoi la khong du: accessSync() cho qua ca thu muc lan tep JSON hong, va
+ // google-auth-library van di tiep roi nga o dung cho sinh ra promise bi bo roi. Phai kiem tro
+ // thanh cai ma thu vien se chap nhan. Khong cau nao duoi day duoc nhac lai duong dan hay noi
+ // dung tep — chinh loi JSON.parse cua thu vien nhet ca noi dung tep khoa vao cau bao.
+ let raw;
+ try{
+  if(!fs.statSync(file).isFile())return "GOOGLE_APPLICATION_CREDENTIALS trỏ tới thư mục chứ không phải tệp";
+  raw=fs.readFileSync(file,"utf8");
+ }catch{ return "GOOGLE_APPLICATION_CREDENTIALS trỏ tới tệp không đọc được"; }
+ let parsed;
+ try{ parsed=JSON.parse(raw); }
+ catch{ return "tệp credential không phải JSON hợp lệ"; }
+ const required=CREDENTIAL_REQUIREMENTS[parsed?.type];
+ if(!required)return `chỉ nhận credential loại ${Object.keys(CREDENTIAL_REQUIREMENTS).join(" hoặc ")}`;
+ const missing=required.filter(field=>!parsed[field]);
+ // Ten truong la ten trong lieu do cua Google, khong phai gia tri — noi ra duoc ma khong lo gi.
+ if(missing.length)return `tệp credential thiếu trường ${missing.join(", ")}`;
+ return "";
+}
+
 function vertexClient(){
  vertexClientPromise??=(async()=>{
   const auth=new GoogleAuth({scopes:["https://www.googleapis.com/auth/cloud-platform"]});
-  const projectId=process.env.VERTEX_AI_PROJECT||process.env.GOOGLE_CLOUD_PROJECT||await auth.getProjectId();
-  if(!projectId)throw new Error("Chua cau hinh project cho Vertex AI.");
-  return{projectId,client:await auth.getClient()};
+  // Kiem tep khoa TRUOC getProjectId(): khi VERTEX_AI_PROJECT de trong, getProjectId() tu doc
+  // chinh tep nay de do project id, nghia la no cham vao tep hong truoc khi ban kiem kip chay.
+  // No con lam sai han cau bao — tep khoa hong lai bi quy thanh "chua dat VERTEX_AI_PROJECT",
+  // day nguoi van hanh di dat mot bien von da dung. Trong Docker chi ./data duoc mount nen duong
+  // dan cua host tro thanh tep khong ton tai ben trong container, ca dat nham pho bien nhat.
+  const fileProblem=credentialFileProblem();
+  if(fileProblem)throw notConfigured(fileProblem);
+  // getProjectId() nem khi khong do ra project chu khong tra ve rong, nen nhanh `if(!projectId)`
+  // truoc day la code chet: may chu chua cau hinh thi nguoi dung nhan nguyen cau tieng Anh cua
+  // thu vien kem mot URL bi cat do, thay vi loi huong dan da viet san ngay duoi no.
+  let detectFailure;
+  const projectId=process.env.VERTEX_AI_PROJECT||process.env.GOOGLE_CLOUD_PROJECT
+   ||await auth.getProjectId().catch(error=>{detectFailure=error;return""});
+  if(!projectId)throw notConfigured("chưa đặt VERTEX_AI_PROJECT",detectFailure);
+  // Khong noi thang la "chua dat GOOGLE_APPLICATION_CREDENTIALS": tren GCE/Cloud Run bien do dung
+  // ra phai de trong vi credential den tu metadata server, bao vay se day nguoi van hanh di gan
+  // mot tep khoa von khong phai van de.
+  const client=await auth.getClient().catch(error=>{
+   throw notConfigured("chưa có credential Google dùng được",error);
+  });
+  return{projectId,client};
  })().catch(error=>{
   vertexClientPromise=undefined;
   throw error;
@@ -78,6 +187,11 @@ async function generateGoogle(project,settings){
  if(!text)return emptyTrack();
  let buffer;
  if(process.env.GOOGLE_APPLICATION_CREDENTIALS||process.env.GOOGLE_CLOUD_PROJECT){
+  // Cung cai bay nhu ben Vertex, va o day no da duoc dung lai: google-gax bo mot promise bi tu
+  // choi khong ai bat khi tep khoa khong doc duoc, Node 22 nem tiep thanh uncaught exception va
+  // http-server tat han. Chan truoc khi dung toi client.
+  const fileProblem=credentialFileProblem();
+  if(fileProblem)throw new AppError("TTS_NOT_CONFIGURED",`Máy chủ chưa cấu hình Google TTS (${fileProblem}). Xem log máy chủ để biết chi tiết.`,503);
   const client=new TextToSpeechClient();
   const [response]=await client.synthesizeSpeech({input:{text},voice:{languageCode:"vi-VN",name:settings.ttsVoice||GOOGLE_DEFAULT_VOICE},audioConfig:{audioEncoding:"MP3",speakingRate:1}});
   buffer=typeof response.audioContent==="string"?Buffer.from(response.audioContent,"base64"):Buffer.from(response.audioContent);
@@ -139,8 +253,11 @@ export async function generateVideoTtsTrack(project,settings={}){
   if(error instanceof AppError)throw error;
   const provider=isVertexProvider(settings.ttsProvider)?"Vertex AI":"Google TTS";
   // Ghi nguyen ven de con dau vet; phia nguoi goi chi nhan cau mo ta cua thu vien, da cat ngan.
-  console.error(`${provider} TTS failed:`,error);
-  throw new AppError("TTS_PROVIDER_FAILED",`${provider} không đọc được: ${String(error?.message||error).slice(0,120)}`,502);
+  // Nguyen van loi tu ben ngoai khong duoc ghi vao log: chinh cac fixture kiem ro ri cua bai test
+  // da lam "BEGIN PRIVATE KEY" va "C:\\Users\\..." hien ra trong log CI qua dung dong nay. Bit duong
+  // ra phia nguoi dung ma de log nguyen van thi chi doi cho ro chu khong bit duoc gi.
+  console.error(`${provider} TTS failed:`,safeCause(error));
+  throw new AppError("TTS_PROVIDER_FAILED",`${provider} không đọc được: ${providerReason(error)}`,502);
  }
 }
 
