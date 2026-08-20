@@ -21,14 +21,25 @@ const voiceConfig=name=>({prebuiltVoiceConfig:{voiceName:name||"Kore"}});
 // google-auth-library tu cache va tu lam moi token khi sap het han.
 let vertexClientPromise;
 
-// Loi cua thu vien Google thuong dai nhieu dong: dong dau la ly do, phan sau la link huong dan.
-// Cat cung theo so ky tu thi nguoi dung nhan mot mau URL dut doan ("...visit: h"), nen lay dong
-// dau roi moi gioi han do dai. Duong dan tuyet doi va URL bi xoa han: thong bao nay di ra toi ca
-// phien chia se link, ma loi credential cua google-auth-library co ca duong dan tep khoa trong do.
+// Thong bao nay di ra toi ca phien chia se link, nen chi nhung ly do da biet moi duoc noi ra.
+// Loc bang bieu thuc chinh quy la loc den va kieu gi cung sot: duong dan Windows "C:\\..." khong
+// co dau gach cheo xuoi nao de bat, va loi JSON.parse cua google-auth-library con nhet ca noi
+// dung tep khoa vao cau bao. Danh sach trang thi khong co khe nao de sot — nguyen van loi luon
+// nam trong log may chu.
+const KNOWN_REASONS=[
+ [/ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH/i,"không kết nối được tới nhà cung cấp"],
+ [/Unable to detect a Project Id/i,"không dò được project id"],
+ [/Could not load the default credentials|invalid_grant|unauthorized_client|invalid_client/i,"credential không dùng được"],
+ [/is not valid JSON|Unexpected token|JSON at position/i,"tệp credential không phải JSON hợp lệ"],
+ [/does not exist, or it is not a file|ENOENT/i,"không mở được tệp credential"],
+ [/permission|forbidden|PERMISSION_DENIED|\b403\b/i,"không đủ quyền trên project"],
+ [/RESOURCE_EXHAUSTED|quota|rate limit|\b429\b/i,"hết hạn mức của nhà cung cấp"],
+ [/NOT_FOUND|\b404\b/i,"không tìm thấy model hoặc endpoint"],
+ [/UNAUTHENTICATED|\b401\b/i,"credential bị từ chối"]
+];
 const providerReason=error=>{
- const firstLine=String(error?.message||error).split("\n")[0].trim()
-  .replace(/(?:[a-z][a-z0-9+.-]*:\/\/|\/)[^\s'"`]+/giu,"…");
- return firstLine.length>120?`${firstLine.slice(0,119)}…`:firstLine;
+ const raw=String(error?.message||error);
+ return (KNOWN_REASONS.find(([pattern])=>pattern.test(raw))||[,"lỗi chưa rõ, xem log máy chủ"])[1];
 };
 
 // Thieu cau hinh la chuyen cua nguoi van hanh, khong phai cua nguoi bam nut, nen cau bao phai noi
@@ -37,7 +48,7 @@ const providerReason=error=>{
 const notConfigured=(detail,cause)=>{
  // generateVideoTtsTrack nem thang AppError ra ngoai truoc khi toi console.error cua no, nen
  // khong ghi o day thi cac ca thieu cau hinh khong de lai dau vet nao trong log.
- console.error("Vertex AI TTS not configured:",detail,cause||"");
+ console.error("Vertex AI TTS not configured:",detail,cause??"");
  // Chi mach "doi sang Google TTS" khi loi di do that su thong: generateGoogle chuyen sang Cloud
  // TTS ngay khi GOOGLE_APPLICATION_CREDENTIALS co gia tri, nen luc bien do dang dat sai thi ca
  // hai nha cung cap cung hong va loi khuyen se thanh lac huong.
@@ -53,11 +64,26 @@ const notConfigured=(detail,cause)=>{
 // tu choi ma khong ai bat (createStub), va Node 22 bien no thanh uncaught exception — ca tien
 // trinh http-server chet vi mot khoa TTS het han. Kiem tep truoc khi cham vao client la chan duoc
 // ca duong do, dong thoi noi dung chuyen gi dang sai.
+const CREDENTIAL_TYPES=["service_account","authorized_user","external_account",
+ "impersonated_service_account","gdch_service_account","external_account_authorized_user"];
+
 function credentialFileProblem(){
  const file=process.env.GOOGLE_APPLICATION_CREDENTIALS;
  if(!file)return "";
- try{ fs.accessSync(file, fs.constants.R_OK); return ""; }
- catch{ return "GOOGLE_APPLICATION_CREDENTIALS trỏ tới tệp không đọc được"; }
+ // Kiem doc duoc thoi la khong du: accessSync() cho qua ca thu muc lan tep JSON hong, va
+ // google-auth-library van di tiep roi nga o dung cho sinh ra promise bi bo roi. Phai kiem tro
+ // thanh cai ma thu vien se chap nhan. Khong cau nao duoi day duoc nhac lai duong dan hay noi
+ // dung tep — chinh loi JSON.parse cua thu vien nhet ca noi dung tep khoa vao cau bao.
+ let raw;
+ try{
+  if(!fs.statSync(file).isFile())return "GOOGLE_APPLICATION_CREDENTIALS trỏ tới thư mục chứ không phải tệp";
+  raw=fs.readFileSync(file,"utf8");
+ }catch{ return "GOOGLE_APPLICATION_CREDENTIALS trỏ tới tệp không đọc được"; }
+ let parsed;
+ try{ parsed=JSON.parse(raw); }
+ catch{ return "tệp credential không phải JSON hợp lệ"; }
+ if(!CREDENTIAL_TYPES.includes(parsed?.type))return "tệp credential không đúng định dạng của Google";
+ return "";
 }
 
 function vertexClient(){
@@ -68,7 +94,7 @@ function vertexClient(){
   // thu vien kem mot URL bi cat do, thay vi loi huong dan da viet san ngay duoi no.
   let detectFailure="";
   const projectId=process.env.VERTEX_AI_PROJECT||process.env.GOOGLE_CLOUD_PROJECT
-   ||await auth.getProjectId().catch(error=>{detectFailure=providerReason(error);return""});
+   ||await auth.getProjectId().catch(error=>{detectFailure=error;return""});
   if(!projectId)throw notConfigured("chưa đặt VERTEX_AI_PROJECT",detectFailure);
   // Trong Docker chi ./data duoc mount, nen duong dan cua host tro thanh tep khong ton tai ben
   // trong container — ca dat nham nay pho bien hon han ca quen dat.
@@ -78,7 +104,7 @@ function vertexClient(){
   // ra phai de trong vi credential den tu metadata server, bao vay se day nguoi van hanh di gan
   // mot tep khoa von khong phai van de.
   const client=await auth.getClient().catch(error=>{
-   throw notConfigured("chưa có credential Google dùng được",providerReason(error));
+   throw notConfigured("chưa có credential Google dùng được",error);
   });
   return{projectId,client};
  })().catch(error=>{

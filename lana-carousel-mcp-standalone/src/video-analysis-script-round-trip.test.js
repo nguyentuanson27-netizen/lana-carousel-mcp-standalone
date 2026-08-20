@@ -130,7 +130,7 @@ test("surfaces a provider failure with its reason instead of a generic server er
     assert.equal(error.name, "AppError");
     assert.equal(error.status, 502);
     assert.equal(error.code, "TTS_PROVIDER_FAILED");
-    assert.match(error.message, /ENOTFOUND/u);
+    assert.match(error.message, /không kết nối được/u, "lý do đã biết vẫn phải nói được thành lời");
     return true;
    }
   );
@@ -141,6 +141,7 @@ test("surfaces a provider failure with its reason instead of a generic server er
 
 // Endpoint nghe thử mở cho cả phiên chia sẻ link, nên thông báo lỗi không được kéo theo nguyên
 // văn phản hồi của nhà cung cấp: chỗ đó chứa đường dẫn model kèm project id và chi tiết IAM.
+// Lỗi không khớp danh sách lý do đã biết thì rơi hết vào một câu chung.
 test("caps the provider message so a long error body cannot ride along", async () => {
  const originalFetch = globalThis.fetch;
  globalThis.fetch = async () => { throw new Error(`${"chi tiết nội bộ ".repeat(40)}projects/bi-mat/locations/global`); };

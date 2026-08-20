@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import test, { after } from "node:test";
 
 // Máy chủ chưa cấu hình Vertex là lỗi của người vận hành, nhưng người bấm "Nghe thử" mới là
@@ -10,15 +12,23 @@ import test, { after } from "node:test";
 
 // Không có tệp credential nào được nhìn thấy, và không dò metadata server: cả hai thứ đó khiến
 // bài test đổi kết quả theo chỗ chạy — máy có gcloud đăng nhập sẵn sẽ cho qua nhánh cần kiểm.
-const emptyConfigDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "lana-tts-config-"));
-process.env.CLOUDSDK_CONFIG = emptyConfigDirectory;
+const workDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "lana-tts-config-"));
+process.env.CLOUDSDK_CONFIG = workDirectory;
 process.env.METADATA_SERVER_DETECTION = "none";
-const secretKeyPath = path.join(emptyConfigDirectory, "bi-mat", "khoa.json");
 delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
 delete process.env.GOOGLE_CLOUD_PROJECT;
 delete process.env.VERTEX_AI_PROJECT;
 
-after(() => fs.rm(emptyConfigDirectory, { recursive: true, force: true }));
+// Bốn kiểu hỏng của biến GOOGLE_APPLICATION_CREDENTIALS. Cả bốn đều lọt qua accessSync(R_OK),
+// nên bản kiểm đầu tiên chỉ chặn được đúng một kiểu.
+const missingKey = path.join(workDirectory, "bi-mat", "khoa.json");
+const malformedKey = path.join(workDirectory, "hong.json");
+const wrongTypeKey = path.join(workDirectory, "sai-loai.json");
+const directoryKey = workDirectory;
+await fs.writeFile(malformedKey, 'day-la-noi-dung-tep-khoa-bi-hong{{{');
+await fs.writeFile(wrongTypeKey, JSON.stringify({ type: "khong-phai-loai-nao", client_email: "x@y.z" }));
+
+after(() => fs.rm(workDirectory, { recursive: true, force: true }));
 
 const { generateVideoTtsTrack } = await import("./video-tts.js");
 
@@ -28,7 +38,6 @@ const speak = settings => generateVideoTtsTrack(
 );
 
 test("thiếu project id thì chỉ đúng biến cần đặt chứ không ném câu của thư viện", async () => {
- delete process.env.VERTEX_AI_PROJECT;
  await assert.rejects(speak({ ttsProvider: "vertex" }), error => {
   assert.equal(error.name, "AppError");
   assert.equal(error.code, "TTS_NOT_CONFIGURED");
@@ -40,8 +49,6 @@ test("thiếu project id thì chỉ đúng biến cần đặt chứ không ném
  });
 });
 
-// Có project id vẫn chưa chạy được nếu không có credential. Nhánh này nằm ở `getClient()`, tách
-// hẳn với nhánh trên, nên phải kiểm riêng — nói nhầm biến thì người vận hành sửa nhầm chỗ.
 test("có project nhưng thiếu credential thì nói là thiếu credential", async () => {
  process.env.VERTEX_AI_PROJECT = "lana-test-project";
  try {
@@ -56,121 +63,121 @@ test("có project nhưng thiếu credential thì nói là thiếu credential", a
  }
 });
 
-// Đặt biến rồi mà trỏ tới tệp không tồn tại là ca dễ gặp nhất khi chạy Docker: compose chỉ mount
-// ./data nên đường dẫn của host không có bên trong container. Báo nhầm thành "chưa đặt" sẽ đẩy
-// người vận hành đi đặt lại đúng cái biến họ vừa đặt.
-test("credential trỏ sai chỗ thì nói đúng biến đó chứ không bảo đi đặt lại", async () => {
- process.env.VERTEX_AI_PROJECT = "lana-test-project";
- process.env.GOOGLE_APPLICATION_CREDENTIALS = secretKeyPath;
- try {
-  await assert.rejects(speak({ ttsProvider: "vertex" }), error => {
-   assert.equal(error.code, "TTS_NOT_CONFIGURED");
-   assert.match(error.message, /GOOGLE_APPLICATION_CREDENTIALS/u);
-   assert.match(error.message, /không đọc được/u);
-   assert.doesNotMatch(error.message, /chưa đặt/u, "biến đã được đặt, đừng bảo người ta đặt lại");
-   assert.doesNotMatch(error.message, /Google TTS/u, "đường lui đó cũng hỏng khi biến này đặt sai");
-   return true;
-  });
- } finally {
-  delete process.env.VERTEX_AI_PROJECT;
-  delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+// Bốn kiểu hỏng dưới đây đều đi lọt qua bản kiểm "đọc được hay không": thư mục và tệp JSON hỏng
+// vẫn readable. google-auth-library đi tiếp rồi ngã ở chỗ sinh ra promise không ai bắt.
+const brokenKeys = [
+ ["tệp không tồn tại", () => missingKey, /không đọc được/u],
+ ["thư mục chứ không phải tệp", () => directoryKey, /thư mục/u],
+ ["JSON hỏng", () => malformedKey, /JSON/u],
+ ["JSON đúng nhưng không phải credential", () => wrongTypeKey, /định dạng/u]
+];
+
+for (const [label, keyPath, expected] of brokenKeys) {
+ test(`credential ${label} bị chặn trước khi chạm vào client`, async () => {
+  process.env.GOOGLE_APPLICATION_CREDENTIALS = keyPath();
+  try {
+   await assert.rejects(speak({ ttsProvider: "google" }), error => {
+    assert.equal(error.code, "TTS_NOT_CONFIGURED");
+    assert.match(error.message, expected);
+    return true;
+   });
+  } finally {
+   delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  }
+ });
+}
+
+// Thông báo đi ra tới cả phiên chia sẻ link. Đường dẫn tệp khoá đã đành, lỗi JSON.parse của
+// google-auth-library còn nhét nguyên nội dung tệp khoá vào câu báo.
+test("không thông báo nào để lọt đường dẫn hay nội dung tệp khoá", async () => {
+ for (const [, keyPath] of brokenKeys) {
+  process.env.GOOGLE_APPLICATION_CREDENTIALS = keyPath();
+  try {
+   for (const provider of ["google", "vertex"]) {
+    await assert.rejects(speak({ ttsProvider: provider }), error => {
+     assert.doesNotMatch(error.message, /bi-mat|\.json|lana-tts-config/u, `lọt đường dẫn: ${error.message}`);
+     assert.doesNotMatch(error.message, /noi-dung-tep-khoa/u, `lọt nội dung tệp: ${error.message}`);
+     return true;
+    });
+   }
+  } finally {
+   delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  }
  }
 });
 
-// Thông báo này đi ra tới cả phiên chia sẻ link, mà lỗi credential của google-auth-library có
-// nguyên đường dẫn tệp khoá trong đó — đủ để người ngoài biết cây thư mục của máy chủ.
-test("không thông báo nào để lọt đường dẫn tệp khoá", async () => {
- process.env.GOOGLE_APPLICATION_CREDENTIALS = secretKeyPath;
+// Lọc bằng biểu thức chính quy là lọc đen và kiểu gì cũng sót: đường dẫn Windows không có dấu
+// gạch chéo xuôi nào để bắt. Danh sách trắng thì không có khe nào để sót.
+test("lỗi lạ chỉ ra câu chung, không mang theo chữ nào của lỗi gốc", async () => {
+ const originalFetch = globalThis.fetch;
+ const leaky = [
+  String.raw`Cannot read C:\Users\deploy\secret-key.json`,
+  String.raw`Failed on \\lana-nas\keys\vertex.json`,
+  "Cannot read /etc/lana/secret-key.json — see https://noi-bo.lanadesign.tech/help",
+  "BEGIN PRIVATE KEY MIIEvQIBADANBgkqhkiG9w0"
+ ];
  try {
-  for (const provider of ["vertex", "google"]) {
-   await assert.rejects(speak({ ttsProvider: provider }), error => {
-    assert.doesNotMatch(error.message, /bi-mat|\.json/u, `${provider} để lọt: ${error.message}`);
+  for (const raw of leaky) {
+   globalThis.fetch = async () => { throw new Error(raw); };
+   await assert.rejects(speak({ ttsProvider: "google" }), error => {
+    assert.match(error.message, /lỗi chưa rõ, xem log máy chủ/u, `không rơi vào câu chung: ${error.message}`);
+    for (const word of ["secret-key", "C:", "lana-nas", "/etc/", "noi-bo", "PRIVATE KEY"]) {
+     assert.ok(!error.message.includes(word), `để lọt "${word}": ${error.message}`);
+    }
     return true;
    });
   }
  } finally {
-  delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  globalThis.fetch = originalFetch;
  }
 });
 
-// Bài trên chỉ chạm tới nhánh kiểm tệp có sẵn. Lỗi từ chính nhà cung cấp mới là chỗ đường dẫn
-// thật sự đi lạc ra ngoài, nên phải bắn một lỗi có đường dẫn qua đúng đường đó.
-test("đường dẫn và URL trong lỗi nhà cung cấp bị xoá khỏi thông báo", async () => {
+// Lý do đã biết vẫn phải nói được thành lời, nếu không thì bản sửa này chỉ đổi "Lỗi hệ thống."
+// thành một câu chung khác và người dùng vẫn không biết cần làm gì.
+test("lý do đã biết vẫn được nói ra", async () => {
  const originalFetch = globalThis.fetch;
- globalThis.fetch = async () => {
-  throw new Error("Cannot read /etc/lana/secret-key.json — see https://noi-bo.lanadesign.tech/help");
- };
+ const cases = [
+  ["getaddrinfo ENOTFOUND translate.google.com", /không kết nối được/u],
+  ["Unable to detect a Project Id in the current environment.", /project id/u],
+  ["Quota exceeded: RESOURCE_EXHAUSTED", /hạn mức/u],
+  ["PERMISSION_DENIED: caller lacks permission", /không đủ quyền/u]
+ ];
  try {
-  await assert.rejects(speak({ ttsProvider: "google" }), error => {
-   assert.doesNotMatch(error.message, /secret-key|\/etc\//u, `để lọt đường dẫn: ${error.message}`);
-   assert.doesNotMatch(error.message, /noi-bo|https?:/u, `để lọt URL: ${error.message}`);
-   assert.match(error.message, /Cannot read/u, "vẫn phải giữ được lý do");
-   return true;
-  });
+  for (const [raw, expected] of cases) {
+   globalThis.fetch = async () => { throw new Error(raw); };
+   await assert.rejects(speak({ ttsProvider: "google" }), error => {
+    assert.match(error.message, expected, `phân loại sai "${raw}": ${error.message}`);
+    return true;
+   });
+  }
  } finally {
   globalThis.fetch = originalFetch;
  }
 });
 
-// Tệp khoá hỏng làm google-gax bỏ lại một promise bị từ chối không ai bắt; Node 22 ném tiếp thành
-// uncaught exception và cả tiến trình http-server tắt. Một khoá hết hạn không được phép hạ máy chủ.
-test("tệp khoá hỏng không hạ được tiến trình", async () => {
- process.env.GOOGLE_APPLICATION_CREDENTIALS = secretKeyPath;
- const leaked = [];
- const onUnhandled = reason => leaked.push(String(reason?.message || reason));
- process.on("unhandledRejection", onUnhandled);
- try {
-  await assert.rejects(speak({ ttsProvider: "google" }), error => {
-   assert.equal(error.code, "TTS_NOT_CONFIGURED");
-   return true;
-  });
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  assert.deepEqual(leaked, [], `promise bị bỏ rơi sẽ giết tiến trình: ${leaked.join(" | ")}`);
- } finally {
-  process.off("unhandledRejection", onUnhandled);
-  delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
- }
-});
+// Bài quyết định: promise bị bỏ rơi của google-gax làm Node 22 ném uncaught exception và hạ cả
+// tiến trình. Bắt trong cùng tiến trình test không chứng minh được điều đó — phải chạy ra tiến
+// trình con rồi xem nó còn sống hay không.
+const run = promisify(execFile);
+test("tệp khoá hỏng kiểu nào cũng không hạ được tiến trình", async () => {
+ const script = path.join(workDirectory, "chay-thu.mjs");
+ await fs.writeFile(script, `
+  const { generateVideoTtsTrack } = await import(${JSON.stringify(path.resolve("src/video-tts.js"))});
+  try { await generateVideoTtsTrack({slides:[{headline:"a",body:"",video:{enabled:true,caption:"a"}}]},{ttsProvider:"google"}); }
+  catch { /* lỗi có kiểm soát là điều mong đợi */ }
+  await new Promise(resolve => setTimeout(resolve, 1500));
+  console.log("SONG_SOT");
+ `);
 
-// Lỗi của thư viện Google trải trên nhiều dòng: dòng đầu là lý do, phần sau là link hướng dẫn.
-// Cắt cứng theo số ký tự thì người dùng nhận đúng một chữ "h" của cái URL — điều đã thật sự xảy
-// ra trên bản chạy thật.
-test("lỗi nhiều dòng chỉ giữ dòng đầu, không kéo theo mẩu URL đứt đoạn", async () => {
- const originalFetch = globalThis.fetch;
- globalThis.fetch = async () => {
-  throw new Error(
-   "Unable to detect a Project Id in the current environment. \n" +
-   "To learn more about authentication and Google APIs, visit: \n" +
-   "https://cloud.google.com/docs/authentication/getting-started"
-  );
- };
- try {
-  await assert.rejects(speak({ ttsProvider: "google" }), error => {
-   assert.equal(error.code, "TTS_PROVIDER_FAILED");
-   assert.doesNotMatch(error.message, /\n/u, "thông báo phải gọn trong một dòng");
-   assert.doesNotMatch(error.message, /visit:/u, "không kéo theo phần dẫn link");
-   assert.doesNotMatch(error.message, /https?:/u, "và cũng không kéo theo chính cái link");
-   assert.match(error.message, /Unable to detect a Project Id/u, "vẫn phải giữ nguyên lý do");
-   return true;
-  });
- } finally {
-  globalThis.fetch = originalFetch;
- }
-});
-
-// Cắt ngắn vẫn phải còn hiệu lực với lỗi một dòng nhưng dài, nếu không thân phản hồi của nhà
-// cung cấp lại theo thông báo ra tới phiên chia sẻ link.
-test("lỗi một dòng quá dài vẫn bị cắt và đánh dấu là đã cắt", async () => {
- const originalFetch = globalThis.fetch;
- globalThis.fetch = async () => { throw new Error(`${"chi tiết nội bộ ".repeat(40)}projects/bi-mat`); };
- try {
-  await assert.rejects(speak({ ttsProvider: "google" }), error => {
-   assert.ok(error.message.length < 200, `thông báo dài ${error.message.length} ký tự`);
-   assert.doesNotMatch(error.message, /projects\/bi-mat/u, "không được lộ phần đuôi");
-   assert.match(error.message, /…$/u, "phải thấy được là câu đã bị cắt");
-   return true;
-  });
- } finally {
-  globalThis.fetch = originalFetch;
+ for (const [label, keyPath] of brokenKeys) {
+  const environment = {
+   ...process.env,
+   GOOGLE_APPLICATION_CREDENTIALS: keyPath(),
+   METADATA_SERVER_DETECTION: "none",
+   CLOUDSDK_CONFIG: workDirectory
+  };
+  delete environment.GOOGLE_CLOUD_PROJECT;
+  const { stdout } = await run(process.execPath, [script], { env: environment, timeout: 20000 });
+  assert.match(stdout, /SONG_SOT/u, `tiến trình chết vì credential ${label}`);
  }
 });
