@@ -38,6 +38,19 @@ test("reserves the first 0.2 seconds before assigning any words", () => {
  assert.equal(budget.segmentWordBudget({ start: 0, end: 0.6, text: "x", ttsSpeed: 1 }).maxWords, 1);
 });
 
+test("treats valid zero-capacity segments as over budget instead of invalid duration", () => {
+ const withText = budget.segmentWordBudget({ start: 0, end: 0.3, text: "một", ttsSpeed: 1 });
+ assert.equal(withText.maxWords, 0);
+ assert.equal(withText.status, "over");
+ assert.equal(budget.describeBudget(withText), "1/0 từ · quá dài, sẽ bị đọc ép nhanh");
+
+ const empty = budget.segmentWordBudget({ start: 0, end: 0.3, text: "", ttsSpeed: 1 });
+ assert.equal(empty.status, "empty");
+ assert.equal(budget.describeBudget(empty), "0/0 từ · chưa có lời đọc");
+
+ assert.equal(budget.segmentWordBudget({ start: 5, end: 5, text: "x", ttsSpeed: 1 }).status, "unknown");
+});
+
 test("flags a line that cannot be read inside its segment", () => {
  // 4s ở tốc độ 1 còn 3.8s hữu dụng, cho ngân sách 9 từ.
  const of = text => budget.segmentWordBudget({ start: 0, end: 4, text, ttsSpeed: 1 });
