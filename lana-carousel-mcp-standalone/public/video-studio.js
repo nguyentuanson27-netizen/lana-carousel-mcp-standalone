@@ -371,6 +371,10 @@ $("#downloadSrt").onclick=()=>downloadSubtitles("srt").catch(error=>alert(error.
 $("#downloadVtt").onclick=()=>downloadSubtitles("vtt").catch(error=>alert(error.message));
 
 let sampleAudio;
+function stopSampleAudio(){
+  sampleAudio?.pause();
+}
+
 $("#voiceSample").onclick=async()=>{
   const button=$("#voiceSample");
   button.disabled=true;
@@ -380,7 +384,7 @@ $("#voiceSample").onclick=async()=>{
       headers:{"content-type":"application/json"},
       body:JSON.stringify({ttsProvider:$("#ttsProvider").value,voice:pickedVoice()})
     });
-    sampleAudio?.pause();
+    stopSampleAudio();
     sampleAudio=new Audio(response.url);
     sampleAudio.volume=clamp(+$("#ttsVolume").value,0,1)||1;
     // Server mới là nơi quyết định giọng nào được đọc, nên nói lại đúng tên nó trả về.
@@ -419,6 +423,7 @@ function syncVoicePreview(){
 }
 
 $("#voicePreview").onclick=async()=>{
+  stopSampleAudio();
   if(voicePreviewOn()){stopVoicePreview();return}
   const button=$("#voicePreview");
   button.disabled=true;
@@ -439,6 +444,7 @@ $("#voicePreview").onclick=async()=>{
   finally{button.disabled=false}
 };
 
+$("#video").addEventListener("play",stopSampleAudio);
 for(const event of ["timeupdate","play","pause","seeking","seeked","ratechange"]){
   $("#video").addEventListener(event,syncVoicePreview);
 }

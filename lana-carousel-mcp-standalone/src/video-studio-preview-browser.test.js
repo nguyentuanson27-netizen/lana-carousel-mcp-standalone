@@ -21,7 +21,7 @@ const project = {
   script: {
     summary: "",
     segments: [
-      // 4s ở tốc độ đọc 1 cho ngân sách 8 từ: đoạn đầu vừa, đoạn sau vượt.
+      // 4s ở tốc độ đọc 1 còn 3.8s hữu dụng: ngân sách 9 từ, nên đoạn sau 10 từ vượt.
       { id: "s1", start: 0, end: 4, subtitleText: "xin chao", voiceOverText: "một hai ba bốn" },
       { id: "s2", start: 4, end: 8, subtitleText: "tam biet", voiceOverText: "một hai ba bốn năm sáu bảy tám chín mười" }
     ]
@@ -48,6 +48,20 @@ async function withPage(run, served = project) {
       "/fonts.css": { type: "text/css", body: "" }
     }[url.pathname];
     if (body) return route.fulfill({ status: 200, contentType: body.type, body: body.body });
+    if (url.pathname.endsWith("/voice-sample")) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ url: "http://lana.local/sample.mp3", voice: "Kore" })
+      });
+    }
+    if (url.pathname.endsWith("/voice-preview")) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ voiceTracks: [] })
+      });
+    }
     if (url.pathname.endsWith("/versions")) {
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ versions: [] }) });
     }
@@ -73,6 +87,40 @@ const previewAudio = page => page.locator("#video").evaluate(element => ({
   muted: element.muted
 }));
 
+async function installFakeAudio(page) {
+  await page.evaluate(() => {
+    window.__fakeAudios = [];
+    window.Audio = class FakeAudio {
+      constructor(url) {
+        this.url = url;
+        this.paused = true;
+        this.currentTime = 0;
+        this.duration = 1;
+        this.volume = 1;
+        this.playbackRate = 1;
+        this.pauseCount = 0;
+        window.__fakeAudios.push(this);
+      }
+      play() {
+        this.paused = false;
+        return Promise.resolve();
+      }
+      pause() {
+        this.paused = true;
+        this.pauseCount += 1;
+      }
+      removeAttribute() {}
+      load() {}
+    };
+  });
+}
+
+const fakeAudioState = page => page.evaluate(() => window.__fakeAudios.map(audio => ({
+  url: audio.url,
+  paused: audio.paused,
+  pauseCount: audio.pauseCount
+})));
+
 test("a saved zero original volume mutes the studio preview instead of playing the source at full volume", async () => {
   await withPage(async page => {
     assert.equal(await page.locator("#originalVolume").inputValue(), "0");
@@ -89,6 +137,33 @@ test("moving the original volume slider retunes the preview without a reload", a
     await page.locator("#originalVolume").fill("0");
     await page.locator("#originalVolume").dispatchEvent("input");
     assert.deepEqual(await previewAudio(page), { volume: 0, muted: true });
+  });
+});
+
+test("starting video playback stops a standalone voice sample", async () => {
+  await withPage(async page => {
+    await installFakeAudio(page);
+    await page.locator("#voiceSample").click();
+    await page.waitForFunction(() => window.__fakeAudios.length === 1 && !window.__fakeAudios[0].paused);
+
+    await page.locator("#video").dispatchEvent("play");
+    assert.deepEqual(await fakeAudioState(page), [
+      { url: "http://lana.local/sample.mp3", paused: true, pauseCount: 1 }
+    ]);
+  });
+});
+
+test("starting voice preview stops a standalone voice sample", async () => {
+  await withPage(async page => {
+    await installFakeAudio(page);
+    await page.locator("#voiceSample").click();
+    await page.waitForFunction(() => window.__fakeAudios.length === 1 && !window.__fakeAudios[0].paused);
+
+    await page.locator("#voicePreview").click();
+    await page.waitForFunction(() => window.__fakeAudios[0].paused);
+    assert.deepEqual(await fakeAudioState(page), [
+      { url: "http://lana.local/sample.mp3", paused: true, pauseCount: 1 }
+    ]);
   });
 });
 
@@ -153,21 +228,21 @@ const budgets = page => page.locator(".segment .budget").evaluateAll(nodes => no
 test("shows how much of each segment's reading time the voice-over uses", async () => {
   await withPage(async page => {
     assert.deepEqual(await budgets(page), [
-      { text: "4/8 từ · vừa", status: "good" },
-      { text: "10/8 từ · quá dài, sẽ bị đọc ép nhanh", status: "over" }
+      { text: "4/9 từ · vừa", status: "good" },
+      { text: "10/9 từ · quá dài, sẽ bị đọc ép nhanh", status: "over" }
     ]);
   });
 });
 
 test("recalculates the budget as the segment or the reading speed changes", async () => {
   await withPage(async page => {
-    // Rút ngắn đoạn đầu còn 2s: ngân sách tụt xuống 4 từ nên câu 4 từ thành sát giới hạn.
+    // Rút ngắn đoạn đầu còn 2s: sau khi trừ 0.2s, ngân sách là 4 từ nên câu 4 từ sát giới hạn.
     await page.locator(".segment .end").first().fill("2");
     await page.locator(".segment .end").first().dispatchEvent("input");
     assert.deepEqual((await budgets(page))[0], { text: "4/4 từ · sát giới hạn", status: "tight" });
 
-    // Đọc nhanh hơn thì cùng thời lượng chứa được nhiều chữ hơn.
+    // Đọc nhanh x2 thì cùng 1.8s hữu dụng chứa được 9 từ.
     await page.locator("#ttsSpeed").selectOption("2");
-    assert.deepEqual((await budgets(page))[0], { text: "4/8 từ · vừa", status: "good" });
+    assert.deepEqual((await budgets(page))[0], { text: "4/9 từ · vừa", status: "good" });
   });
 });

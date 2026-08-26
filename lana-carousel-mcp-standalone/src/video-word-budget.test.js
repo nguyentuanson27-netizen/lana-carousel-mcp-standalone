@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
-import { BASE_WORDS_PER_SECOND, WORD_BUDGET_SAFETY_FACTOR, countVideoWords } from "./video-analysis-brief.js";
+import { BASE_WORDS_PER_SECOND, WORD_BUDGET_RESERVED_SECONDS, countVideoWords } from "./video-analysis-brief.js";
 
 // Studio là script thuần trong trình duyệt nên không import được module server. Chạy nó trong
 // một sandbox rồi đối chiếu với hằng số phía server: badge trong studio phải nói đúng thứ mà
@@ -15,7 +15,7 @@ const budget = sandbox.window.LanaWordBudget;
 
 test("the studio shares the server word-budget constants", () => {
  assert.equal(budget.BASE_WORDS_PER_SECOND, BASE_WORDS_PER_SECOND);
- assert.equal(budget.WORD_BUDGET_SAFETY_FACTOR, WORD_BUDGET_SAFETY_FACTOR);
+ assert.equal(budget.WORD_BUDGET_RESERVED_SECONDS, WORD_BUDGET_RESERVED_SECONDS);
 });
 
 test("the studio counts words exactly like the server does", () => {
@@ -24,25 +24,32 @@ test("the studio counts words exactly like the server does", () => {
  }
 });
 
-test("the budget matches the server formula for the same segment", () => {
+test("the budget matches the reserved-time server formula for the same segment", () => {
  for (const [duration, speed] of [[4, 1], [4, 1.5], [2.5, 0.8], [10, 2]]) {
-  const expected = Math.max(1, Math.floor(duration * BASE_WORDS_PER_SECOND * speed * WORD_BUDGET_SAFETY_FACTOR));
+  const usableDuration = Math.max(0, duration - WORD_BUDGET_RESERVED_SECONDS);
+  const expected = Math.max(0, Math.floor(usableDuration * BASE_WORDS_PER_SECOND * speed));
   assert.equal(budget.segmentWordBudget({ start: 0, end: duration, text: "x", ttsSpeed: speed }).maxWords, expected);
  }
 });
 
+test("reserves the first 0.2 seconds before assigning any words", () => {
+ assert.equal(budget.segmentWordBudget({ start: 0, end: 0.2, text: "x", ttsSpeed: 2 }).maxWords, 0);
+ assert.equal(budget.segmentWordBudget({ start: 0, end: 0.3, text: "x", ttsSpeed: 1 }).maxWords, 0);
+ assert.equal(budget.segmentWordBudget({ start: 0, end: 0.6, text: "x", ttsSpeed: 1 }).maxWords, 1);
+});
+
 test("flags a line that cannot be read inside its segment", () => {
- // 4s ở tốc độ 1 cho ngân sách 8 từ.
+ // 4s ở tốc độ 1 còn 3.8s hữu dụng, cho ngân sách 9 từ.
  const of = text => budget.segmentWordBudget({ start: 0, end: 4, text, ttsSpeed: 1 });
  assert.equal(of("một hai ba bốn").status, "good");
- assert.equal(of("một hai ba bốn năm sáu bảy tám").status, "tight");
- assert.equal(of("một hai ba bốn năm sáu bảy tám chín").status, "over");
+ assert.equal(of("một hai ba bốn năm sáu bảy tám chín").status, "tight");
+ assert.equal(of("một hai ba bốn năm sáu bảy tám chín mười").status, "over");
  assert.equal(of("").status, "empty");
  assert.equal(budget.segmentWordBudget({ start: 5, end: 5, text: "x", ttsSpeed: 1 }).status, "unknown");
 });
 
 test("reads the budget back as text the studio can show", () => {
- assert.equal(budget.describeBudget(budget.segmentWordBudget({ start: 0, end: 4, text: "một hai", ttsSpeed: 1 })), "2/8 từ · vừa");
+ assert.equal(budget.describeBudget(budget.segmentWordBudget({ start: 0, end: 4, text: "một hai", ttsSpeed: 1 })), "2/9 từ · vừa");
  assert.equal(
   budget.describeBudget(budget.segmentWordBudget({ start: 0, end: 0, text: "một", ttsSpeed: 1 })),
   "cần thời lượng hợp lệ"

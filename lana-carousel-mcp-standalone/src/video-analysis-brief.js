@@ -26,7 +26,7 @@ export const VIDEO_EDITABLE_SETTING_KEYS = [
   "geminiMultiSpeaker", "geminiModel"
 ];
 export const BASE_WORDS_PER_SECOND = 2.5;
-export const WORD_BUDGET_SAFETY_FACTOR = 0.85;
+export const WORD_BUDGET_RESERVED_SECONDS = 0.2;
 
 const TIMELINE_TOLERANCE_SECONDS = 0.001;
 const MIN_DIFFERENT_SEGMENT_RATIO = 0.5;
@@ -273,9 +273,10 @@ export function evaluateVideoScriptOptions({brief, options}) {
         };
       }
 
-      const maxWords = Math.max(1, Math.floor(duration * BASE_WORDS_PER_SECOND * analysisBrief.ttsSpeed * WORD_BUDGET_SAFETY_FACTOR));
-      const recommendedMinWords = Math.max(1, Math.floor(maxWords * target.min));
-      const recommendedMaxWords = Math.max(recommendedMinWords, Math.floor(maxWords * target.max));
+      const usableDuration = Math.max(0, duration - WORD_BUDGET_RESERVED_SECONDS);
+      const maxWords = Math.max(0, Math.floor(usableDuration * BASE_WORDS_PER_SECOND * analysisBrief.ttsSpeed));
+      const recommendedMinWords = maxWords ? Math.max(1, Math.floor(maxWords * target.min)) : 0;
+      const recommendedMaxWords = maxWords ? Math.max(recommendedMinWords, Math.floor(maxWords * target.max)) : 0;
       const wordCount = countVideoWords(segment.voiceOverText || segment.subtitleText);
       const utilization = maxWords ? Number((wordCount / maxWords).toFixed(2)) : 0;
       const fitStatus = wordCount > maxWords ? "too_long" : wordCount > recommendedMaxWords ? "tight" : wordCount < recommendedMinWords ? "short" : "good";
@@ -302,8 +303,8 @@ export function evaluateVideoScriptOptions({brief, options}) {
     analysisBrief,
     budgetModel: {
       baseWordsPerSecond: BASE_WORDS_PER_SECOND,
-      safetyFactor: WORD_BUDGET_SAFETY_FACTOR,
-      formula: "enabled duration × 2.5 words/s × ttsSpeed × 0.85"
+      reservedSeconds: WORD_BUDGET_RESERVED_SECONDS,
+      formula: "(enabled duration − 0.2s) × 2.5 words/s × ttsSpeed"
     },
     options: evaluatedOptions,
     nextAction: "Hiển thị cả hai phương án cho người dùng và chờ họ chọn rõ một phương án trước khi lưu script."
