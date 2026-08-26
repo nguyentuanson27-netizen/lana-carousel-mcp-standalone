@@ -2,24 +2,23 @@
 // báo "vừa" cho câu mà phía render tính là quá dài; có test đối chiếu để chặn lệch.
 (function (global) {
   const BASE_WORDS_PER_SECOND = 2.5;
-  const WORD_BUDGET_SAFETY_FACTOR = 0.85;
+  const WORD_BUDGET_RESERVED_SECONDS = 0.2;
   const TIGHT_RATIO = 0.9;
 
   const countWords = value => String(value || "").trim().split(/\s+/u).filter(Boolean).length;
 
   function segmentWordBudget({ start, end, text, ttsSpeed = 1 }) {
     const duration = Math.max(0, Number(end) - Number(start));
+    const usableDuration = Math.max(0, duration - WORD_BUDGET_RESERVED_SECONDS);
     const speed = Math.max(0.5, Number(ttsSpeed) || 1);
-    const maxWords = duration > 0
-      ? Math.max(1, Math.floor(duration * BASE_WORDS_PER_SECOND * speed * WORD_BUDGET_SAFETY_FACTOR))
-      : 0;
+    const maxWords = Math.max(0, Math.floor(usableDuration * BASE_WORDS_PER_SECOND * speed));
     const wordCount = countWords(text);
-    const status = !maxWords ? "unknown"
+    const status = duration <= 0 ? "unknown"
       : !wordCount ? "empty"
       : wordCount > maxWords ? "over"
       : wordCount > Math.floor(maxWords * TIGHT_RATIO) ? "tight"
       : "good";
-    return { duration, wordCount, maxWords, status };
+    return { duration, usableDuration, wordCount, maxWords, status };
   }
 
   const STATUS_LABELS = {
@@ -32,7 +31,7 @@
 
   global.LanaWordBudget = {
     BASE_WORDS_PER_SECOND,
-    WORD_BUDGET_SAFETY_FACTOR,
+    WORD_BUDGET_RESERVED_SECONDS,
     countWords,
     segmentWordBudget,
     describeBudget(budget) {

@@ -370,24 +370,33 @@ async function downloadSubtitles(format){
 $("#downloadSrt").onclick=()=>downloadSubtitles("srt").catch(error=>alert(error.message));
 $("#downloadVtt").onclick=()=>downloadSubtitles("vtt").catch(error=>alert(error.message));
 
-let sampleAudio;
+let sampleAudio,sampleGeneration=0;
+function stopSampleAudio(){
+  sampleGeneration++;
+  sampleAudio?.pause();
+}
+
 $("#voiceSample").onclick=async()=>{
-  const button=$("#voiceSample");
+  const button=$("#voiceSample"),generation=++sampleGeneration;
   button.disabled=true;
+  sampleAudio?.pause();
   try{
     const response=await api(`/api/video-analysis/projects/${projectId}/voice-sample`,{
       method:"POST",
       headers:{"content-type":"application/json"},
       body:JSON.stringify({ttsProvider:$("#ttsProvider").value,voice:pickedVoice()})
     });
-    sampleAudio?.pause();
+    if(generation!==sampleGeneration)return;
     sampleAudio=new Audio(response.url);
     sampleAudio.volume=clamp(+$("#ttsVolume").value,0,1)||1;
     // Server mới là nơi quyết định giọng nào được đọc, nên nói lại đúng tên nó trả về.
     $("#voiceNote").textContent=`Đang đọc thử bằng ${response.voice}.`;
     await sampleAudio.play();
-  }catch(error){syncVoiceFields();alert(error.message)}
-  finally{button.disabled=false}
+  }catch(error){
+    if(generation!==sampleGeneration)return;
+    syncVoiceFields();
+    alert(error.message);
+  }finally{button.disabled=false}
 };
 
 // Nghe thử giọng đọc ngay trên preview: dùng đúng các clip mà bản render sẽ dùng, đặt đúng mốc
@@ -419,6 +428,7 @@ function syncVoicePreview(){
 }
 
 $("#voicePreview").onclick=async()=>{
+  stopSampleAudio();
   if(voicePreviewOn()){stopVoicePreview();return}
   const button=$("#voicePreview");
   button.disabled=true;
@@ -439,6 +449,7 @@ $("#voicePreview").onclick=async()=>{
   finally{button.disabled=false}
 };
 
+$("#video").addEventListener("play",stopSampleAudio);
 for(const event of ["timeupdate","play","pause","seeking","seeked","ratechange"]){
   $("#video").addEventListener(event,syncVoicePreview);
 }

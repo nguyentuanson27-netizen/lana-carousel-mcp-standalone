@@ -36,7 +36,12 @@ test("rejects unsupported TTS speed",()=>{
 test("requires non-empty aligned and distinct natural_full and punchy_short options",()=>{
   const result=evaluateVideoScriptOptions({brief,options:validOptions()});
   assert.equal(result.options.length,2);
-  assert.equal(result.options[0].segments[0].maxWords,10);
+  assert.equal(result.options[0].segments[0].maxWords,11);
+  assert.deepEqual(result.budgetModel,{
+    baseWordsPerSecond:2.5,
+    reservedSeconds:0.2,
+    formula:"(enabled duration − 0.2s) × 2.5 words/s × ttsSpeed"
+  });
   assert.equal(result.options[1].fitsTimeline,true);
 
   const empty=validOptions();
@@ -95,6 +100,18 @@ test("rejects options that differ only in disabled segments",()=>{
     ()=>evaluateVideoScriptOptions({brief,options}),
     error=>error.code==="VIDEO_SCRIPT_OPTIONS_TOO_SIMILAR"
   );
+});
+
+test("short segments can have zero word budget after reserving 0.2 seconds",()=>{
+  const options=validOptions();
+  for(const option of options){
+    option.segments[0].end=0.3;
+    option.segments[1].start=0.3;
+    option.segments[1].end=4.3;
+  }
+  const result=evaluateVideoScriptOptions({brief:{...brief,ttsSpeed:1},options});
+  assert.equal(result.options[0].segments[0].maxWords,0);
+  assert.equal(result.options[0].segments[0].fitStatus,"too_long");
 });
 
 test("whitelists editable settings and drops server-managed fields",()=>{
