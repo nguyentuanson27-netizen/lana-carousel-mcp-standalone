@@ -13,7 +13,7 @@
     const speed = Math.max(0.5, Number(ttsSpeed) || 1);
     const maxWords = Math.max(0, Math.floor(usableDuration * BASE_WORDS_PER_SECOND * speed));
     const wordCount = countWords(text);
-    const status = !maxWords ? "unknown"
+    const status = duration <= 0 ? "unknown"
       : !wordCount ? "empty"
       : wordCount > maxWords ? "over"
       : wordCount > Math.floor(maxWords * TIGHT_RATIO) ? "tight"
