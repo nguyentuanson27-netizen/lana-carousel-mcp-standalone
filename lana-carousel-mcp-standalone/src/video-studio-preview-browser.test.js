@@ -36,7 +36,7 @@ const project = {
   currentVersion: 1
 };
 
-async function withPage(run, served = project) {
+async function withPage(run, served = project, hooks = {}) {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   await page.route("http://lana.local/**", async route => {
@@ -49,6 +49,7 @@ async function withPage(run, served = project) {
     }[url.pathname];
     if (body) return route.fulfill({ status: 200, contentType: body.type, body: body.body });
     if (url.pathname.endsWith("/voice-sample")) {
+      if (hooks.voiceSample) return hooks.voiceSample(route);
       return route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -121,6 +122,26 @@ const fakeAudioState = page => page.evaluate(() => window.__fakeAudios.map(audio
   pauseCount: audio.pauseCount
 })));
 
+function pendingVoiceSample() {
+  let markStarted;
+  let release;
+  const started = new Promise(resolve => { markStarted = resolve; });
+  const released = new Promise(resolve => { release = resolve; });
+  return {
+    started,
+    release,
+    async handler(route) {
+      markStarted();
+      await released;
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ url: "http://lana.local/sample.mp3", voice: "Kore" })
+      });
+    }
+  };
+}
+
 test("a saved zero original volume mutes the studio preview instead of playing the source at full volume", async () => {
   await withPage(async page => {
     assert.equal(await page.locator("#originalVolume").inputValue(), "0");
@@ -166,6 +187,26 @@ test("starting voice preview stops a standalone voice sample", async () => {
     ]);
   });
 });
+
+for (const scenario of [
+  { name: "video playback", startPreview: page => page.locator("#video").dispatchEvent("play") },
+  { name: "voice preview", startPreview: page => page.locator("#voicePreview").click() }
+]) {
+  test(`a pending standalone voice sample cannot start after ${scenario.name} begins`, async () => {
+    const pending = pendingVoiceSample();
+    await withPage(async page => {
+      await installFakeAudio(page);
+      await page.locator("#voiceSample").click();
+      await pending.started;
+
+      await scenario.startPreview(page);
+      pending.release();
+      await page.waitForFunction(() => !document.querySelector("#voiceSample").disabled);
+
+      assert.deepEqual(await fakeAudioState(page), []);
+    }, project, { voiceSample: pending.handler });
+  });
+}
 
 const voiceFields = page => page.evaluate(() => ({
   vertexShown: !document.querySelector("#voiceField").hidden,
@@ -231,6 +272,17 @@ test("shows how much of each segment's reading time the voice-over uses", async 
       { text: "4/9 từ · vừa", status: "good" },
       { text: "10/9 từ · quá dài, sẽ bị đọc ép nhanh", status: "over" }
     ]);
+  });
+});
+
+test("marks a valid segment with zero whole-word capacity as over budget", async () => {
+  await withPage(async page => {
+    await page.locator(".segment .end").first().fill("0.3");
+    await page.locator(".segment .end").first().dispatchEvent("input");
+    assert.deepEqual((await budgets(page))[0], {
+      text: "4/0 từ · quá dài, sẽ bị đọc ép nhanh",
+      status: "over"
+    });
   });
 });
 
