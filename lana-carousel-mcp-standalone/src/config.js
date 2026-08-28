@@ -91,7 +91,7 @@ export const config = Object.freeze({
   oauthLoginStateTtlSeconds: integerEnv("OAUTH_LOGIN_STATE_TTL_SECONDS", 600),
   oauthConsentTtlSeconds: integerEnv("OAUTH_CONSENT_TTL_SECONDS", 300),
   apiAuthRequired: production || googleOAuthConfigured || apiKeys.length > 0,
-  apiRateLimitPerMinute: integerEnv("API_RATE_LIMIT_PER_MINUTE", 120),
+  apiRateLimitPerMinute: integerEnv("API_RATE_LIMIT_PER_MINUTE", 500),
   apiDailyMutationQuota: integerEnv("API_DAILY_MUTATION_QUOTA", 500),
   apiDailyHeavyQuota: integerEnv("API_DAILY_HEAVY_QUOTA", 60),
   projectAccessTokenTtlSeconds: integerEnv("PROJECT_ACCESS_TOKEN_TTL_SECONDS", 300),

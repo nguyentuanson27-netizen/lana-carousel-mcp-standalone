@@ -11,7 +11,7 @@
     const duration = Math.max(0, Number(end) - Number(start));
     const usableDuration = Math.max(0, duration - WORD_BUDGET_RESERVED_SECONDS);
     const speed = Math.max(0.5, Number(ttsSpeed) || 1);
-    const maxWords = Math.max(0, Math.floor(usableDuration * BASE_WORDS_PER_SECOND * speed));
+    const maxWords = Math.max(0, Math.floor(usableDuration * BASE_WORDS_PER_SECOND * speed + 1e-9));
     const wordCount = countWords(text);
     const status = duration <= 0 ? "unknown"
       : !wordCount ? "empty"

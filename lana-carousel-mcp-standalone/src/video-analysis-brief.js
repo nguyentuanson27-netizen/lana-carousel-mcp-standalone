@@ -274,7 +274,7 @@ export function evaluateVideoScriptOptions({brief, options}) {
       }
 
       const usableDuration = Math.max(0, duration - WORD_BUDGET_RESERVED_SECONDS);
-      const maxWords = Math.max(0, Math.floor(usableDuration * BASE_WORDS_PER_SECOND * analysisBrief.ttsSpeed));
+      const maxWords = Math.max(0, Math.floor(usableDuration * BASE_WORDS_PER_SECOND * analysisBrief.ttsSpeed + 1e-9));
       const recommendedMinWords = maxWords ? Math.max(1, Math.floor(maxWords * target.min)) : 0;
       const recommendedMaxWords = maxWords ? Math.max(recommendedMinWords, Math.floor(maxWords * target.max)) : 0;
       const wordCount = countVideoWords(segment.voiceOverText || segment.subtitleText);

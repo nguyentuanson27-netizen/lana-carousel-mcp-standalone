@@ -49,6 +49,10 @@ app.get("/", (_req, res) => res.sendFile(path.join(publicDirectory, "projects.ht
 app.get("/widget", (_req, res) => res.sendFile(path.join(publicDirectory, "widget.html")));
 app.get("/projects", (_req, res) => res.sendFile(path.join(publicDirectory, "projects.html")));
 app.get("/video-studio", (_req, res) => res.sendFile(path.join(publicDirectory, "video-studio.html")));
+app.get("/update", (_req, res) => res.sendFile(path.join(publicDirectory, "update.html")));
+app.get("/guide", (_req, res) => res.sendFile(path.join(publicDirectory, "guide.html")));
+app.get("/guide-mcp", (_req, res) => res.sendFile(path.join(publicDirectory, "guide-mcp.html")));
+
 
 const handle = handler => async (req, res) => {
   try { await handler(req, res); }
