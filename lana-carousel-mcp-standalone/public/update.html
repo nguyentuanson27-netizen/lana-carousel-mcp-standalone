@@ -351,13 +351,51 @@
 
   <div class="timeline">
 
-    <!-- ═══ PR #24 ═══ -->
+    <!-- ═══ PR #25 ═══ -->
     <div class="release latest">
+      <div class="release-dot"></div>
+      <div class="release-header">
+        <a class="pr-badge" href="https://github.com/nguyentuanson27-netizen/lana-carousel-mcp-standalone/pull/25" target="_blank" rel="noopener">#25</a>
+        <span class="release-title">Trang Hướng dẫn &amp; Changelog, thêm giọng Vertex, sửa sai số ngân sách chữ</span>
+        <span class="new-badge">Mới nhất</span>
+        <span class="release-date">28/08/2026</span>
+      </div>
+      <div class="release-card">
+        <ul class="changes-list">
+          <li class="change-item">
+            <span class="change-type type-docs">docs</span>
+            <span class="change-text">Trang <code>/guide</code> — hướng dẫn sử dụng đầy đủ 38 mục cho cả Content Studio lẫn MCP, giao diện Light Theme. Đường dẫn cũ <code>/guide-mcp</code> chuyển hướng về cùng trang này.</span>
+          </li>
+          <li class="change-item">
+            <span class="change-type type-docs">docs</span>
+            <span class="change-text">Trang <code>/update</code> — chính là trang bạn đang đọc: toàn bộ lịch sử cải tiến theo từng phiên bản.</span>
+          </li>
+          <li class="change-item">
+            <span class="change-type type-feat">feat</span>
+            <span class="change-text">Thêm lối vào <em>Hướng dẫn</em> và <em>Cập nhật</em> ngay trên thanh tiêu đề của Dashboard và Video Studio.</span>
+          </li>
+          <li class="change-item">
+            <span class="change-type type-feat">feat</span>
+            <span class="change-text">Bổ sung 4 giọng đọc Vertex — <code>Laomedeia</code>, <code>Leda</code>, <code>Pulcherrima</code>, <code>Achernar</code> — nâng tổng số lên 9 giọng.</span>
+          </li>
+          <li class="change-item">
+            <span class="change-type type-fix">fix</span>
+            <span class="change-text">Sửa sai số dấu phẩy động IEEE-754 khi tính ngân sách chữ: đoạn <code>0.6s</code> ở tốc độ <code>1.0×</code> từng bị báo sức chứa <em>0 từ</em> dù đúng ra là 1 từ. Áp dụng đồng bộ cho cả badge trên giao diện lẫn phần đánh giá phía server.</span>
+          </li>
+          <li class="change-item">
+            <span class="change-type type-feat">feat</span>
+            <span class="change-text">Nâng mặc định <code>API_RATE_LIMIT_PER_MINUTE</code> từ 120 lên 500 để phục vụ các luồng MCP/Studio nặng.</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ═══ PR #24 ═══ -->
+    <div class="release">
       <div class="release-dot"></div>
       <div class="release-header">
         <a class="pr-badge" href="https://github.com/nguyentuanson27-netizen/lana-carousel-mcp-standalone/pull/24" target="_blank" rel="noopener">#24</a>
         <span class="release-title">Video Studio — Ngắt âm thanh đọc mẫu khi Preview &amp; Chuẩn hóa Word Budget</span>
-        <span class="new-badge">Mới nhất</span>
         <span class="release-date">26/08/2026</span>
       </div>
       <div class="release-card">

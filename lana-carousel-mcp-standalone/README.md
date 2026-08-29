@@ -84,7 +84,7 @@ pm2 save
 | `DATABASE_PATH` | `./data/lana-carousel.sqlite` | Đường dẫn SQLite |
 | `ASSET_DIRECTORY` | `./data/assets` | Thư mục ảnh Carousel |
 | `API_KEY` / `API_KEYS` | trống | API key hoặc danh sách key production |
-| `API_RATE_LIMIT_PER_MINUTE` | `120` | Rate limit mỗi principal |
+| `API_RATE_LIMIT_PER_MINUTE` | `500` | Rate limit mỗi principal |
 | `API_DAILY_MUTATION_QUOTA` | `500` | Quota mutation mỗi ngày |
 | `API_DAILY_HEAVY_QUOTA` | `60` | Quota tác vụ nặng mỗi ngày |
 | `PROJECT_ACCESS_TOKEN_TTL_SECONDS` | `300` | TTL one-time project link |

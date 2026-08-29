@@ -7,4 +7,6 @@ data/
 dist/
 .DS_Store
 backups/
+# npm luôn chạy trong lana-carousel-mcp-standalone/, nên lockfile ở gốc repo chỉ sinh ra khi
+# chạy nhầm thư mục. Neo dấu / để không đụng tới lockfile thật đang được track bên trong.
 /package-lock.json

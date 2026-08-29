@@ -50,6 +50,7 @@
     .site-header{position:relative;z-index:30;border-bottom:1px solid rgba(222,212,202,.82);background:rgba(245,241,235,.92);backdrop-filter:blur(18px)}
     .header-inner{min-height:var(--header-height);display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,480px) minmax(0,1fr);align-items:center;gap:16px}
     .header-left{display:flex;align-items:center;gap:14px;min-width:0}
+    .header-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0}
     .back-link{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-weight:650;white-space:nowrap}
     .back-link:hover{color:var(--accent)}
     .header-divider{width:1px;height:26px;background:var(--line)}
@@ -178,6 +179,7 @@
       .brand-copy span{display:none}
     }
     @media(max-width:960px){
+      .header-link{display:none}
       body{height:auto;min-height:100vh;overflow:auto}
       .header-inner{grid-template-columns:minmax(130px,.7fr) minmax(160px,1.3fr) auto}
       main{height:auto;padding:18px 0 48px;overflow:visible}
@@ -225,7 +227,11 @@
       <div class="header-project-title">
         <h1 id="title">Dự án video</h1>
       </div>
-      <button class="btn secondary small" id="newBtn" type="button">+ Dự án mới</button>
+      <div class="header-actions">
+        <a class="btn secondary small header-link" href="/guide">Hướng dẫn</a>
+        <a class="btn secondary small header-link" href="/update">Cập nhật</a>
+        <button class="btn secondary small" id="newBtn" type="button">+ Dự án mới</button>
+      </div>
     </div>
   </header>
 
