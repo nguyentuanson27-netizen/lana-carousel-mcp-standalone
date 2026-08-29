@@ -49,6 +49,11 @@ app.get("/", (_req, res) => res.sendFile(path.join(publicDirectory, "projects.ht
 app.get("/widget", (_req, res) => res.sendFile(path.join(publicDirectory, "widget.html")));
 app.get("/projects", (_req, res) => res.sendFile(path.join(publicDirectory, "projects.html")));
 app.get("/video-studio", (_req, res) => res.sendFile(path.join(publicDirectory, "video-studio.html")));
+app.get("/update", (_req, res) => res.sendFile(path.join(publicDirectory, "update.html")));
+app.get("/guide", (_req, res) => res.sendFile(path.join(publicDirectory, "guide.html")));
+// Trang hướng dẫn đã gộp cả phần Studio lẫn phần MCP, nên /guide-mcp chỉ là lối vào cũ trỏ về
+// cùng một nguồn thay vì nhân đôi toàn bộ nội dung sang file thứ hai.
+app.get("/guide-mcp", (_req, res) => res.redirect("/guide"));
 
 const handle = handler => async (req, res) => {
   try { await handler(req, res); }

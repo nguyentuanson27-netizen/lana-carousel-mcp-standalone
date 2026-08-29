@@ -211,7 +211,7 @@ export const isVertexProvider=provider=>["gemini","vertex"].includes(provider);
 // Google Cloud TTS nhan voice id day du (vi-VN-Neural2-D). Danh sach nay la nguon duy nhat cho
 // ca bo chon trong studio lan phan kiem o route, de giao dien khong bao gio moi nguoi dung chon
 // mot giong ma nha cung cap dang bat khong doc duoc.
-export const VERTEX_VOICES=["Kore","Puck","Aoede","Charon","Fenrir"];
+export const VERTEX_VOICES=["Kore","Puck","Aoede","Charon","Fenrir","Laomedeia","Leda","Pulcherrima","Achernar"];
 export const GOOGLE_VOICES=[
  "vi-VN-Neural2-A","vi-VN-Neural2-D",
  "vi-VN-Wavenet-A","vi-VN-Wavenet-B","vi-VN-Wavenet-C","vi-VN-Wavenet-D",

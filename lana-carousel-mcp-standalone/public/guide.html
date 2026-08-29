@@ -1,0 +1,2863 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hướng dẫn sử dụng Lana Carousel MCP Standalone</title>
+  <meta name="description" content="Tài liệu toàn diện về cài đặt, cấu hình, OAuth 2.1, các MCP tool, workflow Carousel, Video Analysis, Prompt chuẩn và checklist triển khai production." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --surface-2: #f1f5f9;
+      --surface-3: #e2e8f0;
+      --surface-4: #cbd5e1;
+      --border: #e2e8f0;
+      --border-2: #cbd5e1;
+      --text: #334155;
+      --text-bright: #0f172a;
+      --muted: #64748b;
+      --accent: #2563eb;
+      --accent-dim: rgba(37, 99, 235, 0.08);
+      --accent-hover: #1d4ed8;
+      --green: #16a34a;
+      --green-dim: rgba(22, 163, 74, 0.08);
+      --orange: #d97706;
+      --orange-dim: rgba(217, 119, 6, 0.08);
+      --purple: #7c3aed;
+      --purple-dim: rgba(124, 58, 237, 0.08);
+      --red: #dc2626;
+      --red-dim: rgba(220, 38, 38, 0.08);
+      --cyan: #0284c7;
+      --cyan-dim: rgba(2, 132, 199, 0.08);
+      --radius: 12px;
+      --sidebar-w: 310px;
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+    }
+
+    html { scroll-behavior: smooth; scroll-padding-top: 75px; }
+    body {
+      font-family: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── HEADER ── */
+    .site-header {
+      position: sticky;
+      top: 0;
+      z-index: 200;
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 clamp(1rem,4vw,2rem);
+    }
+    .header-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+      height: 62px;
+    }
+    .logo-mark {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, #2563eb, #10b981);
+      border-radius: 9px;
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      font-size: 14px;
+      color: #ffffff;
+      flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+    }
+    .header-brand {
+      font-size: .95rem;
+      font-weight: 700;
+      text-decoration: none;
+      color: var(--text-bright);
+      letter-spacing: -.01em;
+    }
+    .header-badge {
+      font-size: .72rem;
+      font-weight: 600;
+      background: var(--accent-dim);
+      color: var(--accent);
+      border: 1px solid rgba(37, 99, 235, 0.2);
+      border-radius: 20px;
+      padding: 2px 9px;
+    }
+    .header-nav {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: .35rem;
+    }
+    .header-nav a {
+      font-size: .83rem;
+      color: var(--muted);
+      text-decoration: none;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-weight: 500;
+      transition: background .15s, color .15s;
+    }
+    .header-nav a:hover {
+      background: var(--surface-2);
+      color: var(--text-bright);
+    }
+    .header-nav a.active {
+      background: var(--accent-dim);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* ── LAYOUT ── */
+    .layout {
+      display: flex;
+      max-width: 1400px;
+      margin: 0 auto;
+      width: 100%;
+      flex: 1;
+    }
+
+    /* ── SIDEBAR ── */
+    .sidebar {
+      width: var(--sidebar-w);
+      flex-shrink: 0;
+      position: sticky;
+      top: 62px;
+      height: calc(100vh - 62px);
+      overflow-y: auto;
+      padding: 1.25rem 0 2.5rem;
+      background: #ffffff;
+      border-right: 1px solid var(--border);
+      scrollbar-width: thin;
+      scrollbar-color: var(--surface-3) transparent;
+    }
+    .sidebar::-webkit-scrollbar { width: 5px; }
+    .sidebar::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 4px; }
+    
+    .sidebar-search {
+      padding: 0 1rem 1rem;
+      position: sticky;
+      top: 0;
+      background: #ffffff;
+      z-index: 10;
+    }
+    .sidebar-search input {
+      width: 100%;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px 8px 34px;
+      color: var(--text-bright);
+      font-size: .82rem;
+      outline: none;
+      font-family: inherit;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .sidebar-search input:focus {
+      background: #ffffff;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-dim);
+    }
+    .sidebar-search .search-icon {
+      position: absolute;
+      left: 1.85rem;
+      top: 36%;
+      transform: translateY(-50%);
+      font-size: .82rem;
+      color: var(--muted);
+      pointer-events: none;
+    }
+
+    .nav-group {
+      margin-bottom: 1.35rem;
+      padding: 0 .8rem;
+    }
+    .nav-group-title {
+      font-size: .68rem;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      margin-bottom: .4rem;
+      padding: 0 .6rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      font-size: .83rem;
+      color: #475569;
+      text-decoration: none;
+      padding: .38rem .6rem;
+      border-radius: 7px;
+      transition: background .12s, color .12s;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .nav-link:hover {
+      background: var(--surface-2);
+      color: var(--text-bright);
+    }
+    .nav-link.active {
+      background: #eff6ff;
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .nav-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .72rem;
+      color: var(--muted);
+      width: 18px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+    .nav-link.active .nav-num {
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    /* ── CONTENT ── */
+    .content {
+      flex: 1;
+      min-width: 0;
+      padding: 2.5rem clamp(1.25rem,4vw,3.5rem) 5rem;
+    }
+
+    /* ── HERO ── */
+    .page-hero {
+      margin-bottom: 3rem;
+      padding-bottom: 2.25rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .breadcrumb {
+      font-size: .82rem;
+      color: var(--muted);
+      margin-bottom: .75rem;
+      display: flex;
+      gap: .4rem;
+      align-items: center;
+    }
+    .breadcrumb a { color: var(--muted); text-decoration: none; font-weight: 500; }
+    .breadcrumb a:hover { color: var(--accent); }
+    .page-hero h1 {
+      font-size: clamp(1.8rem,4vw,2.4rem);
+      font-weight: 800;
+      letter-spacing: -.03em;
+      color: var(--text-bright);
+      margin-bottom: .75rem;
+      line-height: 1.25;
+    }
+    .page-hero p {
+      color: #475569;
+      font-size: 1.05rem;
+      max-width: 820px;
+      line-height: 1.65;
+    }
+    .hero-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.25rem;
+      margin-top: 1.5rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid var(--border);
+    }
+    .meta-tag {
+      display: flex;
+      align-items: center;
+      gap: .45rem;
+      font-size: .83rem;
+      color: var(--muted);
+    }
+    .meta-tag strong { color: var(--text-bright); }
+
+    /* ── SECTION ── */
+    .section {
+      margin-bottom: 3.75rem;
+      scroll-margin-top: 75px;
+    }
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: .85rem;
+      margin-bottom: 1.35rem;
+    }
+    .section-badge {
+      display: inline-grid;
+      place-items: center;
+      min-width: 32px;
+      height: 32px;
+      padding: 0 8px;
+      background: #eff6ff;
+      color: var(--accent);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .82rem;
+      font-weight: 700;
+      border-radius: 9px;
+      border: 1px solid #bfdbfe;
+      flex-shrink: 0;
+    }
+    .section-title {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--text-bright);
+      letter-spacing: -.02em;
+    }
+
+    h3.sub-heading {
+      font-size: 1.08rem;
+      font-weight: 700;
+      color: var(--text-bright);
+      margin: 1.75rem 0 .85rem;
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+    }
+    h3.sub-heading code {
+      font-size: .95rem;
+      color: var(--accent);
+    }
+
+    /* ── CARDS ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: 1.25rem;
+      box-shadow: var(--shadow-sm);
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .card:hover { border-color: var(--border-2); box-shadow: var(--shadow-md); }
+    .card-header {
+      padding: .9rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: .6rem;
+      background: var(--surface-2);
+    }
+    .card-header h3, .card-header h4 {
+      font-size: .95rem;
+      font-weight: 600;
+      color: var(--text-bright);
+    }
+    .card-body {
+      padding: 1.35rem;
+    }
+    .card-body p {
+      color: var(--text);
+      font-size: .93rem;
+      margin-bottom: .85rem;
+      line-height: 1.7;
+    }
+    .card-body p:last-child { margin-bottom: 0; }
+    .card-body ul, .card-body ol {
+      margin-bottom: .85rem;
+      padding-left: 1.4rem;
+      color: var(--text);
+      font-size: .93rem;
+    }
+    .card-body li { margin-bottom: .4rem; }
+
+    /* ── CALLOUTS ── */
+    .callout {
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      margin: 1.1rem 0;
+      font-size: .91rem;
+      display: flex;
+      gap: .85rem;
+      align-items: flex-start;
+      line-height: 1.65;
+    }
+    .callout-icon {
+      font-size: 1.2rem;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .callout-content { flex: 1; min-width: 0; }
+    .callout-content strong { font-weight: 700; }
+    .callout.tip    { background: #f0fdf4; border-left: 4px solid #22c55e; color: #166534; }
+    .callout.info   { background: #eff6ff; border-left: 4px solid #3b82f6; color: #1e40af; }
+    .callout.warn   { background: #fffbeb; border-left: 4px solid #f59e0b; color: #92400e; }
+    .callout.danger { background: #fef2f2; border-left: 4px solid #ef4444; color: #991b1b; }
+    .callout.rule   {
+      background: linear-gradient(135deg, #f5f3ff, #ede9fe);
+      border: 1px solid #ddd6fe;
+      border-left: 4px solid #8b5cf6;
+      color: #5b21b6;
+    }
+
+    /* ── CODE BLOCKS & PROMPTS ── */
+    .code-box {
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 11px;
+      margin: 1rem 0;
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+    }
+    .code-box-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: .5rem 1rem;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .75rem;
+      color: #94a3b8;
+    }
+    .code-box-lang { font-weight: 600; text-transform: uppercase; }
+    .btn-copy {
+      background: #334155;
+      border: 1px solid #475569;
+      color: #f8fafc;
+      font-size: .72rem;
+      font-weight: 500;
+      padding: 3px 9px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all .15s;
+      font-family: inherit;
+    }
+    .btn-copy:hover {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #ffffff;
+    }
+    .btn-copy.copied {
+      background: var(--green);
+      border-color: var(--green);
+      color: #ffffff;
+    }
+    .code-box pre {
+      padding: 1rem 1.25rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .83rem;
+      color: #e2e8f0;
+      overflow-x: auto;
+      line-height: 1.65;
+      white-space: pre;
+    }
+    code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .82rem;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-radius: 5px;
+      padding: 1px 6px;
+      color: #0284c7;
+    }
+
+    /* Prompt Box Special Styling */
+    .prompt-card {
+      background: #ffffff;
+      border: 1px solid #bfdbfe;
+      border-radius: 12px;
+      margin: 1.25rem 0;
+      overflow: hidden;
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.08);
+    }
+    .prompt-card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: .65rem 1.1rem;
+      background: #eff6ff;
+      border-bottom: 1px solid #bfdbfe;
+    }
+    .prompt-title {
+      font-size: .84rem;
+      font-weight: 700;
+      color: #1e40af;
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+    }
+    .prompt-card pre {
+      padding: 1.1rem 1.25rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .84rem;
+      background: #fafafa;
+      color: #1e293b;
+      overflow-x: auto;
+      line-height: 1.65;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .prompt-card .btn-copy {
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      color: #334155;
+    }
+    .prompt-card .btn-copy:hover {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #ffffff;
+    }
+
+    /* ── TABLES ── */
+    .table-container {
+      overflow-x: auto;
+      margin: 1rem 0 1.25rem;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface);
+      box-shadow: var(--shadow-sm);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .88rem;
+      text-align: left;
+    }
+    th {
+      padding: .75rem 1.1rem;
+      background: var(--surface-2);
+      color: #475569;
+      font-size: .75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: .75rem 1.1rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f8fafc; }
+    td strong { color: var(--text-bright); }
+
+    /* ── STEPS ── */
+    .step-flow {
+      display: flex;
+      flex-direction: column;
+      gap: .65rem;
+      margin: 1rem 0;
+    }
+    .step-item {
+      display: flex;
+      gap: 1rem;
+      align-items: flex-start;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: .75rem 1rem;
+      box-shadow: var(--shadow-sm);
+    }
+    .step-badge {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: #eff6ff;
+      border: 1.5px solid #bfdbfe;
+      color: var(--accent);
+      font-size: .75rem;
+      font-weight: 700;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .step-text { font-size: .89rem; line-height: 1.55; color: var(--text); }
+    .step-text strong { color: var(--text-bright); }
+
+    /* ── CHECKLIST ── */
+    .checklist {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: .5rem;
+      margin: 1rem 0;
+    }
+    .check-item {
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: .65rem 1rem;
+      cursor: pointer;
+      user-select: none;
+      box-shadow: var(--shadow-sm);
+      transition: all .15s;
+    }
+    .check-item:hover { border-color: var(--border-2); background: var(--surface-2); }
+    .check-item input[type="checkbox"] {
+      width: 17px;
+      height: 17px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+    .check-item.done {
+      opacity: .65;
+      text-decoration: line-through;
+      background: #f8fafc;
+    }
+
+    /* ── FOOTER ── */
+    .site-footer {
+      border-top: 1px solid var(--border);
+      padding: 2rem clamp(1rem,4vw,2rem);
+      text-align: center;
+      background: #ffffff;
+      margin-top: auto;
+    }
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+      margin-bottom: .85rem;
+    }
+    .footer-links a {
+      font-size: .83rem;
+      color: var(--muted);
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .footer-links a:hover { color: var(--accent); }
+    .footer-copy { font-size: .78rem; color: var(--muted); }
+
+    @media (max-width: 900px) {
+      .sidebar { display: none; }
+      .content { padding: 1.5rem 1rem 4rem; }
+    }
+  </style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-inner">
+    <div class="logo-mark">L</div>
+    <a href="/projects" class="header-brand">Lana Content Studio</a>
+    <span class="header-badge">MCP Standalone Guide</span>
+    <nav class="header-nav">
+      <a href="/projects">Dashboard</a>
+      <a href="/video-studio">Video Studio</a>
+      <a href="/guide" class="active">📖 Hướng dẫn</a>
+      <a href="/update">Cập nhật</a>
+    </nav>
+  </div>
+</header>
+
+<div class="layout">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-search">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="navFilter" placeholder="Tìm kiếm mục, tool, prompt..." aria-label="Tìm kiếm nội dung" />
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-title">Khởi đầu &amp; Cài đặt</div>
+      <a class="nav-link" href="#sec-1"><span class="nav-num">1</span>Tổng quan</a>
+      <a class="nav-link" href="#sec-2"><span class="nav-num">2</span>Production hiện tại</a>
+      <a class="nav-link" href="#sec-3"><span class="nav-num">3</span>Yêu cầu hệ thống</a>
+      <a class="nav-link" href="#sec-4"><span class="nav-num">4</span>Cài đặt local</a>
+      <a class="nav-link" href="#sec-5"><span class="nav-num">5</span>Chạy bằng Docker</a>
+      <a class="nav-link" href="#sec-6"><span class="nav-num">6</span>Chạy production bằng PM2</a>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-title">Authentication &amp; OAuth</div>
+      <a class="nav-link" href="#sec-7"><span class="nav-num">7</span>Authentication production</a>
+      <a class="nav-link" href="#sec-8"><span class="nav-num">8</span>Cấu hình Google OAuth</a>
+      <a class="nav-link" href="#sec-9"><span class="nav-num">9</span>OAuth discovery của MCP</a>
+      <a class="nav-link" href="#sec-10"><span class="nav-num">10</span>Kết nối MCP với ChatGPT</a>
+      <a class="nav-link" href="#sec-11"><span class="nav-num">11</span>Biến môi trường quan trọng</a>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-title">Carousel Workflow &amp; Tools</div>
+      <a class="nav-link" href="#sec-12"><span class="nav-num">12</span>Workflow Carousel nên dùng</a>
+      <a class="nav-link" href="#sec-13"><span class="nav-num">13</span>Các MCP tool của Carousel</a>
+      <a class="nav-link" href="#sec-14"><span class="nav-num">14</span>Prompt Carousel an toàn</a>
+      <a class="nav-link" href="#sec-15"><span class="nav-num">15</span>Prompt Carousel nghiên cứu</a>
+      <a class="nav-link" href="#sec-16"><span class="nav-num">16</span>Prompt chỉnh project có sẵn</a>
+      <a class="nav-link" href="#sec-17"><span class="nav-num">17</span>Prompt thêm ảnh cho slide</a>
+      <a class="nav-link" href="#sec-18"><span class="nav-num">18</span>Prompt duyệt &amp; render</a>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-title">Video Analysis &amp; Tools</div>
+      <a class="nav-link" href="#sec-19"><span class="nav-num">19</span>Video Analysis — Các trường</a>
+      <a class="nav-link" href="#sec-20"><span class="nav-num">20</span>Workflow Video Analysis</a>
+      <a class="nav-link" href="#sec-21"><span class="nav-num">21</span>2 phương án script bắt buộc</a>
+      <a class="nav-link" href="#sec-22"><span class="nav-num">22</span>Word budget Video Analysis</a>
+      <a class="nav-link" href="#sec-23"><span class="nav-num">23</span>Prompt Video Analysis chuẩn</a>
+      <a class="nav-link" href="#sec-24"><span class="nav-num">24</span>Prompt Video cho user cuối</a>
+      <a class="nav-link" href="#sec-25"><span class="nav-num">25</span>Prompt chọn phương án</a>
+      <a class="nav-link" href="#sec-26"><span class="nav-num">26</span>Prompt render video</a>
+      <a class="nav-link" href="#sec-27"><span class="nav-num">27</span>Các MCP tool Video Analysis</a>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-title">Studio, Social &amp; TTS</div>
+      <a class="nav-link" href="#sec-28"><span class="nav-num">28</span>Quản lý version</a>
+      <a class="nav-link" href="#sec-29"><span class="nav-num">29</span>Web Studio</a>
+      <a class="nav-link" href="#sec-30"><span class="nav-num">30</span>Social Publisher</a>
+      <a class="nav-link" href="#sec-31"><span class="nav-num">31</span>TTS &amp; Subtitle</a>
+      <a class="nav-link" href="#sec-32"><span class="nav-num">32</span>Cấu hình TTS production</a>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-title">Vận hành &amp; Checklist</div>
+      <a class="nav-link" href="#sec-33"><span class="nav-num">33</span>Các lỗi prompt thường gặp</a>
+      <a class="nav-link" href="#sec-34"><span class="nav-num">34</span>Prompt “master” Carousel</a>
+      <a class="nav-link" href="#sec-35"><span class="nav-num">35</span>Prompt “master” Video</a>
+      <a class="nav-link" href="#sec-36"><span class="nav-num">36</span>Prompt ngắn hằng ngày</a>
+      <a class="nav-link" href="#sec-37"><span class="nav-num">37</span>Checklist production</a>
+      <a class="nav-link" href="#sec-38"><span class="nav-num">38</span>Nguyên tắc vận hành</a>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <main class="content">
+
+    <div class="page-hero">
+      <div class="breadcrumb">
+        <a href="/projects">Trang chủ</a> <span>›</span> <span>Hướng dẫn sử dụng MCP Standalone</span>
+      </div>
+      <h1>Hướng dẫn sử dụng Lana Carousel MCP Standalone</h1>
+      <p>Tài liệu chuẩn hóa toàn bộ kiến trúc, giao thức OAuth 2.1 PKCE, danh mục MCP tools, quy trình sản xuất Carousel &amp; Video Analysis, thư viện Prompt thực chiến và checklist triển khai production.</p>
+      
+      <div class="hero-meta">
+        <div class="meta-tag"><span>🚀</span><strong>Phiên bản:</strong> 3.0.0</div>
+        <div class="meta-tag"><span>🔒</span><strong>Auth:</strong> OAuth 2.1 + PKCE S256</div>
+        <div class="meta-tag"><span>🌐</span><strong>Public Endpoint:</strong> <code>https://content.lanadesign.tech/mcp</code></div>
+      </div>
+    </div>
+
+    <!-- ═══ MỤC 1 ═══ -->
+    <section id="sec-1" class="section">
+      <div class="section-header">
+        <span class="section-badge">1</span>
+        <h2 class="section-title">Tổng quan</h2>
+      </div>
+      
+      <div class="card">
+        <div class="card-body">
+          <p><strong>Lana Carousel MCP Standalone</strong> là một MCP server giúp ChatGPT làm việc với hệ thống La.na Design để:</p>
+          <ul>
+            <li>tạo và quản lý carousel;</li>
+            <li>tạo slide nội dung;</li>
+            <li>thu thập nhiều ảnh ứng viên cho mỗi slide;</li>
+            <li>duyệt nội dung và ảnh;</li>
+            <li>chỉnh thiết kế;</li>
+            <li>render carousel;</li>
+            <li>quản lý version;</li>
+            <li>phân tích video;</li>
+            <li>tạo voice-over và subtitle;</li>
+            <li>render video với TTS;</li>
+            <li>quản lý project qua Web Studio.</li>
+          </ul>
+
+          <p><strong>Luồng chính của Carousel:</strong></p>
+          <div class="callout info">
+            <span class="callout-icon">🗺️</span>
+            <div class="callout-content">
+              <strong>ChatGPT tạo nội dung → tạo slide → thêm ảnh candidate → người dùng duyệt → chỉnh thiết kế → render → tải kết quả.</strong>
+            </div>
+          </div>
+
+          <p><strong>Luồng Video Analysis:</strong></p>
+          <div class="callout info">
+            <span class="callout-icon">🎬</span>
+            <div class="callout-content">
+              <strong>Video nguồn → phân tích scene → viết 2 phương án script → người dùng chọn → lưu version → chỉnh trong Studio → render subtitle/TTS.</strong>
+            </div>
+          </div>
+
+          <div class="callout rule">
+            <span class="callout-icon">⭐</span>
+            <div class="callout-content">
+              <strong>Một nguyên tắc đặc biệt quan trọng:</strong><br/>
+              <em>Một slide tương ứng với một chủ đề nội dung, không tương ứng với một ảnh.</em>
+            </div>
+          </div>
+
+          <p>Ví dụ slide “Áo dài La Sen” có 5 ảnh khác nhau thì vẫn chỉ có <strong>1 slide</strong>, sau đó thêm 5 ảnh bằng <code>add_image_candidates</code>.</p>
+
+          <p><strong>Không được tạo:</strong></p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Sai — Trùng lặp slide cho từng ảnh</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>Slide 2 - Ảnh 1
+Slide 3 - Ảnh 2
+Slide 4 - Ảnh 3</pre>
+          </div>
+
+          <p><strong>Mà phải là:</strong></p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Đúng — 1 chủ đề với nhiều Candidates</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>Slide 2 - Áo dài La Sen
+  ├─ Candidate 1
+  ├─ Candidate 2
+  ├─ Candidate 3
+  └─ Candidate 4</pre>
+          </div>
+
+          <p>Quy tắc này được enforce trực tiếp trong mô tả các MCP tools.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 2 ═══ -->
+    <section id="sec-2" class="section">
+      <div class="section-header">
+        <span class="section-badge">2</span>
+        <h2 class="section-title">Production hiện tại</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <p>Các URL production được repo cấu hình:</p>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Thành phần</th>
+                  <th>URL</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>MCP</strong></td>
+                  <td><code>https://content.lanadesign.tech/mcp</code></td>
+                </tr>
+                <tr>
+                  <td><strong>Project Dashboard</strong></td>
+                  <td><a href="https://content.lanadesign.tech/projects" target="_blank"><code>https://content.lanadesign.tech/projects</code></a></td>
+                </tr>
+                <tr>
+                  <td><strong>Video Analysis Studio</strong></td>
+                  <td><a href="https://content.lanadesign.tech/video-studio" target="_blank"><code>https://content.lanadesign.tech/video-studio</code></a></td>
+                </tr>
+                <tr>
+                  <td><strong>Health check</strong></td>
+                  <td><a href="https://content.lanadesign.tech/health" target="_blank"><code>https://content.lanadesign.tech/health</code></a></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 3 ═══ -->
+    <section id="sec-3" class="section">
+      <div class="section-header">
+        <span class="section-badge">3</span>
+        <h2 class="section-title">Yêu cầu hệ thống</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <p>Theo <code>package.json</code> hiện tại:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Yêu cầu runtime</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>Node.js >= 22
+npm</pre>
+          </div>
+
+          <p>Ngoài ra production cần:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Yêu cầu hạ tầng</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>HTTPS public domain
+SQLite storage
+Asset storage
+Google OAuth configuration</pre>
+          </div>
+
+          <p>Nếu dùng TTS Cloud/Vertex thì cần thêm Google Cloud credentials.</p>
+
+          <div class="callout warn">
+            <span class="callout-icon">⚠️</span>
+            <div class="callout-content">
+              <strong>Lưu ý:</strong> README cũ ở root từng ghi Node 20, nhưng <code>package.json</code> hiện tại yêu cầu Node.js <code>>=22</code>; khi triển khai nên lấy <code>package.json</code> làm chuẩn.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 4 ═══ -->
+    <section id="sec-4" class="section">
+      <div class="section-header">
+        <span class="section-badge">4</span>
+        <h2 class="section-title">Cài đặt local</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <p>Clone repo:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Bash</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>git clone https://github.com/nguyentuanson27-netizen/lana-carousel-mcp-standalone.git</pre>
+          </div>
+
+          <p>Mã ứng dụng nằm trong thư mục con:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Bash</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>cd lana-carousel-mcp-standalone/lana-carousel-mcp-standalone</pre>
+          </div>
+
+          <p>Tạo environment:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Bash</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>cp .env.example .env</pre>
+          </div>
+
+          <p>Cài dependency:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Bash</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>npm install</pre>
+          </div>
+
+          <p>Kiểm tra source và test:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Bash</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>npm run check</pre>
+          </div>
+
+          <p>Khởi động HTTP server:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Bash</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>npm start</pre>
+          </div>
+
+          <p>Mặc định server chạy:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Endpoint</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>http://localhost:8787</pre>
+          </div>
+
+          <p>Các URL local:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Local Endpoints</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>http://localhost:8787/projects
+http://localhost:8787/video-studio
+http://localhost:8787/health
+http://localhost:8787/mcp</pre>
+          </div>
+
+          <p>Chạy MCP dưới dạng stdio:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Bash</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>npm run mcp</pre>
+          </div>
+
+          <p>Các script thực tế hiện có gồm <code>start</code>, <code>mcp</code>, <code>test</code>, <code>test:remotion</code> và <code>check</code>.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 5 ═══ -->
+    <section id="sec-5" class="section">
+      <div class="section-header">
+        <span class="section-badge">5</span>
+        <h2 class="section-title">Chạy bằng Docker</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <p>Trong thư mục ứng dụng:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Bash</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>docker compose up -d --build</pre>
+          </div>
+
+          <p>Kiểm tra:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Bash</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>curl http://localhost:8787/health</pre>
+          </div>
+
+          <p>Xem log:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Bash</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>docker compose logs -f</pre>
+          </div>
+
+          <p>Dừng:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Bash</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>docker compose down</pre>
+          </div>
+
+          <p>Dữ liệu cần được giữ persistent, đặc biệt:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Persistent Paths</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>SQLite database
+assets
+video source
+render output</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 6 ═══ -->
+    <section id="sec-6" class="section">
+      <div class="section-header">
+        <span class="section-badge">6</span>
+        <h2 class="section-title">Chạy production bằng PM2</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Bash</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>npm install
+npm run check
+
+pm2 start ecosystem.config.cjs
+pm2 save</pre>
+          </div>
+
+          <p>Nên đặt Nginx/Caddy hoặc reverse proxy khác phía trước Node:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Topology</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>Internet
+   ↓ HTTPS
+Nginx / Caddy
+   ↓ HTTP nội bộ
+Node :8787</pre>
+          </div>
+
+          <p><code>PUBLIC_BASE_URL</code> phải là URL HTTPS thật:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">.env</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>PUBLIC_BASE_URL=https://content.lanadesign.tech</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 7 ═══ -->
+    <section id="sec-7" class="section">
+      <div class="section-header">
+        <span class="section-badge">7</span>
+        <h2 class="section-title">Authentication production</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <h3 class="sub-heading">7.1 MCP hiện tại dùng OAuth</h3>
+          <p>Đây là điểm rất quan trọng.</p>
+          <p>Phiên bản hiện tại đã chuyển <code>/mcp</code> sang:</p>
+
+          <div class="callout tip">
+            <span class="callout-icon">🔐</span>
+            <div class="callout-content">
+              <strong>OAuth 2.1 + Authorization Code + PKCE S256</strong><br/>
+              Không dùng <code>API_KEY</code> để đăng nhập MCP nữa.
+            </div>
+          </div>
+
+          <p><strong>Luồng xác thực:</strong></p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">OAuth Flow</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>ChatGPT
+   ↓
+/mcp
+   ↓
+OAuth discovery
+   ↓
+Lana Authorization Server
+   ↓
+Google Login
+   ↓
+Lana consent
+   ↓
+Authorization Code + PKCE
+   ↓
+Bearer Access Token
+   ↓
+/mcp</pre>
+          </div>
+
+          <p><code>API_KEY</code> / <code>API_KEYS</code> hiện chỉ còn dành cho một số REST automation legacy bằng:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">HTTP Header (Legacy Only)</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>X-API-Key: ...</pre>
+          </div>
+
+          <div class="callout danger">
+            <span class="callout-icon">⛔</span>
+            <div class="callout-content">
+              <strong>Không dùng API key cho <code>/mcp</code>.</strong> Mọi kết nối MCP hiện đại bắt buộc thông qua OAuth 2.1 PKCE.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 8 ═══ -->
+    <section id="sec-8" class="section">
+      <div class="section-header">
+        <span class="section-badge">8</span>
+        <h2 class="section-title">Cấu hình Google OAuth</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <p>Tạo Google OAuth Client loại:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Google Console</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>Web application</pre>
+          </div>
+
+          <p>Redirect URI production:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">OAuth Callback</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>https://content.lanadesign.tech/auth/google/callback</pre>
+          </div>
+
+          <p>Cấu hình:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">.env</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>GOOGLE_OAUTH_CLIENT_ID=...
+GOOGLE_OAUTH_CLIENT_SECRET=...
+
+OAUTH_ALLOWED_EMAILS=you@example.com</pre>
+          </div>
+
+          <p>Hoặc allow cả domain:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">.env</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>OAUTH_ALLOWED_DOMAINS=lanadesign.vn</pre>
+          </div>
+
+          <div class="callout warn">
+            <span class="callout-icon">⚠️</span>
+            <div class="callout-content">
+              Production phải có ít nhất một allowlist email hoặc domain.
+            </div>
+          </div>
+
+          <p>Nếu Node nằm sau Nginx/Caddy:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">.env</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>OAUTH_TRUSTED_PROXY_CIDRS=127.0.0.1/8,::1/128</pre>
+          </div>
+
+          <p>Giá trị trên chỉ đúng nếu reverse proxy thực sự kết nối từ loopback.</p>
+          <p>Không nên đặt CIDR quá rộng chỉ để OAuth hoạt động.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 9 ═══ -->
+    <section id="sec-9" class="section">
+      <div class="section-header">
+        <span class="section-badge">9</span>
+        <h2 class="section-title">OAuth discovery của MCP</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <p>Server expose:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Discovery Endpoints</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>/.well-known/oauth-protected-resource
+/.well-known/oauth-authorization-server</pre>
+          </div>
+
+          <p>Authorization server:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Auth Endpoints</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>POST /oauth/register
+GET  /oauth/authorize
+POST /oauth/authorize
+POST /oauth/token</pre>
+          </div>
+
+          <p>Access token mặc định:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">.env</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>OAUTH_ACCESS_TOKEN_TTL_SECONDS=3600</pre>
+          </div>
+
+          <p>Refresh token:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">.env</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>OAUTH_REFRESH_TOKEN_TTL_SECONDS=2592000</pre>
+          </div>
+
+          <p>Authorization code:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">.env</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>OAUTH_AUTHORIZATION_CODE_TTL_SECONDS=300</pre>
+          </div>
+
+          <p>Refresh token được rotate khi refresh.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 10 ═══ -->
+    <section id="sec-10" class="section">
+      <div class="section-header">
+        <span class="section-badge">10</span>
+        <h2 class="section-title">Kết nối MCP với ChatGPT</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <p>Endpoint:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">MCP Endpoint</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>https://content.lanadesign.tech/mcp</pre>
+          </div>
+
+          <p><strong>Quy trình hiện tại:</strong></p>
+          <div class="step-flow">
+            <div class="step-item"><span class="step-badge">1</span><div class="step-text">Bật Developer Mode cho workspace/tài khoản đủ quyền.</div></div>
+            <div class="step-item"><span class="step-badge">2</span><div class="step-text">Vào phần Apps.</div></div>
+            <div class="step-item"><span class="step-badge">3</span><div class="step-text">Chọn tạo custom app.</div></div>
+            <div class="step-item"><span class="step-badge">4</span><div class="step-text">Nhập MCP endpoint (<code>https://content.lanadesign.tech/mcp</code>).</div></div>
+            <div class="step-item"><span class="step-badge">5</span><div class="step-text">Chạy <strong>Scan Tools</strong>.</div></div>
+            <div class="step-item"><span class="step-badge">6</span><div class="step-text">Server trả OAuth challenge.</div></div>
+            <div class="step-item"><span class="step-badge">7</span><div class="step-text">Hoàn tất Google Login.</div></div>
+            <div class="step-item"><span class="step-badge">8</span><div class="step-text">Chấp thuận kết nối Lana MCP.</div></div>
+            <div class="step-item"><span class="step-badge">9</span><div class="step-text">Đợi Scan Tools hoàn tất.</div></div>
+            <div class="step-item"><span class="step-badge">10</span><div class="step-text">Tạo app.</div></div>
+            <div class="step-item"><span class="step-badge">11</span><div class="step-text">Chọn app Lana trong conversation trước khi sử dụng.</div></div>
+          </div>
+
+          <p>Nếu schema MCP trên server thay đổi, cần dùng <strong>Refresh/Scan Tools</strong> để ChatGPT nhận schema mới.</p>
+          <p>Theo tài liệu ChatGPT hiện tại, custom MCP với write actions đầy đủ chủ yếu áp dụng cho Business/Enterprise/Edu; giao diện và quyền có thể thay đổi khi tính năng beta tiếp tục được cập nhật.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 11 ═══ -->
+    <section id="sec-11" class="section">
+      <div class="section-header">
+        <span class="section-badge">11</span>
+        <h2 class="section-title">Biến môi trường quan trọng</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <p>Ví dụ tối thiểu:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">.env</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>NODE_ENV=production
+
+PORT=8787
+
+PUBLIC_BASE_URL=https://content.lanadesign.tech
+
+DATABASE_PATH=./data/lana-carousel.sqlite
+ASSET_DIRECTORY=./data/assets
+
+GOOGLE_OAUTH_CLIENT_ID=
+GOOGLE_OAUTH_CLIENT_SECRET=
+OAUTH_ALLOWED_EMAILS=
+OAUTH_ALLOWED_DOMAINS=
+
+OAUTH_TRUSTED_PROXY_CIDRS=</pre>
+          </div>
+
+          <p>Quota mặc định:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">.env — Quotas</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>API_RATE_LIMIT_PER_MINUTE=500
+API_DAILY_MUTATION_QUOTA=500
+API_DAILY_HEAVY_QUOTA=60</pre>
+          </div>
+
+          <p>Giới hạn media:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">.env — Media Limits</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>MAX_IMAGE_BYTES=10485760
+MAX_REMOTE_AUDIO_BYTES=26214400
+MAX_REMOTE_VIDEO_BYTES=524288000</pre>
+          </div>
+
+          <p>Tức khoảng:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Media Capacities</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>Image: 10 MB
+Audio: 25 MB/file
+Video: 500 MB</pre>
+          </div>
+
+          <p>Project audio:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">.env — Audio Limits</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>PROJECT_AUDIO_MAX_FILES=20
+PROJECT_AUDIO_MAX_BYTES=262144000</pre>
+          </div>
+
+          <p>Cấu hình đầy đủ nằm trong <code>.env.example</code>.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 12 ═══ -->
+    <section id="sec-12" class="section">
+      <div class="section-header">
+        <span class="section-badge">12</span>
+        <h2 class="section-title">Workflow Carousel nên sử dụng</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <p>Workflow được khuyến nghị:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Quy trình khuyến nghị</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>1. Nghiên cứu/chốt cấu trúc nội dung
+2. create_project
+3. add_slide cho từng chủ đề
+4. Cho người dùng kiểm tra nội dung
+5. approve_content khi được yêu cầu
+6. Tìm ảnh
+7. add_image_candidates
+8. Người dùng chọn ảnh
+9. approve_slide_images
+10. Chỉnh thiết kế
+11. update_brand_kit nếu cần
+12. render_project
+13. get_render_status
+14. Trả download URL</pre>
+          </div>
+
+          <div class="callout warn">
+            <span class="callout-icon">⚠️</span>
+            <div class="callout-content">
+              Không nên tự động đi từ bước 1 đến render nếu người dùng chưa yêu cầu rõ.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 13 ═══ -->
+    <section id="sec-13" class="section">
+      <div class="section-header">
+        <span class="section-badge">13</span>
+        <h2 class="section-title">Các MCP tool của Carousel</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <h3 class="sub-heading"><code>create_project</code></h3>
+          <p>Tạo project Carousel.</p>
+          <p>Các tham số chính:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Parameters</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>title
+topic
+slide_limit</pre>
+          </div>
+          <p><code>slide_limit</code>: <code>1–20</code></p>
+          <p>Ví dụ ý định:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Ví dụ</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>Tạo project cho carousel "5 xu hướng thời trang 2026", tối đa 6 slide.</pre>
+          </div>
+          <p>Project mặc định có lifecycle 14 ngày.</p>
+
+          <hr class="divider" style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border);" />
+
+          <h3 class="sub-heading"><code>add_slide</code></h3>
+          <p>Tạo một slide nội dung.</p>
+          <p>Cần:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Parameters</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>project_id
+position
+subject
+headline
+body</pre>
+          </div>
+          <p>Ví dụ:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Ví dụ Slide</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>subject: Áo dài cách tân
+headline: Áo dài cách tân đang trở lại
+body: Form dáng gọn, màu hiện đại và dễ ứng dụng...</pre>
+          </div>
+          <p>Không dùng tool này để tạo các ảnh khác nhau.</p>
+
+          <hr class="divider" style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border);" />
+
+          <h3 class="sub-heading"><code>add_image_candidates</code></h3>
+          <p>Tool ưu tiên khi có nhiều ảnh.</p>
+          <p>Cho phép: <code>1–10 ảnh / lần</code></p>
+          <p>Mỗi ảnh có thể lưu:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Candidate Properties</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>image_url
+source_page_url
+source_title
+source_publisher
+source_type
+alt_text</pre>
+          </div>
+          <p><code>source_type</code> có thể là:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Source Types</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>official_brand
+official_social
+news
+magazine
+unknown</pre>
+          </div>
+          <p>Đây là tool nên dùng khi muốn người dùng chọn trong 3–5 ảnh.</p>
+
+          <hr class="divider" style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border);" />
+
+          <h3 class="sub-heading"><code>add_image_candidate</code></h3>
+          <p>Tương tự nhưng chỉ thêm một ảnh.</p>
+          <p>Dùng khi:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Use Case</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>đã có project
+đã có slide
+chỉ muốn bổ sung thêm một candidate</pre>
+          </div>
+
+          <hr class="divider" style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border);" />
+
+          <h3 class="sub-heading"><code>import_asset_from_url</code></h3>
+          <p>Tool này khác candidate. Nó dùng để gán <strong>một ảnh cuối cùng trực tiếp</strong> vào slide. Nếu đang cần nhiều lựa chọn, không dùng tool này.</p>
+
+          <hr class="divider" style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border);" />
+
+          <h3 class="sub-heading"><code>approve_content</code></h3>
+          <p>Chuyển nội dung project sang trạng thái đã duyệt. Nên chỉ gọi khi user đã xác nhận nội dung.</p>
+
+          <hr class="divider" style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border);" />
+
+          <h3 class="sub-heading"><code>approve_slide_images</code></h3>
+          <p>Duyệt từ 1–10 candidate cho một slide. Có hai mode: <code>crop</code> và <code>grid</code>.</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Modes</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>crop: chọn một ảnh làm ảnh chính
+grid: dùng nhiều ảnh trong cùng slide</pre>
+          </div>
+
+          <hr class="divider" style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border);" />
+
+          <h3 class="sub-heading"><code>update_slide_content</code></h3>
+          <p>Sửa <code>headline</code> và <code>body</code>.</p>
+
+          <hr class="divider" style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border);" />
+
+          <h3 class="sub-heading"><code>update_slide_design</code></h3>
+          <p>Có thể chỉnh:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Design Properties</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>crop X/Y
+zoom
+cover/contain
+background
+flip ngang/dọc
+hue
+text
+font
+size
+color
+text X/Y</pre>
+          </div>
+
+          <hr class="divider" style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border);" />
+
+          <h3 class="sub-heading"><code>update_brand_kit</code></h3>
+          <p>Thiết lập font và màu project. Có thể áp dụng cho tất cả slide: <code>apply_to_all = true</code>.</p>
+
+          <hr class="divider" style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border);" />
+
+          <h3 class="sub-heading"><code>get_project</code></h3>
+          <p>Đọc toàn bộ trạng thái project. Kết quả có: <code>slides</code>, <code>assets</code>, <code>approval state</code>, <code>widgetUrl</code>.</p>
+
+          <hr class="divider" style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border);" />
+
+          <h3 class="sub-heading"><code>get_project_link</code></h3>
+          <p>Lấy link Web Studio. Sau khi tạo hoặc chỉnh project bằng ChatGPT, nên gọi tool này và gửi link cho user.</p>
+
+          <hr class="divider" style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border);" />
+
+          <h3 class="sub-heading"><code>render_project</code></h3>
+          <p>Bắt đầu render. Đây là heavy operation.</p>
+
+          <hr class="divider" style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border);" />
+
+          <h3 class="sub-heading"><code>get_render_status</code></h3>
+          <p>Theo dõi job cho đến trạng thái hoàn tất và lấy <code>downloadUrl</code>.</p>
+
+          <hr class="divider" style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border);" />
+
+          <h3 class="sub-heading">Quản lý project</h3>
+          <p>Các tool khác:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Tools</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>list_projects
+clone_project
+extend_project
+delete_project
+list_project_versions
+restore_project_version</pre>
+          </div>
+          <p><code>delete_project</code> là xóa vĩnh viễn project và asset, vì vậy chỉ nên gọi khi user yêu cầu rõ.</p>
+          <p>Các schema tool này nằm trực tiếp trong implementation hiện tại.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 14 ═══ -->
+    <section id="sec-14" class="section">
+      <div class="section-header">
+        <span class="section-badge">14</span>
+        <h2 class="section-title">Prompt Carousel khuyến nghị — bản an toàn</h2>
+      </div>
+
+      <div class="prompt-card">
+        <div class="prompt-card-head">
+          <span class="prompt-title">💬 Prompt Carousel An Toàn (Mặc định)</span>
+          <button class="btn-copy" onclick="copyCode(this)">Sao chép</button>
+        </div>
+        <pre>@Lana Carousel
+
+Hãy tạo một Carousel project mới.
+
+Chủ đề:
+Top 5 xu hướng áo dài nổi bật năm 2026.
+
+Yêu cầu nội dung:
+- Tổng cộng 6 slide.
+- Slide 1 là cover.
+- Slide 2–6 tương ứng với 5 xu hướng.
+- Mỗi chủ đề chỉ được tạo đúng một slide.
+- Không tạo slide riêng cho từng ảnh.
+- Headline ngắn, dễ đọc trên mobile.
+- Body tối đa khoảng 2–3 câu mỗi slide.
+- Ngôn ngữ: tiếng Việt.
+
+Yêu cầu ảnh:
+- Sau khi tạo nội dung, tìm 3–5 ảnh phù hợp cho mỗi slide nội dung.
+- Gắn tất cả ảnh thay thế vào slide hiện có bằng add_image_candidates.
+- Ưu tiên nguồn official brand, official social, magazine hoặc news đáng tin cậy.
+- Không tạo thêm slide chỉ vì có nhiều ảnh.
+
+Quy trình duyệt:
+1. Tạo project.
+2. Tạo đầy đủ slide nội dung.
+3. Thêm image candidates.
+4. Gọi get_project_link.
+5. Gửi link project cho tôi kiểm tra.
+
+Quan trọng:
+- Không tự gọi approve_content.
+- Không tự gọi approve_slide_images.
+- Không tự render_project.
+- Chờ tôi duyệt trước khi thực hiện các bước duyệt hoặc render.</pre>
+      </div>
+      <p>Đây là prompt nên dùng mặc định vì nó tránh ChatGPT tự động vượt qua bước review.</p>
+    </section>
+
+    <!-- ═══ MỤC 15 ═══ -->
+    <section id="sec-15" class="section">
+      <div class="section-header">
+        <span class="section-badge">15</span>
+        <h2 class="section-title">Prompt Carousel có yêu cầu nghiên cứu</h2>
+      </div>
+
+      <div class="prompt-card">
+        <div class="prompt-card-head">
+          <span class="prompt-title">💬 Prompt Carousel Nghiên Cứu Sâu</span>
+          <button class="btn-copy" onclick="copyCode(this)">Sao chép</button>
+        </div>
+        <pre>@Lana Carousel
+
+Hãy nghiên cứu và tạo carousel về:
+“7 thương hiệu thời trang Việt đáng chú ý năm 2026”.
+
+Trước khi tạo project:
+- Xác minh tên thương hiệu và thông tin chính.
+- Không đưa thông tin không kiểm chứng thành fact.
+- Mỗi thương hiệu là một chủ đề riêng.
+
+Sau đó:
+- Tạo 8 slide: 1 cover + 7 thương hiệu.
+- Mỗi thương hiệu chỉ có đúng một slide.
+- Viết headline ngắn và body súc tích.
+- Với mỗi slide thương hiệu, nhập 3–5 ảnh ứng viên.
+- Ưu tiên website chính thức và social chính thức.
+- Lưu source_page_url và source_publisher nếu có.
+
+Không:
+- tự duyệt content;
+- tự duyệt image;
+- tự render.
+
+Cuối cùng gọi get_project_link và gửi link cho tôi.</pre>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 16 ═══ -->
+    <section id="sec-16" class="section">
+      <div class="section-header">
+        <span class="section-badge">16</span>
+        <h2 class="section-title">Prompt chỉnh project có sẵn</h2>
+      </div>
+
+      <div class="prompt-card">
+        <div class="prompt-card-head">
+          <span class="prompt-title">💬 Prompt Chỉnh Sửa Project</span>
+          <button class="btn-copy" onclick="copyCode(this)">Sao chép</button>
+        </div>
+        <pre>@Lana Carousel
+
+Hãy mở project có ID:
+&lt;PROJECT_ID&gt;
+
+Thực hiện:
+- Đọc project hiện tại trước.
+- Không tạo project mới.
+- Không tạo slide mới trừ khi tôi yêu cầu.
+- Sửa headline slide 3 thành:
+  “Form dáng mới cho mùa lễ hội”
+- Viết lại body slide 3 ngắn hơn khoảng 30%.
+- Giữ nguyên ảnh, crop và design hiện tại.
+
+Sau khi cập nhật:
+- gọi get_project_link;
+- gửi link cho tôi kiểm tra;
+- không render.</pre>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 17 ═══ -->
+    <section id="sec-17" class="section">
+      <div class="section-header">
+        <span class="section-badge">17</span>
+        <h2 class="section-title">Prompt thêm ảnh cho slide hiện có</h2>
+      </div>
+
+      <div class="prompt-card">
+        <div class="prompt-card-head">
+          <span class="prompt-title">💬 Prompt Thêm Candidates Vào Slide</span>
+          <button class="btn-copy" onclick="copyCode(this)">Sao chép</button>
+        </div>
+        <pre>@Lana Carousel
+
+Trong project:
+&lt;PROJECT_ID&gt;
+
+Hãy tìm thêm 5 ảnh ứng viên cho slide:
+&lt;SLIDE_ID&gt;
+
+Yêu cầu:
+- Không tạo slide mới.
+- Dùng chính slide_id hiện tại.
+- Dùng add_image_candidates.
+- Ưu tiên ảnh rõ sản phẩm/chủ thể.
+- Hạn chế ảnh có watermark.
+- Ghi source_page_url và source_publisher nếu xác định được.
+- Không tự duyệt ảnh.
+
+Sau khi thêm xong, gửi link project để tôi chọn.</pre>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 18 ═══ -->
+    <section id="sec-18" class="section">
+      <div class="section-header">
+        <span class="section-badge">18</span>
+        <h2 class="section-title">Prompt duyệt và render Carousel</h2>
+      </div>
+
+      <p>Chỉ dùng sau khi bạn đã kiểm tra project:</p>
+
+      <div class="prompt-card">
+        <div class="prompt-card-head">
+          <span class="prompt-title">💬 Prompt Duyệt và Render Carousel</span>
+          <button class="btn-copy" onclick="copyCode(this)">Sao chép</button>
+        </div>
+        <pre>@Lana Carousel
+
+Project:
+&lt;PROJECT_ID&gt;
+
+Tôi đã kiểm tra nội dung và ảnh.
+
+Hãy:
+1. Đọc lại trạng thái project.
+2. Nếu content chưa approved, approve_content.
+3. Giữ nguyên các ảnh mà tôi đã chọn trong Studio.
+4. Không thay đổi nội dung hoặc design.
+5. Render project.
+6. Theo dõi render bằng get_render_status.
+7. Khi READY, gửi download URL cho tôi.</pre>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 19 ═══ -->
+    <section id="sec-19" class="section">
+      <div class="section-header">
+        <span class="section-badge">19</span>
+        <h2 class="section-title">Video Analysis — các trường bắt buộc</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <p>Trước khi tạo Video Analysis project, cần có 3 giá trị:</p>
+
+          <h3 class="sub-heading">Content domain</h3>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Domain Enums</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>fashion
+beauty
+entertainment
+food
+travel
+technology
+education
+business
+lifestyle
+other</pre>
+          </div>
+
+          <h3 class="sub-heading">Tone style</h3>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Tone Enums</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>humorous
+witty
+friendly
+energetic
+trendy
+luxurious
+serious
+expert
+emotional
+storytelling
+persuasive_sales
+minimal</pre>
+          </div>
+
+          <h3 class="sub-heading">TTS speed</h3>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Speed Multipliers</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>0.8
+1
+1.2
+1.5
+1.8
+2</pre>
+          </div>
+
+          <p>Ngoài ra có <code>content_goal</code> tùy chọn:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Goal Enums (Optional)</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>product_showcase
+sales
+review
+tutorial
+storytelling
+entertainment
+brand_awareness
+engagement
+other</pre>
+          </div>
+
+          <p>Ví dụ brief:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Ví dụ Brief</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>fashion
+product_showcase
+humorous
+1.2</pre>
+          </div>
+
+          <div class="callout tip">
+            <span class="callout-icon">💡</span>
+            <div class="callout-content">
+              Tốc độ này chỉ ảnh hưởng <strong>giọng đọc</strong>, không thay đổi playback speed của video nguồn hoặc timestamps.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 20 ═══ -->
+    <section id="sec-20" class="section">
+      <div class="section-header">
+        <span class="section-badge">20</span>
+        <h2 class="section-title">Workflow Video Analysis chuẩn</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <p>Video workflow hiện tại nên chạy như sau:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Quy trình Video Analysis</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>1. Có đủ brief
+2. create_video_analysis_project
+3. attach_video_reference nếu video là HTTPS URL
+4. Phân tích scene/timestamp
+5. Viết đúng hai phương án
+6. prepare_video_script_options
+7. Hiển thị đầy đủ cả hai phương án
+8. Chờ user chọn
+9. save_approved_video_script
+10. Mở Video Analysis Studio
+11. User review/edit
+12. start_video_analysis_render khi được yêu cầu
+13. get_video_analysis_job
+14. trả download URL</pre>
+          </div>
+
+          <div class="callout danger">
+            <span class="callout-icon">⛔</span>
+            <div class="callout-content">
+              Không được tự động nhảy từ bước 6 sang bước 9 nếu user chưa chọn.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 21 ═══ -->
+    <section id="sec-21" class="section">
+      <div class="section-header">
+        <span class="section-badge">21</span>
+        <h2 class="section-title">Hai phương án script bắt buộc</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <p>Hệ thống bắt buộc đúng:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Bắt buộc</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>natural_full
+punchy_short</pre>
+          </div>
+
+          <h3 class="sub-heading"><code>natural_full</code></h3>
+          <p>Mục tiêu:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Mục tiêu</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>câu đầy đủ
+tự nhiên
+mạch lạc
+khoảng 80–90% safe word budget</pre>
+          </div>
+
+          <h3 class="sub-heading"><code>punchy_short</code></h3>
+          <p>Mục tiêu:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Mục tiêu</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>ngắn
+có nhịp
+dễ bắt trend
+khoảng 55–70% safe word budget</pre>
+          </div>
+
+          <p>Hai phương án phải:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Yêu cầu đồng bộ timeline</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>có cùng số segment
+cùng segment ID
+cùng timestamp
+cùng trạng thái enabled</pre>
+          </div>
+
+          <p>Nhưng nội dung phải khác thực sự.</p>
+          <p><code>punchy_short</code> phải ngắn hơn <code>natural_full</code> và khác ở ít nhất một nửa số segment đang bật.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 22 ═══ -->
+    <section id="sec-22" class="section">
+      <div class="section-header">
+        <span class="section-badge">22</span>
+        <h2 class="section-title">Word budget của Video Analysis</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <p>Server sử dụng công thức:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Công thức tính Word Budget</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>maximum words
+=
+segment duration
+× 2.5 words/second
+× TTS speed
+(segment duration - 0.2s) × 2.5 words/second × TTS speed</pre>
+          </div>
+
+          <p>Ví dụ:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Ví dụ tính toán</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>Segment: 4 giây
+TTS speed: x1.2
+
+Budget:
+4 × 2.5 × 1.2 (segment duration - 0.2s) × 2.5 words/second × TTS speed
+≈ 10 từ</pre>
+          </div>
+
+          <p>Nếu voice-over dài hơn budget, server có thể trả cảnh báo <code>too_long</code>.</p>
+          <p>Safety factor <code>0.85</code> dành khoảng trống cho dấu câu, pause và sai khác trong phát âm tiếng Việt.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 23 ═══ -->
+    <section id="sec-23" class="section">
+      <div class="section-header">
+        <span class="section-badge">23</span>
+        <h2 class="section-title">Prompt Video Analysis chuẩn</h2>
+      </div>
+
+      <div class="prompt-card">
+        <div class="prompt-card-head">
+          <span class="prompt-title">💬 Prompt Video Analysis Chuẩn Kỹ Thuật</span>
+          <button class="btn-copy" onclick="copyCode(this)">Sao chép</button>
+        </div>
+        <pre>@Lana Carousel
+
+Hãy xử lý video tôi vừa cung cấp bằng Video Analysis.
+
+Brief:
+- Lĩnh vực: fashion
+- Mục tiêu: product_showcase
+- Phong cách: humorous
+- Tốc độ giọng đọc: x1.2
+- Ngôn ngữ nội dung: tiếng Việt
+
+Thực hiện đúng workflow sau:
+
+1. Tạo một Video Analysis project độc lập.
+2. Gắn video nguồn vào project nếu video có URL HTTPS hợp lệ.
+3. Phân tích nội dung video.
+4. Xác định các scene chính và giữ nguyên timestamp của video nguồn.
+5. Viết subtitle và voice-over cho từng scene.
+
+Bắt buộc tạo đúng hai phương án:
+- natural_full
+- punchy_short
+
+Yêu cầu:
+- Hai phương án dùng cùng segment ID.
+- Hai phương án dùng cùng start/end timestamp.
+- natural_full viết câu tự nhiên, đầy đủ.
+- punchy_short phải ngắn hơn rõ rệt và có nhịp hơn.
+- Nội dung phải phù hợp word budget với tốc độ x1.2.
+
+Sau khi tạo hai phương án:
+- gọi prepare_video_script_options;
+- hiển thị ĐẦY ĐỦ cả hai phương án trong chat;
+- hiển thị các cảnh báo timeline/word budget nếu có;
+- sau đó DỪNG và chờ tôi chọn.
+
+Không:
+- tự chọn phương án;
+- tự gọi save_approved_video_script;
+- tự render video.
+
+Chỉ sau khi tôi trả lời rõ:
+“Chọn natural_full”
+hoặc
+“Chọn punchy_short”
+thì mới được lưu đúng phương án đó.</pre>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 24 ═══ -->
+    <section id="sec-24" class="section">
+      <div class="section-header">
+        <span class="section-badge">24</span>
+        <h2 class="section-title">Prompt Video Analysis dạng tự nhiên cho người dùng cuối</h2>
+      </div>
+
+      <p>Người dùng không cần biết tên enum có thể dùng:</p>
+
+      <div class="prompt-card">
+        <div class="prompt-card-head">
+          <span class="prompt-title">💬 Prompt Video Analysis Người Dùng Cuối (Thân Thiện)</span>
+          <button class="btn-copy" onclick="copyCode(this)">Sao chép</button>
+        </div>
+        <pre>@Lana Carousel
+
+Phân tích video tôi vừa gửi.
+
+Thông tin:
+- Lĩnh vực: Thời trang
+- Mục tiêu: Giới thiệu sản phẩm
+- Phong cách: Hài hước, tự nhiên
+- Tốc độ giọng đọc: x1.2
+- Ngôn ngữ: Tiếng Việt
+
+Thực hiện theo thứ tự:
+
+1. Tóm tắt nội dung video.
+2. Xác định các cảnh chính và mốc thời gian.
+3. Viết voice-over và phụ đề cho từng cảnh.
+4. Tạo đúng hai phương án:
+   - natural_full;
+   - punchy_short.
+5. Hiển thị đầy đủ cả hai phương án trong chat.
+6. Chờ tôi chọn phương án.
+7. Không tự duyệt và không tự render.
+
+Sau khi tôi chọn:
+8. Lưu chính xác phương án tôi đã chọn.
+9. Bật phụ đề và TTS nhưng chưa render.
+10. Gửi link Video Analysis Studio để tôi kiểm tra.
+
+Không được tự thay đổi nội dung phương án sau khi tôi đã chọn.</pre>
+      </div>
+
+      <p>Đây là format rất phù hợp để đưa cho người dùng nội bộ không cần hiểu MCP tool names.</p>
+    </section>
+
+    <!-- ═══ MỤC 25 ═══ -->
+    <section id="sec-25" class="section">
+      <div class="section-header">
+        <span class="section-badge">25</span>
+        <h2 class="section-title">Prompt chọn phương án Video</h2>
+      </div>
+
+      <p>Sau khi ChatGPT đã hiển thị 2 phương án:</p>
+
+      <div class="prompt-card">
+        <div class="prompt-card-head">
+          <span class="prompt-title">💬 Chọn phương án punchy_short</span>
+          <button class="btn-copy" onclick="copyCode(this)">Sao chép</button>
+        </div>
+        <pre>Chọn punchy_short.
+
+Hãy lưu chính xác phương án punchy_short vừa được prepare.
+Không viết lại.
+Không thay đổi segment.
+Không thay timestamp.
+
+Bật:
+- subtitle;
+- TTS.
+
+Chưa render.
+
+Sau đó gửi link Video Analysis Studio cho tôi.</pre>
+      </div>
+
+      <p>Hoặc:</p>
+
+      <div class="prompt-card">
+        <div class="prompt-card-head">
+          <span class="prompt-title">💬 Chọn phương án natural_full</span>
+          <button class="btn-copy" onclick="copyCode(this)">Sao chép</button>
+        </div>
+        <pre>Chọn natural_full.
+
+Lưu nguyên văn phương án natural_full đã prepare.
+Không regenerate.
+
+Bật subtitle và TTS nhưng chưa render.
+Gửi Studio URL để tôi review.</pre>
+      </div>
+
+      <div class="callout info">
+        <span class="callout-icon">ℹ️</span>
+        <div class="callout-content">
+          Điểm quan trọng là current flow lưu bằng <code>prepared_options_id + selected_option</code>; server tự load nội dung đã persist, vì vậy client không được gửi lại một bản script đã bị sửa khác.
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 26 ═══ -->
+    <section id="sec-26" class="section">
+      <div class="section-header">
+        <span class="section-badge">26</span>
+        <h2 class="section-title">Prompt render video sau khi review</h2>
+      </div>
+
+      <div class="prompt-card">
+        <div class="prompt-card-head">
+          <span class="prompt-title">💬 Prompt Render Video Sau Khi Review</span>
+          <button class="btn-copy" onclick="copyCode(this)">Sao chép</button>
+        </div>
+        <pre>@Lana Carousel
+
+Tôi đã kiểm tra Video Analysis project:
+&lt;PROJECT_ID&gt;
+
+Không thay đổi script hoặc settings nữa.
+
+Hãy:
+1. Kiểm tra project hiện tại.
+2. Xác nhận script đã approved và video source đã được Lana quản lý.
+3. Gọi start_video_analysis_render.
+4. Theo dõi bằng get_video_analysis_job.
+5. Khi job hoàn tất, gửi download URL.</pre>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 27 ═══ -->
+    <section id="sec-27" class="section">
+      <div class="section-header">
+        <span class="section-badge">27</span>
+        <h2 class="section-title">Các MCP tool Video Analysis</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <p>Current implementation expose các tool chính:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Video Analysis MCP Tools</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>create_video_analysis_project
+get_video_analysis_project
+attach_video_reference
+prepare_video_script_options
+save_approved_video_script
+list_video_analysis_versions
+restore_video_analysis_version
+start_video_analysis_render
+get_video_analysis_job</pre>
+          </div>
+
+          <hr class="divider" style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border);" />
+
+          <h3 class="sub-heading"><code>create_video_analysis_project</code></h3>
+          <p>Tạo project độc lập.</p>
+          <p>Current client nên gửi:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Required Params</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>title
+content_domain
+tone_style
+tts_speed</pre>
+          </div>
+          <p>Có thể thêm:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Optional Params</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>content_goal
+source_url
+source_filename
+custom_content_domain
+custom_content_goal</pre>
+          </div>
+
+          <hr class="divider" style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border);" />
+
+          <h3 class="sub-heading"><code>attach_video_reference</code></h3>
+          <p>Import video HTTPS vào Lana.</p>
+          <p>Video được tải qua downloader có bảo vệ SSRF rồi chuyển thành managed local asset.</p>
+          <p>Remote URL không được chuyển thẳng cho Remotion.</p>
+
+          <hr class="divider" style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border);" />
+
+          <h3 class="sub-heading"><code>prepare_video_script_options</code></h3>
+          <p>Persist chính xác 2 phương án.</p>
+          <p>Server trả <code>prepared_options_id</code>. Đây là ID quan trọng để sau đó save phương án user chọn.</p>
+
+          <hr class="divider" style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border);" />
+
+          <h3 class="sub-heading"><code>save_approved_video_script</code></h3>
+          <p>Current flow dùng:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Parameters</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>project_id
+prepared_options_id
+selected_option</pre>
+          </div>
+          <p>Trong đó:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Selected Option Value</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>selected_option = natural_full hoặc punchy_short</pre>
+          </div>
+
+          <hr class="divider" style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border);" />
+
+          <h3 class="sub-heading"><code>start_video_analysis_render</code></h3>
+          <p>Chỉ chạy khi:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Điều kiện render video</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>script đã approved
+source là managed Lana asset</pre>
+          </div>
+
+          <hr class="divider" style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border);" />
+
+          <h3 class="sub-heading"><code>get_video_analysis_job</code></h3>
+          <p>Theo dõi render job và lấy download URL.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 28 ═══ -->
+    <section id="sec-28" class="section">
+      <div class="section-header">
+        <span class="section-badge">28</span>
+        <h2 class="section-title">Quản lý version</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <p><strong>Carousel:</strong></p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Carousel Version Tools</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>list_project_versions
+restore_project_version</pre>
+          </div>
+
+          <p><strong>Video:</strong></p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Video Version Tools</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>list_video_analysis_versions
+restore_video_analysis_version</pre>
+          </div>
+
+          <p>Video script/settings version là <strong>immutable</strong>.</p>
+          <p>Restore một version sẽ tạo một version mới ghi nhận thao tác restore thay vì sửa trực tiếp lịch sử cũ.</p>
+
+          <p>Điều này phù hợp cho workflow:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Version Progression</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>V1 → V2 → V3
+        ↓
+ restore V1
+        ↓
+       V4</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 29 ═══ -->
+    <section id="sec-29" class="section">
+      <div class="section-header">
+        <span class="section-badge">29</span>
+        <h2 class="section-title">Web Studio</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <p>Sau khi ChatGPT tạo project, nên yêu cầu nó trả <code>widgetUrl</code>.</p>
+          <p><strong>Carousel:</strong> <code>get_project_link</code></p>
+          <p><strong>Video Analysis:</strong> <code>get_video_analysis_project</code></p>
+          <div class="callout tip">
+            <span class="callout-icon">💡</span>
+            <div class="callout-content">
+              Hai loại project là độc lập. Không nên dùng Carousel project để chứa Video Analysis data.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 30 ═══ -->
+    <section id="sec-30" class="section">
+      <div class="section-header">
+        <span class="section-badge">30</span>
+        <h2 class="section-title">Social Publisher</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <p>Repo hiện còn có Social Publisher trong Content Studio.</p>
+          <p>MVP hỗ trợ:</p>
+
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Platform</th>
+                  <th>Carousel</th>
+                  <th>Video</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Facebook Page</strong></td>
+                  <td>Multi-photo post</td>
+                  <td>Reel</td>
+                </tr>
+                <tr>
+                  <td><strong>Instagram Professional</strong></td>
+                  <td>Carousel</td>
+                  <td>Reel</td>
+                </tr>
+                <tr>
+                  <td><strong>TikTok</strong></td>
+                  <td>Photo Mode draft</td>
+                  <td>Video draft</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p>Facebook và Instagram có thể publish trực tiếp theo cấu hình hiện tại; TikTok MVP sử dụng Upload Draft và cần user hoàn tất trong TikTok.</p>
+
+          <p><strong>Điều kiện Carousel trước khi publish:</strong></p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Carousel Publish Conditions</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>content APPROVED
+images APPROVED
+mỗi slide có ảnh duyệt
+mỗi slide đã lưu thiết kế</pre>
+          </div>
+
+          <p><strong>Video cần có render job:</strong></p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Video Publish Condition</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>READY</pre>
+          </div>
+
+          <div class="callout warn">
+            <span class="callout-icon">⚠️</span>
+            <div class="callout-content">
+              Tuy nhiên Social Publisher hiện là functionality của Studio/REST layer; nhóm MCP tools hiện tại trong <code>mcp-tools-carousel.js</code> và <code>mcp-tools.js</code> chưa expose tool trực tiếp như <code>publish_to_instagram</code>. Vì vậy không nên viết prompt cho ChatGPT giả định tồn tại một MCP social-publishing action.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 31 ═══ -->
+    <section id="sec-31" class="section">
+      <div class="section-header">
+        <span class="section-badge">31</span>
+        <h2 class="section-title">TTS</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <p>Repo hỗ trợ các hướng TTS gồm Google/Vertex/Gemini tùy cấu hình.</p>
+          <p>Có các setting như:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">TTS Settings</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>ttsEnabled
+ttsProvider
+ttsVolume
+ttsVoice
+originalAudioVolume</pre>
+          </div>
+
+          <p>Subtitle có:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Subtitle Settings</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>subtitleEnabled
+subtitleFont
+subtitleSize
+subtitleColor
+subtitleBackgroundColor
+subtitleBackgroundOpacity
+subtitleX
+subtitlePosition
+subtitleStyle</pre>
+          </div>
+
+          <p><code>subtitleStyle</code> hiện hỗ trợ:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Subtitle Styles</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>karaoke
+word
+static</pre>
+          </div>
+
+          <p>Video có thể cấu hình speaker 1/speaker 2 khi dùng Gemini multi-speaker.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 32 ═══ -->
+    <section id="sec-32" class="section">
+      <div class="section-header">
+        <span class="section-badge">32</span>
+        <h2 class="section-title">Cấu hình TTS production</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <p>Ví dụ:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">.env</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>VERTEX_AI_PROJECT=
+VERTEX_AI_LOCATION=global
+GOOGLE_APPLICATION_CREDENTIALS=</pre>
+          </div>
+
+          <p>Nếu dùng service account JSON:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Quy tắc bảo mật credential</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>Không để file credential trong repo.
+chmod 600 credential.json</pre>
+          </div>
+
+          <p>Nếu chạy Docker và chỉ mount <code>./data</code>, có thể đặt credential bên trong <code>data</code> và dùng:</p>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Docker .env</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>GOOGLE_APPLICATION_CREDENTIALS=/app/data/google-service-account.json</pre>
+          </div>
+
+          <p>Repo ghi chú rằng khi bật Cloud credentials, nhánh Google TTS sẽ chuyển sang Cloud Text-to-Speech API nên cần cấu hình API/role tương ứng.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 33 ═══ -->
+    <section id="sec-33" class="section">
+      <div class="section-header">
+        <span class="section-badge">33</span>
+        <h2 class="section-title">Các lỗi prompt thường gặp</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <div class="callout danger">
+            <span class="callout-icon">❌</span>
+            <div class="callout-content">
+              <strong>Sai: yêu cầu một slide cho từng ảnh</strong><br/>
+              <code>Tạo 5 ảnh cho sản phẩm A, mỗi ảnh là một slide.</code>
+            </div>
+          </div>
+          <div class="callout tip">
+            <span class="callout-icon">✅</span>
+            <div class="callout-content">
+              <strong>Đúng:</strong><br/>
+              <code>Tạo một slide cho sản phẩm A và thêm 5 image candidates.</code>
+            </div>
+          </div>
+
+          <hr class="divider" style="margin: 1.25rem 0; border: none; border-top: 1px solid var(--border);" />
+
+          <div class="callout danger">
+            <span class="callout-icon">❌</span>
+            <div class="callout-content">
+              <strong>Sai: tự động approve toàn bộ</strong><br/>
+              <code>Tạo xong thì duyệt và render luôn.</code>
+            </div>
+          </div>
+          <div class="callout tip">
+            <span class="callout-icon">✅</span>
+            <div class="callout-content">
+              <strong>Đúng nếu cần review:</strong><br/>
+              <code>Không tự approve hoặc render. Gửi Studio URL cho tôi kiểm tra.</code>
+            </div>
+          </div>
+
+          <hr class="divider" style="margin: 1.25rem 0; border: none; border-top: 1px solid var(--border);" />
+
+          <div class="callout danger">
+            <span class="callout-icon">❌</span>
+            <div class="callout-content">
+              <strong>Sai ở Video Analysis:</strong><br/>
+              <code>Viết vài phương án voice-over rồi chọn phương án tốt nhất.</code>
+            </div>
+          </div>
+          <div class="callout tip">
+            <span class="callout-icon">✅</span>
+            <div class="callout-content">
+              <strong>Đúng:</strong><br/>
+              <code>Tạo đúng natural_full và punchy_short, hiển thị cả hai, chờ tôi chọn.</code>
+            </div>
+          </div>
+
+          <hr class="divider" style="margin: 1.25rem 0; border: none; border-top: 1px solid var(--border);" />
+
+          <div class="callout danger">
+            <span class="callout-icon">❌</span>
+            <div class="callout-content">
+              <strong>Sai:</strong><br/>
+              <code>Sau khi tôi chọn hãy viết lại câu chữ cho mượt rồi save.</code>
+            </div>
+          </div>
+          <div class="callout tip">
+            <span class="callout-icon">✅</span>
+            <div class="callout-content">
+              <strong>Đúng:</strong><br/>
+              <code>Sau khi tôi chọn, lưu chính xác prepared option đó, không regenerate.</code>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 34 ═══ -->
+    <section id="sec-34" class="section">
+      <div class="section-header">
+        <span class="section-badge">34</span>
+        <h2 class="section-title">Prompt “master” cho Carousel</h2>
+      </div>
+
+      <p>Có thể dùng template dưới đây cho hầu hết công việc:</p>
+
+      <div class="prompt-card">
+        <div class="prompt-card-head">
+          <span class="prompt-title">💬 Prompt Master Cho Carousel</span>
+          <button class="btn-copy" onclick="copyCode(this)">Sao chép</button>
+        </div>
+        <pre>@Lana Carousel
+
+Hãy sử dụng Lana MCP để tạo một Carousel project.
+
+THÔNG TIN
+- Chủ đề: &lt;TOPIC&gt;
+- Mục tiêu: &lt;GOAL&gt;
+- Đối tượng: &lt;AUDIENCE&gt;
+- Ngôn ngữ: Tiếng Việt
+- Số slide: &lt;COUNT&gt;
+- Phong cách nội dung: &lt;STYLE&gt;
+
+NỘI DUNG
+- Slide đầu là cover.
+- Các slide còn lại mỗi slide tương ứng với đúng một chủ đề.
+- Không dùng slide để đại diện cho ảnh.
+- Headline ngắn, rõ, phù hợp mobile.
+- Body súc tích và không lặp lại headline.
+
+ẢNH
+- Mỗi slide nội dung tìm &lt;3-5&gt; ảnh ứng viên.
+- Dùng add_image_candidates.
+- Không tạo slide mới cho ảnh thay thế.
+- Ưu tiên nguồn chính thức hoặc nguồn báo chí/tạp chí uy tín.
+- Ghi metadata nguồn khi có.
+
+WORKFLOW
+1. create_project
+2. add_slide
+3. add_image_candidates
+4. get_project
+5. get_project_link
+
+KIỂM SOÁT
+- Không approve_content.
+- Không approve_slide_images.
+- Không render_project.
+- Không delete hoặc clone project.
+- Sau khi chuẩn bị xong, gửi link Studio và chờ tôi kiểm tra.</pre>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 35 ═══ -->
+    <section id="sec-35" class="section">
+      <div class="section-header">
+        <span class="section-badge">35</span>
+        <h2 class="section-title">Prompt “master” cho Video Analysis</h2>
+      </div>
+
+      <div class="prompt-card">
+        <div class="prompt-card-head">
+          <span class="prompt-title">💬 Prompt Master Cho Video Analysis</span>
+          <button class="btn-copy" onclick="copyCode(this)">Sao chép</button>
+        </div>
+        <pre>@Lana Carousel
+
+Hãy sử dụng Video Analysis của Lana MCP.
+
+BRIEF
+- Lĩnh vực: &lt;fashion|beauty|food|...&gt;
+- Mục tiêu: &lt;product_showcase|sales|review|...&gt;
+- Tone: &lt;humorous|friendly|luxurious|...&gt;
+- TTS speed: &lt;0.8|1|1.2|1.5|1.8|2&gt;
+- Ngôn ngữ: Tiếng Việt
+
+VIDEO
+- Phân tích video nguồn tôi cung cấp.
+- Không thay đổi tốc độ video.
+- Giữ timestamp theo source.
+- Xác định các scene chính.
+
+SCRIPT
+Tạo đúng:
+1. natural_full
+2. punchy_short
+
+Hai phương án phải:
+- cùng segment ID;
+- cùng timeline;
+- cùng enabled state;
+- mỗi segment có subtitle và voice-over;
+- khác nhau rõ ràng;
+- punchy_short ngắn hơn natural_full.
+
+Sau đó:
+1. gọi prepare_video_script_options;
+2. hiển thị cả hai phương án đầy đủ;
+3. báo segment nào bị tight/too_long nếu có;
+4. dừng lại và chờ tôi chọn.
+
+TUYỆT ĐỐI KHÔNG:
+- tự chọn option;
+- save trước khi tôi chọn;
+- regenerate option sau khi tôi chọn;
+- render video trước khi tôi yêu cầu.
+
+Sau khi tôi chọn:
+- save đúng prepared option;
+- bật subtitle và TTS;
+- chưa render;
+- gửi Video Analysis Studio URL.</pre>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 36 ═══ -->
+    <section id="sec-36" class="section">
+      <div class="section-header">
+        <span class="section-badge">36</span>
+        <h2 class="section-title">Prompt ngắn dành cho vận hành hằng ngày</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <h3 class="sub-heading">Tạo carousel</h3>
+          <div class="prompt-card">
+            <div class="prompt-card-head">
+              <span class="prompt-title">💬 Tạo carousel nhanh</span>
+              <button class="btn-copy" onclick="copyCode(this)">Sao chép</button>
+            </div>
+            <pre>@Lana Carousel
+Tạo carousel 6 slide về &lt;chủ đề&gt;.
+Một chủ đề = một slide.
+Mỗi slide thêm 3–5 image candidates.
+Không tự approve và không render.
+Cuối cùng gửi Studio URL.</pre>
+          </div>
+
+          <h3 class="sub-heading">Thêm ảnh</h3>
+          <div class="prompt-card">
+            <div class="prompt-card-head">
+              <span class="prompt-title">💬 Thêm ảnh cho slide</span>
+              <button class="btn-copy" onclick="copyCode(this)">Sao chép</button>
+            </div>
+            <pre>@Lana Carousel
+Thêm 5 image candidates cho slide &lt;SLIDE_ID&gt;
+trong project &lt;PROJECT_ID&gt;.
+Không tạo slide mới và không tự duyệt.</pre>
+          </div>
+
+          <h3 class="sub-heading">Chỉnh nội dung</h3>
+          <div class="prompt-card">
+            <div class="prompt-card-head">
+              <span class="prompt-title">💬 Rút gọn nội dung slide</span>
+              <button class="btn-copy" onclick="copyCode(this)">Sao chép</button>
+            </div>
+            <pre>@Lana Carousel
+Mở project &lt;PROJECT_ID&gt;.
+Rút gọn toàn bộ body khoảng 25%,
+giữ nguyên ý, ảnh và design.
+Không render.</pre>
+          </div>
+
+          <h3 class="sub-heading">Phân tích video</h3>
+          <div class="prompt-card">
+            <div class="prompt-card-head">
+              <span class="prompt-title">💬 Phân tích video nhanh</span>
+              <button class="btn-copy" onclick="copyCode(this)">Sao chép</button>
+            </div>
+            <pre>@Lana Carousel
+Phân tích video này:
+fashion / product_showcase / humorous / x1.2.
+Tạo đúng natural_full và punchy_short.
+Hiển thị cả hai và chờ tôi chọn.
+Không save và không render trước khi tôi chọn.</pre>
+          </div>
+
+          <h3 class="sub-heading">Render</h3>
+          <div class="prompt-card">
+            <div class="prompt-card-head">
+              <span class="prompt-title">💬 Lệnh Render</span>
+              <button class="btn-copy" onclick="copyCode(this)">Sao chép</button>
+            </div>
+            <pre>@Lana Carousel
+Tôi đã duyệt project &lt;PROJECT_ID&gt;.
+Không thay đổi nội dung/design.
+Render và theo dõi job đến READY,
+sau đó gửi download URL.</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 37 ═══ -->
+    <section id="sec-37" class="section">
+      <div class="section-header">
+        <span class="section-badge">37</span>
+        <h2 class="section-title">Checklist triển khai production</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <p>Đánh dấu tiến độ triển khai thực tế trên server:</p>
+          <ul class="checklist" id="prodChecklist">
+            <li class="check-item"><input type="checkbox" id="chk1"><label for="chk1">Cài Node.js 22+</label></li>
+            <li class="check-item"><input type="checkbox" id="chk2"><label for="chk2">Chạy <code>npm install</code></label></li>
+            <li class="check-item"><input type="checkbox" id="chk3"><label for="chk3">Chạy <code>npm run check</code></label></li>
+            <li class="check-item"><input type="checkbox" id="chk4"><label for="chk4">Tạo persistent <code>data/</code></label></li>
+            <li class="check-item"><input type="checkbox" id="chk5"><label for="chk5">Cấu hình <code>PUBLIC_BASE_URL</code></label></li>
+            <li class="check-item"><input type="checkbox" id="chk6"><label for="chk6">Cấu hình HTTPS reverse proxy</label></li>
+            <li class="check-item"><input type="checkbox" id="chk7"><label for="chk7">Tạo Google OAuth Web Client</label></li>
+            <li class="check-item"><input type="checkbox" id="chk8"><label for="chk8">Cấu hình Google redirect URI</label></li>
+            <li class="check-item"><input type="checkbox" id="chk9"><label for="chk9">Cấu hình email/domain allowlist</label></li>
+            <li class="check-item"><input type="checkbox" id="chk10"><label for="chk10">Xác định chính xác trusted proxy CIDR</label></li>
+            <li class="check-item"><input type="checkbox" id="chk11"><label for="chk11">Kiểm tra OAuth discovery</label></li>
+            <li class="check-item"><input type="checkbox" id="chk12"><label for="chk12">Kiểm tra <code>/health</code></label></li>
+            <li class="check-item"><input type="checkbox" id="chk13"><label for="chk13">Kết nối ChatGPT MCP qua OAuth</label></li>
+            <li class="check-item"><input type="checkbox" id="chk14"><label for="chk14">Scan Tools</label></li>
+            <li class="check-item"><input type="checkbox" id="chk15"><label for="chk15">Test <code>create_project</code></label></li>
+            <li class="check-item"><input type="checkbox" id="chk16"><label for="chk16">Test image candidate import</label></li>
+            <li class="check-item"><input type="checkbox" id="chk17"><label for="chk17">Test Studio URL</label></li>
+            <li class="check-item"><input type="checkbox" id="chk18"><label for="chk18">Test render Carousel</label></li>
+            <li class="check-item"><input type="checkbox" id="chk19"><label for="chk19">Test Video Analysis 2-option flow</label></li>
+            <li class="check-item"><input type="checkbox" id="chk20"><label for="chk20">Test TTS nếu sử dụng</label></li>
+            <li class="check-item"><input type="checkbox" id="chk21"><label for="chk21">Kiểm tra backup SQLite/data</label></li>
+            <li class="check-item"><input type="checkbox" id="chk22"><label for="chk22">Không commit <code>.env</code> hoặc credential</label></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MỤC 38 ═══ -->
+    <section id="sec-38" class="section">
+      <div class="section-header">
+        <span class="section-badge">38</span>
+        <h2 class="section-title">Nguyên tắc vận hành nên áp dụng</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <p>Để tránh ChatGPT làm quá quyền hoặc làm mất bước review, prompt production nên luôn chứa ba câu:</p>
+
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">3 Câu Vàng Cho Prompt Carousel</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>Không tự duyệt.
+Không tự render.
+Sau khi chuẩn bị xong, gửi Studio URL và chờ tôi.</pre>
+          </div>
+
+          <p>Đối với Video Analysis nên thêm:</p>
+
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Nguyên Tắc Video Analysis</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>Tạo đúng natural_full và punchy_short.
+Hiển thị đầy đủ cả hai và chờ tôi chọn.
+Sau khi tôi chọn, lưu chính xác prepared option đó, không regenerate.</pre>
+          </div>
+
+          <div class="callout tip">
+            <span class="callout-icon">💎</span>
+            <div class="callout-content">
+              Đây là workflow phù hợp nhất với contract MCP hiện tại và giữ quyền quyết định cuối cùng cho người dùng.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-links">
+    <a href="/projects">Dashboard</a>
+    <a href="/video-studio">Video Studio</a>
+    <a href="/guide">Hướng dẫn</a>
+    <a href="/update">Changelog</a>
+  </div>
+  <div class="footer-copy">
+    © 2026 Lana Content Studio · Lana Carousel MCP Standalone
+  </div>
+</footer>
+
+<script>
+  // Copy button handler
+  function copyCode(btn) {
+    const box = btn.closest('.code-box, .prompt-card');
+    const pre = box.querySelector('pre');
+    if (!pre) return;
+    const text = pre.innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      const orig = btn.innerText;
+      btn.innerText = '✓ Đã chép';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.innerText = orig;
+        btn.classList.remove('copied');
+      }, 2000);
+    });
+  }
+
+  // TOC active scroll observer
+  const sections = document.querySelectorAll('section[id]');
+  const navLinks = document.querySelectorAll('.nav-link');
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        navLinks.forEach(l => l.classList.toggle('active', l.getAttribute('href') === '#' + e.target.id));
+      }
+    });
+  }, { rootMargin: '-15% 0px -70% 0px' });
+  sections.forEach(s => obs.observe(s));
+
+  // Search filter in sidebar
+  const searchInput = document.getElementById('navFilter');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase().trim();
+      navLinks.forEach(link => {
+        const text = link.innerText.toLowerCase();
+        link.style.display = text.includes(q) ? 'flex' : 'none';
+      });
+      document.querySelectorAll('.nav-group').forEach(group => {
+        const visibleLinks = group.querySelectorAll('.nav-link[style*="display: flex"], .nav-link:not([style*="display: none"])');
+        group.style.display = (visibleLinks.length > 0 || q === '') ? 'block' : 'none';
+      });
+    });
+  }
+
+  // Persist checklist state in localStorage
+  const checklist = document.getElementById('prodChecklist');
+  if (checklist) {
+    const checkboxes = checklist.querySelectorAll('input[type="checkbox"]');
+    checkboxes.forEach((cb, i) => {
+      const key = 'lana_checklist_' + i;
+      cb.checked = localStorage.getItem(key) === 'true';
+      if (cb.checked) cb.closest('.check-item').classList.add('done');
+      cb.addEventListener('change', () => {
+        localStorage.setItem(key, cb.checked);
+        cb.closest('.check-item').classList.toggle('done', cb.checked);
+      });
+    });
+  }
+</script>
+</body>
+</html>

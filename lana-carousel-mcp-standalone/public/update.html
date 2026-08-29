@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cập nhật &amp; Cải tiến — Lana Content Studio</title>
+  <meta name="description" content="Lịch sử cải tiến và tính năng mới của Lana Content Studio qua các phiên bản." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --surface-2: #f1f5f9;
+      --surface-3: #e2e8f0;
+      --border: #e2e8f0;
+      --border-2: #cbd5e1;
+      --text: #334155;
+      --text-bright: #0f172a;
+      --muted: #64748b;
+      --accent: #2563eb;
+      --accent-dim: rgba(37, 99, 235, 0.08);
+      --feat: #16a34a;
+      --feat-dim: rgba(22, 163, 74, 0.1);
+      --fix: #d97706;
+      --fix-dim: rgba(217, 119, 6, 0.1);
+      --docs: #7c3aed;
+      --docs-dim: rgba(124, 58, 237, 0.1);
+      --radius: 12px;
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── HEADER ── */
+    .site-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 clamp(1rem,4vw,2rem);
+    }
+    .header-inner {
+      max-width: 960px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+      height: 62px;
+    }
+    .logo-mark {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, #2563eb, #10b981);
+      border-radius: 9px;
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      font-size: 14px;
+      color: #ffffff;
+      flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+    }
+    .header-title {
+      font-size: .95rem;
+      font-weight: 700;
+      color: var(--text-bright);
+      text-decoration: none;
+      letter-spacing: -.01em;
+    }
+    .header-badge {
+      font-size: .72rem;
+      font-weight: 600;
+      background: var(--accent-dim);
+      color: var(--accent);
+      border: 1px solid rgba(37, 99, 235, 0.2);
+      border-radius: 20px;
+      padding: 2px 9px;
+    }
+    .header-nav {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: .35rem;
+    }
+    .header-nav a {
+      font-size: .83rem;
+      color: var(--muted);
+      text-decoration: none;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-weight: 500;
+      transition: background .15s, color .15s;
+    }
+    .header-nav a:hover {
+      background: var(--surface-2);
+      color: var(--text-bright);
+    }
+    .header-nav a.active {
+      background: var(--accent-dim);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* ── PAGE ── */
+    .page {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: clamp(2rem,5vw,3.5rem) clamp(1rem,4vw,2rem) 5rem;
+    }
+    .page-hero {
+      margin-bottom: 3.5rem;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .page-hero h1 {
+      font-size: clamp(1.75rem,4vw,2.3rem);
+      font-weight: 800;
+      line-height: 1.2;
+      letter-spacing: -0.03em;
+      color: var(--text-bright);
+      margin-bottom: .6rem;
+    }
+    .page-hero p {
+      color: var(--muted);
+      font-size: 1.02rem;
+      max-width: 700px;
+    }
+
+    /* ── TIMELINE ── */
+    .timeline {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 15px;
+      top: 8px;
+      bottom: 0;
+      width: 2px;
+      background: linear-gradient(to bottom, var(--border-2) 0%, transparent 100%);
+    }
+    .release {
+      position: relative;
+      padding-left: 48px;
+      padding-bottom: 2.75rem;
+    }
+    .release:last-child { padding-bottom: 0; }
+    .release-dot {
+      position: absolute;
+      left: 7px;
+      top: 6px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #ffffff;
+      border: 3px solid var(--border-2);
+      box-shadow: var(--shadow-sm);
+    }
+    .release.latest .release-dot {
+      background: var(--accent);
+      border-color: #bfdbfe;
+      box-shadow: 0 0 0 4px var(--accent-dim);
+    }
+    .release-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: .6rem;
+      margin-bottom: .85rem;
+    }
+    .pr-badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .74rem;
+      font-weight: 600;
+      background: var(--surface-2);
+      border: 1px solid var(--border-2);
+      border-radius: 6px;
+      padding: 2px 8px;
+      color: var(--text-bright);
+      text-decoration: none;
+      transition: border-color .2s, color .2s, background .2s;
+    }
+    .pr-badge:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: #eff6ff;
+    }
+    .release-title {
+      font-size: 1.08rem;
+      font-weight: 700;
+      color: var(--text-bright);
+      letter-spacing: -0.01em;
+    }
+    .release-date {
+      font-size: .8rem;
+      color: var(--muted);
+      margin-left: auto;
+      font-weight: 500;
+    }
+    .new-badge {
+      font-size: .68rem;
+      font-weight: 700;
+      background: var(--accent);
+      color: #ffffff;
+      border-radius: 6px;
+      padding: 2px 8px;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    .release-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .release-card:hover {
+      border-color: var(--border-2);
+      box-shadow: var(--shadow-md);
+    }
+    .changes-list {
+      list-style: none;
+      padding: .4rem 0;
+    }
+    .change-item {
+      display: flex;
+      align-items: flex-start;
+      gap: .75rem;
+      padding: .7rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      transition: background .15s;
+    }
+    .change-item:last-child { border-bottom: none; }
+    .change-item:hover { background: var(--surface-2); }
+    .change-type {
+      flex-shrink: 0;
+      font-size: .68rem;
+      font-weight: 700;
+      border-radius: 5px;
+      padding: 2px 7px;
+      margin-top: 2px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+    .type-feat { background: var(--feat-dim); color: var(--feat); }
+    .type-fix  { background: var(--fix-dim);  color: var(--fix); }
+    .type-docs { background: var(--docs-dim); color: var(--docs); }
+    .change-text {
+      font-size: .92rem;
+      color: var(--text);
+      line-height: 1.55;
+    }
+    .change-text code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .82rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border-2);
+      border-radius: 4px;
+      padding: 1px 5px;
+      color: #0284c7;
+    }
+    .change-text em {
+      font-style: normal;
+      color: var(--muted);
+      font-size: .85rem;
+    }
+    .stats-row {
+      display: flex;
+      gap: .5rem;
+      padding: .75rem 1.25rem;
+      background: var(--surface-2);
+      border-top: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .stat-pill {
+      font-size: .76rem;
+      color: var(--muted);
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 2px 10px;
+    }
+    .stat-pill span { color: var(--text-bright); font-weight: 600; }
+
+    /* ── FOOTER ── */
+    .page-footer {
+      margin-top: 4rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .footer-text { font-size: .83rem; color: var(--muted); }
+    .footer-link {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: .83rem;
+      font-weight: 500;
+    }
+    .footer-link:hover { text-decoration: underline; }
+
+    @media (max-width: 600px) {
+      .timeline::before { left: 11px; }
+      .release { padding-left: 36px; }
+      .release-dot { left: 4px; }
+      .release-date { margin-left: 0; width: 100%; }
+      .header-nav { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-inner">
+    <div class="logo-mark">L</div>
+    <a href="/projects" class="header-title">Lana Content Studio</a>
+    <span class="header-badge">Changelog</span>
+    <nav class="header-nav">
+      <a href="/projects">Dashboard</a>
+      <a href="/video-studio">Video Studio</a>
+      <a href="/guide">Hướng dẫn</a>
+      <a href="/update" class="active">Cập nhật</a>
+    </nav>
+  </div>
+</header>
+
+<main class="page">
+  <div class="page-hero">
+    <h1>Cập nhật &amp; Cải tiến</h1>
+    <p>Toàn bộ tính năng mới, tối ưu hóa và sửa lỗi qua từng phiên bản của Lana Content Studio.</p>
+  </div>
+
+  <div class="timeline">
+
+    <!-- ═══ PR #25 ═══ -->
+    <div class="release latest">
+      <div class="release-dot"></div>
+      <div class="release-header">
+        <a class="pr-badge" href="https://github.com/nguyentuanson27-netizen/lana-carousel-mcp-standalone/pull/25" target="_blank" rel="noopener">#25</a>
+        <span class="release-title">Trang Hướng dẫn &amp; Changelog, thêm giọng Vertex, sửa sai số ngân sách chữ</span>
+        <span class="new-badge">Mới nhất</span>
+        <span class="release-date">28/08/2026</span>
+      </div>
+      <div class="release-card">
+        <ul class="changes-list">
+          <li class="change-item">
+            <span class="change-type type-docs">docs</span>
+            <span class="change-text">Trang <code>/guide</code> — hướng dẫn sử dụng đầy đủ 38 mục cho cả Content Studio lẫn MCP, giao diện Light Theme. Đường dẫn cũ <code>/guide-mcp</code> chuyển hướng về cùng trang này.</span>
+          </li>
+          <li class="change-item">
+            <span class="change-type type-docs">docs</span>
+            <span class="change-text">Trang <code>/update</code> — chính là trang bạn đang đọc: toàn bộ lịch sử cải tiến theo từng phiên bản.</span>
+          </li>
+          <li class="change-item">
+            <span class="change-type type-feat">feat</span>
+            <span class="change-text">Thêm lối vào <em>Hướng dẫn</em> và <em>Cập nhật</em> ngay trên thanh tiêu đề của Dashboard và Video Studio.</span>
+          </li>
+          <li class="change-item">
+            <span class="change-type type-feat">feat</span>
+            <span class="change-text">Bổ sung 4 giọng đọc Vertex — <code>Laomedeia</code>, <code>Leda</code>, <code>Pulcherrima</code>, <code>Achernar</code> — nâng tổng số lên 9 giọng.</span>
+          </li>
+          <li class="change-item">
+            <span class="change-type type-fix">fix</span>
+            <span class="change-text">Sửa sai số dấu phẩy động IEEE-754 khi tính ngân sách chữ: đoạn <code>0.6s</code> ở tốc độ <code>1.0×</code> từng bị báo sức chứa <em>0 từ</em> dù đúng ra là 1 từ. Áp dụng đồng bộ cho cả badge trên giao diện lẫn phần đánh giá phía server.</span>
+          </li>
+          <li class="change-item">
+            <span class="change-type type-feat">feat</span>
+            <span class="change-text">Nâng mặc định <code>API_RATE_LIMIT_PER_MINUTE</code> từ 120 lên 500 để phục vụ các luồng MCP/Studio nặng.</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ═══ PR #24 ═══ -->
+    <div class="release">
+      <div class="release-dot"></div>
+      <div class="release-header">
+        <a class="pr-badge" href="https://github.com/nguyentuanson27-netizen/lana-carousel-mcp-standalone/pull/24" target="_blank" rel="noopener">#24</a>
+        <span class="release-title">Video Studio — Ngắt âm thanh đọc mẫu khi Preview &amp; Chuẩn hóa Word Budget</span>
+        <span class="release-date">26/08/2026</span>
+      </div>
+      <div class="release-card">
+        <ul class="changes-list">
+          <li class="change-item">
+            <span class="change-type type-fix">fix</span>
+            <span class="change-text">Dập tắt âm thanh đọc thử độc lập ngay khi video bắt đầu phát hoặc khi bật <em>▶ Nghe thử giọng đọc trên video</em> — loại bỏ hoàn toàn tình trạng 2 luồng âm thanh phát đè lên nhau.</span>
+          </li>
+          <li class="change-item">
+            <span class="change-type type-fix">fix</span>
+            <span class="change-text">Khắc phục race condition khi yêu cầu nghe thử mẫu đang gửi dở (pending network request) mà người dùng chuyển sang phát video hoặc bật Preview.</span>
+          </li>
+          <li class="change-item">
+            <span class="change-type type-feat">feat</span>
+            <span class="change-text">Cập nhật công thức Word Budget chuẩn: <code>(duration - 0.2s) × 2.5 words/s × TTS speed</code> — dành 0.2s đầu làm khoảng đệm an toàn cho nhịp đọc.</span>
+          </li>
+          <li class="change-item">
+            <span class="change-type type-feat">feat</span>
+            <span class="change-text">Đồng bộ cách tính ngân sách chữ giữa giao diện Video Studio (client badges) và server evaluation, phân biệt chính xác giữa đoạn 0 từ (quá ngắn) với lỗi thời lượng không hợp lệ.</span>
+          </li>
+          <li class="change-item">
+            <span class="change-type type-feat">feat</span>
+            <span class="change-text">Bổ sung 12 browser regression tests tự động với Playwright bao phủ toàn bộ các kịch bản ngắt âm thanh và tính toán ngân sách từ <em>(src/video-studio-preview-browser.test.js)</em>.</span>
+          </li>
+          <li class="change-item">
+            <span class="change-type type-docs">docs</span>
+            <span class="change-text">Cập nhật tài liệu kỹ thuật <code>docs/video-analysis-brief.md</code> và trang Hướng dẫn sử dụng <code>/guide</code> (Mục 22) theo công thức mới.</span>
+          </li>
+        </ul>
+        <div class="stats-row">
+          <span class="stat-pill"><span>7</span> files thay đổi</span>
+          <span class="stat-pill"><span>+212</span> dòng thêm</span>
+          <span class="stat-pill"><span>-37</span> dòng xóa</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ PR #23 ═══ -->
+    <div class="release">
+      <div class="release-dot"></div>
+      <div class="release-header">
+        <a class="pr-badge" href="https://github.com/nguyentuanson27-netizen/lana-carousel-mcp-standalone/pull/23" target="_blank" rel="noopener">#23</a>
+        <span class="release-title">Video TTS — Cấu hình rõ ràng, báo lỗi chi tiết</span>
+        <span class="release-date">20/08/2026</span>
+      </div>
+      <div class="release-card">
+        <ul class="changes-list">
+          <li class="change-item"><span class="change-type type-fix">fix</span><span class="change-text">TTS không còn ném lỗi của thư viện — thay bằng thông báo rõ ràng khi thiếu cấu hình Vertex AI</span></li>
+          <li class="change-item"><span class="change-type type-feat">feat</span><span class="change-text">Test suite đầy đủ cho cấu hình TTS — kiểm tra tất cả trường hợp thiếu/sai cấu hình <em>(video-tts-config.test.js)</em></span></li>
+          <li class="change-item"><span class="change-type type-docs">docs</span><span class="change-text">Thêm <code>.env.example</code> — mẫu cấu hình đầy đủ với hướng dẫn từng biến môi trường</span></li>
+        </ul>
+        <div class="stats-row">
+          <span class="stat-pill"><span>4</span> files thay đổi</span>
+          <span class="stat-pill"><span>+431</span> dòng thêm</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ PR #22 ═══ -->
+    <div class="release">
+      <div class="release-dot"></div>
+      <div class="release-header">
+        <a class="pr-badge" href="https://github.com/nguyentuanson27-netizen/lana-carousel-mcp-standalone/pull/22" target="_blank" rel="noopener">#22</a>
+        <span class="release-title">Video Studio — Sửa lỗi "Lỗi hệ thống" ở các nút thao tác</span>
+        <span class="release-date">20/08/2026</span>
+      </div>
+      <div class="release-card">
+        <ul class="changes-list">
+          <li class="change-item"><span class="change-type type-fix">fix</span><span class="change-text">Các nút trong Video Studio (Tạo giọng đọc, Render…) không còn báo "Lỗi hệ thống" chung chung — lỗi giờ hiển thị chi tiết và có thể khắc phục</span></li>
+          <li class="change-item"><span class="change-type type-feat">feat</span><span class="change-text">Chuẩn hóa HTTP error shape — toàn bộ API trả về cùng định dạng lỗi nhất quán <em>(errors.js)</em></span></li>
+          <li class="change-item"><span class="change-type type-feat">feat</span><span class="change-text">API Contract document — tài liệu mô tả toàn bộ endpoints Video Studio <em>(docs/video-studio-api-contract.md)</em></span></li>
+          <li class="change-item"><span class="change-type type-feat">feat</span><span class="change-text">Lưu trạng thái Video Studio tự động khi thay đổi kịch bản</span></li>
+        </ul>
+        <div class="stats-row">
+          <span class="stat-pill"><span>9</span> files thay đổi</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ PR #20, #21 ═══ -->
+    <div class="release">
+      <div class="release-dot"></div>
+      <div class="release-header">
+        <a class="pr-badge" href="https://github.com/nguyentuanson27-netizen/lana-carousel-mcp-standalone/pull/21" target="_blank" rel="noopener">#21</a>
+        <a class="pr-badge" href="https://github.com/nguyentuanson27-netizen/lana-carousel-mcp-standalone/pull/20" target="_blank" rel="noopener">#20</a>
+        <span class="release-title">Video Studio — Subtitle Drag &amp; Drop và Word Budget Badge</span>
+        <span class="release-date">17/08/2026</span>
+      </div>
+      <div class="release-card">
+        <ul class="changes-list">
+          <li class="change-item"><span class="change-type type-feat">feat</span><span class="change-text">Kéo thả vị trí phụ đề trực tiếp trên màn hình xem trước video</span></li>
+          <li class="change-item"><span class="change-type type-feat">feat</span><span class="change-text">Badge cảnh báo ngân sách chữ (vừa / sát giới hạn / quá dài) cho từng phân đoạn kịch bản</span></li>
+          <li class="change-item"><span class="change-type type-feat">feat</span><span class="change-text">Hỗ trợ phong cách phụ đề Karaoke, Word-by-word và Static</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ═══ PR #19 ═══ -->
+    <div class="release">
+      <div class="release-dot"></div>
+      <div class="release-header">
+        <a class="pr-badge" href="https://github.com/nguyentuanson27-netizen/lana-carousel-mcp-standalone/pull/19" target="_blank" rel="noopener">#19</a>
+        <span class="release-title">MCP Tools — Hai phương án kịch bản độc lập</span>
+        <span class="release-date">16/08/2026</span>
+      </div>
+      <div class="release-card">
+        <ul class="changes-list">
+          <li class="change-item"><span class="change-type type-feat">feat</span><span class="change-text">Quy trình bắt buộc chuẩn bị 2 phương án (<code>natural_full</code> và <code>punchy_short</code>) qua tool <code>prepare_video_script_options</code></span></li>
+          <li class="change-item"><span class="change-type type-feat">feat</span><span class="change-text">Lưu chính xác phương án được người dùng duyệt qua <code>save_approved_video_script</code></span></li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ═══ PR #13 ═══ -->
+    <div class="release">
+      <div class="release-dot"></div>
+      <div class="release-header">
+        <a class="pr-badge" href="https://github.com/nguyentuanson27-netizen/lana-carousel-mcp-standalone/pull/13" target="_blank" rel="noopener">#13</a>
+        <span class="release-title">Auth — Chuyển Content Studio &amp; MCP sang OAuth 2.1</span>
+        <span class="release-date">08/08/2026</span>
+      </div>
+      <div class="release-card">
+        <ul class="changes-list">
+          <li class="change-item"><span class="change-type type-feat">feat</span><span class="change-text">Content Studio và MCP chuyển sang OAuth 2.1 PKCE S256 — bảo mật cao, không cần API key thủ công</span></li>
+          <li class="change-item"><span class="change-type type-feat">feat</span><span class="change-text">Đăng nhập bằng Google Account — phân quyền theo email/domain allowlist được cấu hình</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ═══ PR #11, #12 ═══ -->
+    <div class="release">
+      <div class="release-dot"></div>
+      <div class="release-header">
+        <a class="pr-badge" href="https://github.com/nguyentuanson27-netizen/lana-carousel-mcp-standalone/pull/12" target="_blank" rel="noopener">#12</a>
+        <a class="pr-badge" href="https://github.com/nguyentuanson27-netizen/lana-carousel-mcp-standalone/pull/11" target="_blank" rel="noopener">#11</a>
+        <span class="release-title">Social Publisher — TikTok, Facebook &amp; Instagram</span>
+        <span class="release-date">08/08/2026</span>
+      </div>
+      <div class="release-card">
+        <ul class="changes-list">
+          <li class="change-item"><span class="change-type type-feat">feat</span><span class="change-text">Đăng carousel và video trực tiếp lên TikTok, Facebook, Instagram từ Content Studio</span></li>
+          <li class="change-item"><span class="change-type type-feat">feat</span><span class="change-text">Quản lý kết nối tài khoản mạng xã hội ngay trong giao diện</span></li>
+          <li class="change-item"><span class="change-type type-fix">fix</span><span class="change-text">Admin handoff khi chia sẻ project link</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ═══ PR #7, #8, #9 ═══ -->
+    <div class="release">
+      <div class="release-dot"></div>
+      <div class="release-header">
+        <a class="pr-badge" href="https://github.com/nguyentuanson27-netizen/lana-carousel-mcp-standalone/pull/9" target="_blank" rel="noopener">#9</a>
+        <a class="pr-badge" href="https://github.com/nguyentuanson27-netizen/lana-carousel-mcp-standalone/pull/8" target="_blank" rel="noopener">#8</a>
+        <a class="pr-badge" href="https://github.com/nguyentuanson27-netizen/lana-carousel-mcp-standalone/pull/7" target="_blank" rel="noopener">#7</a>
+        <span class="release-title">UI — Cải thiện Studio &amp; lưu trạng thái</span>
+        <span class="release-date">07/08/2026</span>
+      </div>
+      <div class="release-card">
+        <ul class="changes-list">
+          <li class="change-item"><span class="change-type type-fix">fix</span><span class="change-text">Trạng thái thiết kế và cấu hình MCP session bị mất khi reload — đã persist đầy đủ</span></li>
+          <li class="change-item"><span class="change-type type-fix">fix</span><span class="change-text">Header Carousel và Video Studio chiếm quá nhiều màn hình — thu gọn lại</span></li>
+          <li class="change-item"><span class="change-type type-feat">feat</span><span class="change-text">Điều hướng giữa các dự án được cải thiện — breadcrumb và quick-switch rõ ràng</span></li>
+          <li class="change-item"><span class="change-type type-feat">feat</span><span class="change-text">Mở rộng Lana Content Studio và sidebar thu gọn được</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ═══ PR #3, #4, #5, #6 ═══ -->
+    <div class="release">
+      <div class="release-dot"></div>
+      <div class="release-header">
+        <a class="pr-badge" href="https://github.com/nguyentuanson27-netizen/lana-carousel-mcp-standalone/pull/4" target="_blank" rel="noopener">#4</a>
+        <a class="pr-badge" href="https://github.com/nguyentuanson27-netizen/lana-carousel-mcp-standalone/pull/5" target="_blank" rel="noopener">#5</a>
+        <a class="pr-badge" href="https://github.com/nguyentuanson27-netizen/lana-carousel-mcp-standalone/pull/6" target="_blank" rel="noopener">#6</a>
+        <a class="pr-badge" href="https://github.com/nguyentuanson27-netizen/lana-carousel-mcp-standalone/pull/3" target="_blank" rel="noopener">#3</a>
+        <span class="release-title">Stitch Carousel Studio &amp; Dashboard ra mắt</span>
+        <span class="release-date">06–07/08/2026</span>
+      </div>
+      <div class="release-card">
+        <ul class="changes-list">
+          <li class="change-item"><span class="change-type type-feat">feat</span><span class="change-text">Stitch Carousel Studio đầy đủ — thiết kế slide, brand kit, font, màu sắc trong một giao diện</span></li>
+          <li class="change-item"><span class="change-type type-feat">feat</span><span class="change-text">Dashboard thống nhất — ảnh carousel và video project hiển thị chung với thumbnail và trạng thái</span></li>
+          <li class="change-item"><span class="change-type type-fix">fix</span><span class="change-text">Harden carousel và video production workflows — xử lý lỗi và edge case toàn diện</span></li>
+          <li class="change-item"><span class="change-type type-fix">fix</span><span class="change-text">Bridge stale video analysis schemas trong MCP — đồng bộ schema giữa client và server</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ═══ PR #1, #2 ═══ -->
+    <div class="release">
+      <div class="release-dot"></div>
+      <div class="release-header">
+        <a class="pr-badge" href="https://github.com/nguyentuanson27-netizen/lana-carousel-mcp-standalone/pull/2" target="_blank" rel="noopener">#2</a>
+        <a class="pr-badge" href="https://github.com/nguyentuanson27-netizen/lana-carousel-mcp-standalone/pull/1" target="_blank" rel="noopener">#1</a>
+        <span class="release-title">Phiên bản đầu tiên — Video Analysis Studio &amp; TTS</span>
+        <span class="release-date">05/08/2026</span>
+      </div>
+      <div class="release-card">
+        <ul class="changes-list">
+          <li class="change-item"><span class="change-type type-feat">feat</span><span class="change-text">Video Analysis Studio độc lập — upload, phân tích và xử lý video bằng AI</span></li>
+          <li class="change-item"><span class="change-type type-feat">feat</span><span class="change-text">Content Brief — AI tạo brief nội dung tự động và đề xuất 2 phương án kịch bản</span></li>
+          <li class="change-item"><span class="change-type type-feat">feat</span><span class="change-text">Gemini multi-speaker TTS — tạo giọng đọc đa người nói, tự động căn thời lượng từng cảnh</span></li>
+          <li class="change-item"><span class="change-type type-feat">feat</span><span class="change-text">Editor phụ đề kéo thả — chỉnh vị trí từng từ phụ đề trực tiếp trên preview</span></li>
+          <li class="change-item"><span class="change-type type-feat">feat</span><span class="change-text">Render video với Remotion — xuất video chất lượng cao, tự xóa sau 7 ngày</span></li>
+          <li class="change-item"><span class="change-type type-feat">feat</span><span class="change-text">Carousel editor — rich text, text box, image editor, frame editor, layer visibility</span></li>
+          <li class="change-item"><span class="change-type type-docs">docs</span><span class="change-text">README tổng quan đầy đủ cho toàn bộ hệ thống</span></li>
+        </ul>
+        <div class="stats-row">
+          <span class="stat-pill">🚀 Initial release</span>
+          <span class="stat-pill">23/07/2026</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <footer class="page-footer">
+    <span class="footer-text">© 2026 Lana Content Studio · Lana Carousel MCP Standalone</span>
+    <a class="footer-link" href="/projects">← Về Dashboard</a>
+  </footer>
+</main>
+
+</body>
+</html>
