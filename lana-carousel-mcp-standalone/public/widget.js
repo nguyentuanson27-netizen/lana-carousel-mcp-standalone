@@ -185,7 +185,7 @@ function editCard(slide) {
 }
 
 function videoPanelHtml(){
-  const cfg=project.videoSettings||{},enabled=project.videoEnabled,voices=["Kore","Puck","Charon","Fenrir","Aoede","Leda","Orus","Zephyr","Achernar","Gacrux","Sulafat","Umbriel"],animations=[["none","Không hiển thị"],["static","Tĩnh"],["block","Bật lên"],["by-line","Theo dòng"],["by-word","Theo từ"],["typewriter","Gõ chữ"]];
+  const cfg=project.videoSettings||{},enabled=project.videoEnabled,voices=["Kore","Puck","Aoede","Charon","Fenrir","Laomedeia","Leda","Pulcherrima","Achernar","Orus","Zephyr","Gacrux","Sulafat","Umbriel"],animations=[["none","Không hiển thị"],["static","Tĩnh"],["block","Bật lên"],["by-line","Theo dòng"],["by-word","Theo từ"],["typewriter","Gõ chữ"]];
   const voiceOptions=value=>voices.map(v=>`<option value="${v}" ${value===v?"selected":""}>${v}</option>`).join("");
   const animationOptions=value=>animations.map(([v,label])=>`<option value="${v}" ${value===v?"selected":""}>${label}</option>`).join("");
   const assetMap=new Map(project.assets.map(a=>[a.id,a])),firstSlide=project.slides.find(s=>(s.video||{}).enabled!==false)||project.slides[0],firstAsset=firstSlide&&assetMap.get((firstSlide.selectedAssetIds||[])[0]||firstSlide.selectedAssetId);
