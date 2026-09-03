@@ -79,7 +79,10 @@ export function isTrustedUploadedAudioUrl(raw) {
   }
 }
 
-export async function downloadRemoteAudio(rawUrl, directory) {
+// Provider responses are external input too. Keep one download boundary for background audio and
+// generated TTS exports so redirects, DNS pinning, private-IP blocking, timeouts and byte limits
+// cannot silently diverge between call sites.
+export async function downloadRemoteAudioBuffer(rawUrl) {
   let url = parseRemoteUrl(rawUrl);
   for (let redirect = 0; ; redirect += 1) {
     const response = await requestOnce(url);
@@ -92,9 +95,19 @@ export async function downloadRemoteAudio(rawUrl, directory) {
     const type = mime(response.headers);
     if (!allowedMediaTypes.has(type)) throw new AppError("UNSUPPORTED_AUDIO_TYPE", `URL nhạc không phải file media trực tiếp (${type || "không rõ"}).`, 422);
     if (response.buffer.length < 128) throw new AppError("INVALID_AUDIO_FILE", "File nhạc nền rỗng hoặc không hợp lệ.", 422);
-    await fs.mkdir(directory, { recursive: true });
-    const file = path.join(directory, `${randomUUID()}${extensionFor(type)}`);
-    await fs.writeFile(file, response.buffer, { flag: "wx" });
-    return { file, finalUrl: url.toString(), mimeType: type, size: response.buffer.length };
+    return { buffer: response.buffer, finalUrl: url.toString(), mimeType: type, size: response.buffer.length };
   }
+}
+
+export async function downloadRemoteAudio(rawUrl, directory) {
+  const downloaded = await downloadRemoteAudioBuffer(rawUrl);
+  await fs.mkdir(directory, { recursive: true });
+  const file = path.join(directory, `${randomUUID()}${extensionFor(downloaded.mimeType)}`);
+  await fs.writeFile(file, downloaded.buffer, { flag: "wx" });
+  return {
+    file,
+    finalUrl: downloaded.finalUrl,
+    mimeType: downloaded.mimeType,
+    size: downloaded.size
+  };
 }
