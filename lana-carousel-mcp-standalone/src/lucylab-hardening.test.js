@@ -12,6 +12,7 @@ process.env.PUBLIC_BASE_URL = "https://lucylab-hardening.test";
 const tts = await import("./video-tts.js");
 const { ttsCacheKey } = await import("./video-tts-cache.js");
 const { downloadRemoteAudioBuffer } = await import("./remote-media.js");
+const { lucylabJsonRpc } = await import("./lucylab-client.js");
 
 after(async () => {
  await fs.rm(tempRoot, { recursive: true, force: true });
@@ -60,7 +61,7 @@ test("does not expose raw Lucylab provider failures to callers", async () => {
   return {
    ok: false,
    status: 502,
-   text: async () => "BEGIN PRIVATE KEY provider-secret"
+   json: async () => ({ error: { message: "BEGIN PRIVATE KEY provider-secret" } })
   };
  };
  try {
@@ -86,28 +87,20 @@ test("does not expose raw Lucylab provider failures to callers", async () => {
  }
 });
 
-test("does not expose Lucylab JSON-RPC credit errors to callers", async () => {
+test("Lucylab JSON-RPC aborts a hung request at the configured timeout", async () => {
  const originalFetch = globalThis.fetch;
- const originalKey = process.env.LUCYLAB_API_KEY;
- process.env.LUCYLAB_API_KEY = "test-lucylab-key";
- globalThis.fetch = async () => ({
-  ok: true,
-  status: 200,
-  json: async () => ({ error: { message: "provider-secret-credit-error" } })
+ globalThis.fetch = async (_url, options = {}) => new Promise((resolve, reject) => {
+  options.signal.addEventListener("abort", () => reject(options.signal.reason), { once: true });
  });
  try {
+  const startedAt = Date.now();
   await assert.rejects(
-   tts.getLucylabCredits(),
-   error => {
-    assert.equal(error.code, "TTS_PROVIDER_FAILED");
-    assert.doesNotMatch(error.message, /provider-secret-credit-error/u);
-    return true;
-   }
+   lucylabJsonRpc({ apiKey: "test-key", method: "ttsLongText", input: {}, timeoutMs: 20 }),
+   error => error?.code === "TTS_PROVIDER_FAILED"
   );
+  assert.ok(Date.now() - startedAt < 500, "hung Lucylab request should be bounded by timeout");
  } finally {
   globalThis.fetch = originalFetch;
-  if (originalKey === undefined) delete process.env.LUCYLAB_API_KEY;
-  else process.env.LUCYLAB_API_KEY = originalKey;
  }
 });
 
@@ -118,16 +111,19 @@ test("safe remote-audio downloader rejects loopback export URLs before making a 
  );
 });
 
-test("Carousel Studio persists a dedicated Lucylab voice picker", async () => {
+test("Carousel Studio does not advertise Lucylab until it has a complete supported flow", async () => {
  const widget = await fs.readFile(new URL("../public/widget.js", import.meta.url), "utf8");
- assert.match(widget, /id="videoLucylabVoice"/u);
- assert.match(widget, /lucylabVoice:\$\("videoLucylabVoice"\)\.value/u);
- assert.match(widget, /ttsVoice:provider==="lucylab"\?lucylabVoice:/u);
+ assert.doesNotMatch(widget, /videoLucylabVoice|value="lucylab"/u);
 });
 
-test("Video Analysis Studio wires credit refresh and Lucylab voice changes", async () => {
- const studio = await fs.readFile(new URL("../public/video-studio.js", import.meta.url), "utf8");
- assert.match(studio, /refreshCreditsBtn/u);
- assert.match(studio, /fetchLucylabCredits\(refreshCreditsBtn\)/u);
- assert.match(studio, /"#lucylabVoice"/u);
+test("credit UI and undocumented Lucylab account endpoints are not exposed", async () => {
+ const [html, studio, routes, videoTts] = await Promise.all([
+  fs.readFile(new URL("../public/video-studio.html", import.meta.url), "utf8"),
+  fs.readFile(new URL("../public/video-studio.js", import.meta.url), "utf8"),
+  fs.readFile(new URL("./video-analysis-routes.js", import.meta.url), "utf8"),
+  fs.readFile(new URL("./video-tts.js", import.meta.url), "utf8")
+ ]);
+ for (const source of [html, studio, routes, videoTts]) {
+  assert.doesNotMatch(source, /lucylab-credits|getLucylabCredits|lucylabCredits|refreshCreditsBtn/u);
+ }
 });
