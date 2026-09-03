@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { config } from "./config.js";
 import { videoAnalysisAssetDir } from "./video-analysis-service.js";
 import { decodeAudioDataUrl, measureAudioDuration } from "./video-audio-file.js";
-import { generateSpeechForText, isLucylabProvider } from "./video-tts.js";
+import { generateSpeechForText, isLucylabProvider, resolveLucylabVoice } from "./video-tts.js";
 
 const AUDIO_EXTENSIONS = ["wav", "mp3", "ogg", "webm"];
 const CACHE_RETENTION_MS = 30 * 864e5;
@@ -22,7 +22,9 @@ export function ttsCacheKey({ text, settings = {} }) {
    style: settings.geminiStylePrompt || "",
    model: settings.geminiModel || ""
   }
-  : provider === "lucylab" ? { provider, text: String(text || ""), voice: settings.lucylabVoice || settings.userVoiceId || settings.ttsVoice || "vcXEe1p3FxPfpswf3BhwbG" } : { provider, text: String(text || ""), voice: settings.ttsVoice || "" };
+  : provider === "lucylab"
+   ? { provider, text: String(text || ""), voice: resolveLucylabVoice(settings) }
+   : { provider, text: String(text || ""), voice: settings.ttsVoice || "" };
  return createHash("sha256").update(JSON.stringify(payload)).digest("hex").slice(0, 40);
 }
 
