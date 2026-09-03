@@ -13,6 +13,7 @@ const tts = await import("./video-tts.js");
 const { ttsCacheKey } = await import("./video-tts-cache.js");
 const { downloadRemoteAudioBuffer } = await import("./remote-media.js");
 const { lucylabJsonRpc, waitForLucylabExport } = await import("./lucylab-client.js");
+const { createProject, updateProjectVideo } = await import("./service-core.js");
 
 after(async () => {
  await fs.rm(tempRoot, { recursive: true, force: true });
@@ -147,19 +148,33 @@ test("safe remote-audio downloader rejects loopback export URLs before making a 
  );
 });
 
-test("every public settings boundary accepts only the curated Lucylab voice IDs", async () => {
- const [routes, mcp, http] = await Promise.all([
+test("every public settings boundary rejects unsupported Lucylab voice IDs before persistence", async () => {
+ const [routes, mcp] = await Promise.all([
   fs.readFile(new URL("./video-analysis-routes.js", import.meta.url), "utf8"),
-  fs.readFile(new URL("./mcp-tools.js", import.meta.url), "utf8"),
-  fs.readFile(new URL("./http-server.js", import.meta.url), "utf8")
+  fs.readFile(new URL("./mcp-tools.js", import.meta.url), "utf8")
  ]);
- for (const [name, source] of [["video-analysis", routes], ["MCP", mcp], ["carousel API", http]]) {
+ for (const [name, source] of [["video-analysis", routes], ["MCP", mcp]]) {
   assert.match(
    source,
    /lucylabVoice\s*:\s*z\.enum\(LUCYLAB_VOICE_IDS\)/u,
    `${name} must reject unsupported Lucylab voice IDs instead of persisting a value the renderer will ignore`
   );
  }
+ const project = createProject({ title: "Lucylab boundary" });
+ assert.throws(
+  () => updateProjectVideo({
+   projectId: project.id,
+   enabled: true,
+   settings: { ttsProvider: "lucylab", lucylabVoice: "not-a-curated-voice" }
+  }),
+  error => error?.code === "INVALID_LUCYLAB_VOICE" && error?.status === 422
+ );
+ const saved = updateProjectVideo({
+  projectId: project.id,
+  enabled: true,
+  settings: { ttsProvider: "lucylab", lucylabVoice: tts.LUCYLAB_VOICE_IDS[1] }
+ });
+ assert.equal(saved.videoSettings.lucylabVoice, tts.LUCYLAB_VOICE_IDS[1]);
 });
 
 test("Carousel Studio does not advertise Lucylab until it has a complete supported flow", async () => {
