@@ -221,7 +221,7 @@ app.patch("/api/projects/:projectId/slides/:slideId/design", handle(async (req, 
 }));
 
 // Render thử một slide theo thiết kế đang sửa và trả thẳng ảnh, không ghi gì vào cơ sở dữ liệu.
-// Nhờ vậy studio hiện được đúng ảnh sắp tải về ngay cả khi thiết kế chưa được lưu.
+// Nhờ vậy studio hiện được đúng ảnh sắp tải về ngay cả khi thiết kế chưa lưu.
 app.post("/api/projects/:projectId/slides/:slideId/preview-render", handle(async (req, res) => {
   const body = z.object({
     design: slideDesignShape.partial().default({}),
@@ -299,7 +299,7 @@ app.patch("/api/projects/:projectId/slides/:slideId/video", handle(async (req, r
 }));
 app.post("/api/projects/:projectId/video-render-jobs", handle(async (req, res) => res.status(202).json(startVideoRenderJob(req.params.projectId))));
 app.get("/api/video-render-jobs/:jobId", handle(async (req, res) => res.json(getVideoRenderJob(req.params.jobId))));
-app.get("/api/video-render-jobs/:jobId/download", handle(async (req, res) => res.download(getVideoRenderFile(req.params.jobId), `lana-video-${req.params.projectId}.mp4`)));
+app.get("/api/video-render-jobs/:jobId/download", handle(async (req, res) => res.download(getVideoRenderFile(req.params.jobId), `lana-video-${req.params.jobId}.mp4`)));
 app.delete("/api/video-render-jobs/:jobId", handle(async (req, res) => res.json(await deleteVideoRenderJob(req.params.jobId))));
 
 app.post("/api/projects/:projectId/render-jobs", handle(async (req, res) => { getProject(req.params.projectId); res.status(202).json(startRenderJob(req.params.projectId)); }));
