@@ -12,7 +12,7 @@ process.env.PUBLIC_BASE_URL = "https://lucylab-hardening.test";
 const tts = await import("./video-tts.js");
 const { ttsCacheKey } = await import("./video-tts-cache.js");
 const { downloadRemoteAudioBuffer } = await import("./remote-media.js");
-const { lucylabJsonRpc } = await import("./lucylab-client.js");
+const { lucylabJsonRpc, waitForLucylabExport } = await import("./lucylab-client.js");
 
 after(async () => {
  await fs.rm(tempRoot, { recursive: true, force: true });
@@ -24,6 +24,16 @@ test("canonicalizes stale non-Lucylab voices to the Lucylab default", () => {
  assert.equal(
   tts.resolveLucylabVoice({ lucylabVoice: tts.LUCYLAB_VOICE_IDS[2] }),
   tts.LUCYLAB_VOICE_IDS[2]
+ );
+});
+
+test("keeps provider-specific voice IDs from leaking into Google TTS", () => {
+ const lucylabVoice = tts.LUCYLAB_VOICE_IDS[1];
+ assert.equal(tts.resolveGoogleVoice({ ttsVoice: lucylabVoice }), tts.GOOGLE_DEFAULT_VOICE);
+ assert.deepEqual(tts.allowedSampleVoices({ ttsVoice: lucylabVoice }, "google"), tts.GOOGLE_VOICES);
+ assert.equal(
+  ttsCacheKey({ text: "Một câu", settings: { ttsProvider: "google", ttsVoice: lucylabVoice } }),
+  ttsCacheKey({ text: "Một câu", settings: { ttsProvider: "google", ttsVoice: tts.GOOGLE_DEFAULT_VOICE } })
  );
 });
 
@@ -108,6 +118,28 @@ test("Lucylab JSON-RPC aborts a hung request at the configured timeout", async (
  }
 });
 
+test("Lucylab export polling obeys one total deadline across waits and requests", async () => {
+ let clock = 0;
+ const requestTimeouts = [];
+ await assert.rejects(
+  waitForLucylabExport({
+   projectExportId: "export-1",
+   totalTimeoutMs: 10_000,
+   pollIntervalMs: 2_000,
+   now: () => clock,
+   delay: async ms => { clock += ms; },
+   requestStatus: async timeoutMs => {
+    requestTimeouts.push(timeoutMs);
+    clock += Math.min(3_000, timeoutMs);
+    return { state: "processing" };
+   }
+  }),
+  error => error?.code === "TTS_PROVIDER_FAILED" && error?.status === 504
+ );
+ assert.equal(clock, 10_000);
+ assert.deepEqual(requestTimeouts, [10_000, 5_000]);
+});
+
 test("safe remote-audio downloader rejects loopback export URLs before making a request", async () => {
  await assert.rejects(
   downloadRemoteAudioBuffer("https://127.0.0.1/lucylab.wav"),
@@ -130,5 +162,5 @@ test("unsupported Lucylab credits surface is absent from routes and UI", async (
  assert.doesNotMatch(html, /lucylabCredit|refreshCreditsBtn|ViVibe/u);
  assert.doesNotMatch(studio, /fetchLucylabCredits|lucylab-credits|refreshCreditsBtn/u);
  assert.doesNotMatch(routes, /lucylab-credits|getLucylabCredits/u);
- assert.doesNotMatch(videoTts, /getUserInfo/u);
+ assert.doesNotMatch(videoTts, /getLucylabCredits|TTS_CREDITS_UNAVAILABLE|getUserInfo/u);
 });
