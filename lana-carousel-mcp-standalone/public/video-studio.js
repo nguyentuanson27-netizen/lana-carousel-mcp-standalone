@@ -112,7 +112,7 @@ async function fetchLucylabCredits(btn){
   if(!creditsEl)return;
   if(btn)btn.classList.add("spinning");
   try{
-    const data=await api("/api/video-analysis/lucylab/credits");
+    const data=await api(projectId ? `/api/video-analysis/projects/${encodeURIComponent(projectId)}/lucylab-credits` : "/api/video-analysis/lucylab/credits");
     if(typeof data.creditsRemaining==="number"){
       creditsEl.textContent=data.creditsRemaining.toLocaleString("vi-VN");
     }

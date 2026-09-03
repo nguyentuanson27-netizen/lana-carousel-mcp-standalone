@@ -227,6 +227,12 @@ const voiceSampleBody=z.object({
 }).strict();
 
 
+
+videoAnalysisRouter.get("/projects/:id/lucylab-credits", safe(async (req, res) => {
+ const credits = await getLucylabCredits();
+ res.json(credits);
+}));
+
 videoAnalysisRouter.get("/lucylab/credits", safe(async (req, res) => {
  const credits = await getLucylabCredits();
  res.json(credits);
