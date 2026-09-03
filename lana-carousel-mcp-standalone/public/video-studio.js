@@ -71,8 +71,6 @@ function addSegment(segment={}){
   $("#segments").append(element);
 }
 
-// Người dùng gõ lời đọc mà không biết đoạn có đủ thời gian để đọc hết hay không. Ngân sách chữ
-// dùng đúng công thức phía render nên con số hiện ở đây khớp với thứ sẽ xảy ra khi xuất video.
 function syncWordBudgets(){
   const ttsSpeed=+$("#ttsSpeed").value;
   for(const element of document.querySelectorAll(".segment")){
@@ -92,8 +90,6 @@ function syncWordBudgets(){
 function setControl(id,value,fallback){
   const element=$("#"+id);
   element.value=value??fallback;
-  // Giá trị không nằm trong danh sách lựa chọn làm select rỗng đi. Rơi về mặc định để lần lưu
-  // sau không gửi lên chuỗi rỗng.
   if(element.value==="")element.value=fallback;
 }
 
@@ -105,7 +101,6 @@ const pickedVoice=()=>{
   if(isLucylab())return $("#lucylabVoice").value;
   return usingGoogleVoice()?$("#googleVoice").value:$("#voice").value;
 };
-
 
 async function fetchLucylabCredits(btn){
   const creditsEl=$("#lucylabCredits");
@@ -153,8 +148,6 @@ function syncVoiceFields(){
   }
 }
 
-// Brief do AI sinh có thể đã lưu một giọng ngoài danh sách. Giữ lại làm một lựa chọn để lần lưu
-// sau không âm thầm đổi giọng của dự án.
 function fillGoogleVoice(saved){
   const select=$("#googleVoice");
   if(saved&&![...select.options].some(option=>option.value===saved)){
@@ -201,8 +194,6 @@ function fill(){
   renderPreview();
 }
 
-// `note` do người gọi API đặt (thân của PUT /script), nên nhét thẳng vào innerHTML là mở đường
-// cho script lạ chạy trong studio. Dựng bằng DOM để chuỗi luôn ở lại dạng văn bản.
 function versionButton(version){
   const button=document.createElement("button");
   button.dataset.id=version.id;
@@ -270,8 +261,6 @@ function renderCaptionText(caption,segment,style,time){
   }
 }
 
-// Preview phải nghe giống bản render: Remotion bỏ hẳn tiếng gốc khi âm lượng bằng 0,
-// nên thẻ <video> cũng phải mute thay vì giữ nguyên âm lượng của trình duyệt.
 function applyPreviewVolume(currentSettings){
   const video=$("#video"),level=clamp(Number(currentSettings.originalAudioVolume)||0,0,1);
   video.muted=level<=0;
@@ -334,8 +323,6 @@ document.fonts?.ready.then(renderPreview).catch(()=>{});
 $("#addSegment").onclick=()=>addSegment({start:$("#video").currentTime,end:$("#video").currentTime+3});
 $("#save").onclick=()=>save(false).catch(error=>alert(error.message));
 $("#approve").onclick=()=>save(true).catch(error=>alert(error.message));
-// Mọi nút gọi mạng đều phải bắt lỗi: promise bị bỏ rơi chỉ hiện trong console, còn người dùng
-// thấy một cái nút bấm xong không có gì xảy ra.
 $("#attach").onclick=()=>
   api(`/api/video-analysis/projects/${projectId}/source-reference`,{
     method:"PUT",
@@ -352,8 +339,6 @@ $("#upload").onchange=async event=>{
       headers:{"content-type":file.type||"video/mp4"},
       body:file
     });
-    // Không phải nhánh lỗi nào cũng trả JSON — tệp vượt giới hạn bị middleware chặn trước cả
-    // route. Đọc kiểu phòng thủ để nút không chết lặng khi tải lên hỏng.
     if(!response.ok){
       const json=await response.json().catch(()=>({}));
       throw new Error(json.message||`Tải video lên thất bại (${response.status}).`);
@@ -378,9 +363,6 @@ $("#render").onclick=async()=>{
 async function poll(id){
   clearInterval(jobTimer);
   const run=async()=>{
-    // Hàm này chạy trong setInterval nên không có ai bắt lỗi giùm: một lượt hỏi hỏng mà không
-    // xử lý sẽ thành unhandled rejection lặp lại mỗi 2 giây, vòng lặp không bao giờ dừng và
-    // dòng trạng thái đứng im ở con số cuối cùng.
     try{
       const job=await api(`/api/video-analysis/jobs/${id}`);
       $("#job").textContent=`${job.status} · ${job.progress}%${job.error?" · "+job.error:""}`;
@@ -388,6 +370,7 @@ async function poll(id){
         clearInterval(jobTimer);
         $("#download").hidden=false;
         $("#download").href=job.downloadUrl;
+        if(isLucylab())fetchLucylabCredits();
       }else if(job.status==="FAILED")clearInterval(jobTimer);
     }catch(error){
       clearInterval(jobTimer);
@@ -398,9 +381,6 @@ async function poll(id){
   jobTimer=setInterval(run,2000);
 }
 
-// Lưu trước khi tải để tệp khớp đúng thứ đang thấy trên màn hình. Phải giữ nguyên trạng thái
-// duyệt: `save(false)` hạ một dự án đã duyệt xuống DRAFT, và người dùng chỉ phát hiện ra ở lần
-// bấm Render kế tiếp khi nó đòi duyệt lại.
 const keepApproval=()=>project.status==="APPROVED";
 
 async function downloadSubtitles(format){
@@ -427,12 +407,11 @@ $("#voiceSample").onclick=async()=>{
       body:JSON.stringify({ttsProvider:$("#ttsProvider").value,voice:pickedVoice()})
     });
     if(generation!==sampleGeneration)return;
+    if(isLucylab())fetchLucylabCredits();
     sampleAudio=new Audio(response.url);
     sampleAudio.volume=clamp(+$("#ttsVolume").value,0,1)||1;
-    // Server mới là nơi quyết định giọng nào được đọc, nên nói lại đúng tên nó trả về.
     $("#voiceNote").textContent=`Đang đọc thử bằng ${response.voice}.`;
     await sampleAudio.play();
-    if(isLucylab())fetchLucylabCredits();
   }catch(error){
     if(generation!==sampleGeneration)return;
     syncVoiceFields();
@@ -440,8 +419,6 @@ $("#voiceSample").onclick=async()=>{
   }finally{button.disabled=false}
 };
 
-// Nghe thử giọng đọc ngay trên preview: dùng đúng các clip mà bản render sẽ dùng, đặt đúng mốc
-// thời gian của từng đoạn, trộn với tiếng gốc theo hai thanh âm lượng.
 let voiceClips=[];
 const voicePreviewOn=()=>voiceClips.length>0;
 
@@ -477,6 +454,7 @@ $("#voicePreview").onclick=async()=>{
   try{
     await save(keepApproval(),{refresh:false});
     const response=await api(`/api/video-analysis/projects/${projectId}/voice-preview`,{method:"POST"});
+    if(isLucylab())fetchLucylabCredits();
     voiceClips=response.voiceTracks.map(track=>{
       const audio=new Audio(track.url);
       audio.preload="auto";
@@ -494,14 +472,14 @@ $("#video").addEventListener("play",stopSampleAudio);
 for(const event of ["timeupdate","play","pause","seeking","seeked","ratechange"]){
   $("#video").addEventListener(event,syncVoicePreview);
 }
-// Sửa lời đọc hay mốc thời gian thì các clip đang giữ không còn đúng nữa. Riêng phụ đề thì
-// không đụng tới giọng đọc nên không cần dựng lại.
 $("#segments").addEventListener("input",event=>{
   if(voicePreviewOn()&&event.target.matches(".voice,.start,.end"))stopVoicePreview();
 });
-for(const id of ["#voice","#googleVoice","#ttsProvider","#ttsSpeed"]){
+for(const id of ["#voice","#googleVoice","#lucylabVoice","#ttsProvider","#ttsSpeed"]){
   $(id).addEventListener("change",()=>{syncVoiceFields();if(voicePreviewOn())stopVoicePreview()});
 }
+const refreshCreditsBtn=$("#refreshCreditsBtn");
+if(refreshCreditsBtn)refreshCreditsBtn.addEventListener("click",()=>fetchLucylabCredits(refreshCreditsBtn));
 
 $("#newBtn").onclick=()=>{location.href="/video-studio"};
 ensure().catch(error=>alert(error.message));
