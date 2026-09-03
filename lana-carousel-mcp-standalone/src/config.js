@@ -94,6 +94,7 @@ export const config = Object.freeze({
   apiRateLimitPerMinute: integerEnv("API_RATE_LIMIT_PER_MINUTE", 500),
   apiDailyMutationQuota: integerEnv("API_DAILY_MUTATION_QUOTA", 500),
   apiDailyHeavyQuota: integerEnv("API_DAILY_HEAVY_QUOTA", 60),
+  lucylabApiKey: String(process.env.LUCYLAB_API_KEY || "").trim(),
   projectAccessTokenTtlSeconds: integerEnv("PROJECT_ACCESS_TOKEN_TTL_SECONDS", 300),
   projectSessionTtlSeconds: integerEnv("PROJECT_SESSION_TTL_SECONDS", 3600),
   mcpMaxSessionsPerPrincipal: integerEnv("MCP_MAX_SESSIONS_PER_PRINCIPAL", 200),

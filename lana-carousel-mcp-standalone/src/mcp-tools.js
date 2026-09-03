@@ -42,7 +42,8 @@ const legacyDraftSegmentSchema=z.object({
 }).strict();
 const editableVideoSettingsSchema=z.object({
  ttsEnabled:z.boolean().optional(),
- ttsProvider:z.enum(["vertex","gemini","google"]).optional(),
+ ttsProvider:z.enum(["vertex","gemini","google","lucylab"]).optional(),
+ lucylabVoice:z.string().min(1).max(100).optional(),
  ttsVolume:z.number().min(0).max(1).optional(),
  ttsVoice:z.string().min(1).max(100).optional(),
  originalAudioVolume:z.number().min(0).max(1).optional(),

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import test from "node:test";
 import { chromium } from "playwright";
-import { GOOGLE_VOICES, VERTEX_VOICES } from "./video-tts.js";
+import { GOOGLE_VOICES, VERTEX_VOICES, LUCYLAB_VOICE_IDS } from "./video-tts.js";
 
 // Dùng thẳng trang thật thay vì dựng lại một bản rút gọn: studio gắn handler cho nhiều nút ngay
 // lúc nạp, nên một trang giả thiếu phần tử sẽ làm cả script chết mà test lại không thấy.
@@ -250,6 +250,7 @@ test("offers exactly the voices the server accepts for each provider", async () 
   await withPage(async page => {
     assert.deepEqual(await options(page, "#voice"), VERTEX_VOICES);
     assert.deepEqual(await options(page, "#googleVoice"), GOOGLE_VOICES);
+    assert.deepEqual(await options(page, "#lucylabVoice"), LUCYLAB_VOICE_IDS);
   });
 });
 
@@ -296,5 +297,25 @@ test("recalculates the budget as the segment or the reading speed changes", asyn
     // Đọc nhanh x2 thì cùng 1.8s hữu dụng chứa được 9 từ.
     await page.locator("#ttsSpeed").selectOption("2");
     assert.deepEqual((await budgets(page))[0], { text: "4/9 từ · vừa", status: "good" });
+  });
+});
+
+test("swaps to Lucylab AI and shows Lucylab voice picker", async () => {
+  await withPage(async page => {
+    await page.locator("#ttsProvider").selectOption("lucylab");
+    const state = await page.evaluate(() => ({
+      vertexShown: !document.querySelector("#voiceField").hidden,
+      googleShown: !document.querySelector("#googleVoiceField").hidden,
+      lucylabShown: !document.querySelector("#lucylabVoiceField").hidden,
+      lucylabDisabled: document.querySelector("#lucylabVoice").disabled,
+      note: document.querySelector("#voiceNote").textContent
+    }));
+    assert.deepEqual(state, {
+      vertexShown: false,
+      googleShown: false,
+      lucylabShown: true,
+      lucylabDisabled: false,
+      note: "Lucylab AI đọc bằng My Review (Nữ miền Nam)."
+    });
   });
 });

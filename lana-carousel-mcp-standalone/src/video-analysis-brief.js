@@ -18,7 +18,7 @@ export const VIDEO_TONE_STYLES = [
 export const VIDEO_TTS_SPEEDS = [0.8, 1, 1.2, 1.5, 1.8, 2];
 export const VIDEO_SCRIPT_OPTION_IDS = ["natural_full", "punchy_short"];
 export const VIDEO_EDITABLE_SETTING_KEYS = [
-  "ttsEnabled", "ttsProvider", "ttsSpeed", "ttsVolume", "ttsVoice",
+  "ttsEnabled", "ttsProvider", "ttsSpeed", "ttsVolume", "ttsVoice", "lucylabVoice",
   "originalAudioVolume", "subtitleEnabled", "subtitleFont", "subtitleSize",
   "subtitleColor", "subtitleBackgroundColor", "subtitleBackgroundOpacity",
   "subtitleX", "subtitlePosition", "subtitleStyle", "geminiSpeaker1Voice",

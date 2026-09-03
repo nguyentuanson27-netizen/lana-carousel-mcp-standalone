@@ -2,6 +2,7 @@ import textToSpeech from "@google-cloud/text-to-speech";
 import {GoogleAuth} from "google-auth-library";
 import fs from "node:fs";
 import {AppError} from "./errors.js";
+import {config} from "./config.js";
 const {TextToSpeechClient}=textToSpeech;
 
 const enabledSlides=project=>project.slides.filter(s=>(s.video||{}).enabled!==false);
@@ -204,6 +205,128 @@ async function generateGoogle(project,settings){
  return {dataUrl:`data:audio/mpeg;base64,${buffer.toString("base64")}`,durationSeconds:Math.max(1,words/2.7)};
 }
 
+
+export const LUCYLAB_VOICES = [
+ { id: "vcXEe1p3FxPfpswf3BhwbG", name: "My Review", label: "My Review (Nữ miền Nam)" },
+ { id: "orBfJ4Q68FyVbckjJgDvkj", name: "Thư Review", label: "Thư Review (Nữ miền Nam)" },
+ { id: "nqak8C85bsAG5mihyunRkj", name: "Chi Chi", label: "Chi Chi (Nữ miền Nam)" },
+ { id: "5r2MVjMfzwsSDzTpaLjbY9", name: "Adam 3", label: "Adam 3 (Nam miền Nam)" },
+ { id: "mhsL3CPLxmLYdSTKp3GANz", name: "Truyện Audio (tiết kiệm)", label: "Truyện Audio - tiết kiệm (Nữ miền Bắc)" },
+ { id: "uCMfUVPwStduZMyFC7iuQv", name: "Trinh Review", label: "Trinh Review (Nữ miền Nam)" },
+ { id: "shAfRJNufJUhQSgJUL8NST", name: "Hà Review", label: "Hà Review (Nữ miền Bắc)" },
+ { id: "wkKKgWq7ajLoSaVH38Y3gE", name: "Trinh Review (style 2)", label: "Trinh Review style 2 (Nữ miền Nam)" },
+ { id: "un7ZPTWAwwYAMNdpgMwHjf", name: "Adam 2", label: "Adam 2 (Nam miền Nam)" },
+ { id: "mhsL3CPLxmLYdSTKp3GANj", name: "Giọng Adam (monotone)", label: "Giọng Adam - monotone (Nam miền Bắc)" }
+];
+export const LUCYLAB_VOICE_IDS = LUCYLAB_VOICES.map(v => v.id);
+export const LUCYLAB_DEFAULT_VOICE = "vcXEe1p3FxPfpswf3BhwbG";
+export const isLucylabProvider = provider => ["lucylab", "lucylab-ai", "lucylab_ai"].includes(String(provider || "").toLowerCase());
+
+async function generateLucylab(project, settings = {}) {
+ const text = enabledSlides(project).map(slideText).filter(Boolean).join(". ");
+ if (!text) return emptyTrack();
+
+ const apiKey = String(process.env.LUCYLAB_API_KEY || config.lucylabApiKey || "").trim();
+ if (!apiKey) {
+  throw new AppError("TTS_NOT_CONFIGURED", "Máy chủ chưa cấu hình Lucylab API Key (thiếu LUCYLAB_API_KEY).", 503);
+ }
+
+ const voiceId = settings.lucylabVoice || settings.userVoiceId || settings.ttsVoice || LUCYLAB_DEFAULT_VOICE;
+ const speed = Math.max(0.5, Math.min(2, Number(settings.ttsSpeed || settings.speed || 1)));
+
+ let startRes;
+ try {
+  startRes = await fetch("https://api.lucylab.io/json-rpc", {
+   method: "POST",
+   headers: {
+    "Authorization": `Bearer ${apiKey}`,
+    "Content-Type": "application/json"
+   },
+   body: JSON.stringify({
+    method: "ttsLongText",
+    input: { text, userVoiceId: voiceId, speed }
+   })
+  });
+ } catch (err) {
+  throw new AppError("TTS_PROVIDER_FAILED", `Không kết nối được tới Lucylab: ${err.message}`, 502);
+ }
+
+ if (!startRes.ok) {
+  const errText = await startRes.text().catch(() => "");
+  throw new AppError("TTS_PROVIDER_FAILED", `Lucylab API trả về lỗi ${startRes.status}: ${errText.slice(0, 200)}`, 502);
+ }
+
+ const startData = await startRes.json().catch(() => ({}));
+ if (startData.error) {
+  throw new AppError("TTS_PROVIDER_FAILED", `Lucylab API lỗi: ${startData.error.message || JSON.stringify(startData.error)}`, 502);
+ }
+
+ const exportId = startData.result?.projectExportId;
+ if (!exportId) {
+  throw new AppError("TTS_PROVIDER_FAILED", "Lucylab API không trả về projectExportId.", 502);
+ }
+
+ let audioUrl = "";
+ const maxAttempts = 30;
+ for (let attempt = 0; attempt < maxAttempts; attempt++) {
+  await new Promise(r => setTimeout(r, 1500));
+  let statusRes;
+  try {
+   statusRes = await fetch("https://api.lucylab.io/json-rpc", {
+    method: "POST",
+    headers: {
+     "Authorization": `Bearer ${apiKey}`,
+     "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+     method: "getExportStatus",
+     input: { projectExportId: exportId }
+    })
+   });
+  } catch {
+   continue;
+  }
+
+  if (!statusRes.ok) continue;
+  const statusData = await statusRes.json().catch(() => ({}));
+  const result = statusData.result || {};
+  if (result.state === "completed" || result.url) {
+   audioUrl = result.url;
+   break;
+  }
+  if (result.state === "failed" || statusData.error) {
+   throw new AppError("TTS_PROVIDER_FAILED", `Lucylab xuất audio thất bại: ${result.error || statusData.error?.message || "Lỗi không xác định"}`, 502);
+  }
+ }
+
+ if (!audioUrl) {
+  throw new AppError("TTS_PROVIDER_FAILED", "Quá thời gian chờ Lucylab tạo audio (timeout 45s).", 504);
+ }
+
+ const audioRes = await fetch(audioUrl);
+ if (!audioRes.ok) {
+  throw new AppError("TTS_PROVIDER_FAILED", `Không tải được tệp âm thanh từ Lucylab: mã ${audioRes.status}`, 502);
+ }
+ const buffer = Buffer.from(await audioRes.arrayBuffer());
+
+ let durationSeconds = 0;
+ if (buffer.length > 44 && buffer.toString("ascii", 0, 4) === "RIFF") {
+  const byteRate = buffer.readUInt32LE(28);
+  if (byteRate > 0) {
+   durationSeconds = (buffer.length - 44) / byteRate;
+  }
+ }
+ if (!durationSeconds || !Number.isFinite(durationSeconds)) {
+  const words = text.trim().split(/\s+/u).length;
+  durationSeconds = Math.max(1, words / (2.5 * speed));
+ }
+
+ return {
+  dataUrl: `data:audio/wav;base64,${buffer.toString("base64")}`,
+  durationSeconds: Number(durationSeconds.toFixed(2))
+ };
+}
+
 export const GOOGLE_DEFAULT_VOICE="vi-VN-Neural2-D";
 export const isVertexProvider=provider=>["gemini","vertex"].includes(provider);
 
@@ -222,6 +345,7 @@ export const GOOGLE_VOICES=[
 // sach tren. Giong do van phai nghe thu duoc, neu khong studio se tu choi doc dung thu ma ban
 // render se doc.
 export function allowedSampleVoices(projectSettings={},provider){
+ if(isLucylabProvider(provider))return LUCYLAB_VOICE_IDS;
  if(isVertexProvider(provider))return VERTEX_VOICES;
  const persisted=projectSettings.ttsVoice;
  return persisted&&!GOOGLE_VOICES.includes(persisted)?[...GOOGLE_VOICES,persisted]:GOOGLE_VOICES;
@@ -232,26 +356,36 @@ export function allowedSampleVoices(projectSettings={},provider){
 // bat; ten cua he kia bi bo qua de roi ve dung giong cua render thay vi lam hong loi goi.
 export function voiceSampleSettings(projectSettings={},{ttsProvider,voice}={}){
  const base={...projectSettings,ttsProvider,geminiMultiSpeaker:false};
+ if(isLucylabProvider(ttsProvider)){
+  const picked=LUCYLAB_VOICE_IDS.includes(voice)?voice:LUCYLAB_DEFAULT_VOICE;
+  return{...base,ttsVoice:picked,lucylabVoice:picked};
+ }
  if(isVertexProvider(ttsProvider))return{...base,geminiSpeaker1Voice:voice};
  const picked=allowedSampleVoices(projectSettings,ttsProvider).includes(voice)?voice:"";
  return{...base,ttsVoice:picked||projectSettings.ttsVoice||GOOGLE_DEFAULT_VOICE};
 }
 
-export const sampledVoiceName=settings=>isVertexProvider(settings.ttsProvider)
- ?settings.geminiSpeaker1Voice
- :settings.ttsVoice;
+export const sampledVoiceName=settings=>{
+ if(isLucylabProvider(settings.ttsProvider)){
+  const id=settings.lucylabVoice||settings.ttsVoice;
+  const v=LUCYLAB_VOICES.find(item=>item.id===id);
+  return v?v.name:(id||"My Review");
+ }
+ return isVertexProvider(settings.ttsProvider)?settings.geminiSpeaker1Voice:settings.ttsVoice;
+};
 
 // Thieu credential, het quota, model khong ton tai — nha cung cap nem ra Error thuong, va
 // publicError goi tat ca thanh 500 "Loi he thong.". Nguoi bam "Nghe thu" vi the khong biet phai
 // sua gi. Danh dau lai thanh 502 kem nguyen van ly do, va job render cung ghi lai duoc cau do.
 export async function generateVideoTtsTrack(project,settings={}){
  try{
+  if(isLucylabProvider(settings.ttsProvider))return await generateLucylab(project,settings);
   return isVertexProvider(settings.ttsProvider)
    ?await generateVertex(project,settings)
    :await generateGoogle(project,settings);
  }catch(error){
   if(error instanceof AppError)throw error;
-  const provider=isVertexProvider(settings.ttsProvider)?"Vertex AI":"Google TTS";
+  const provider=isLucylabProvider(settings.ttsProvider)?"Lucylab AI":isVertexProvider(settings.ttsProvider)?"Vertex AI":"Google TTS";
   // Ghi nguyen ven de con dau vet; phia nguoi goi chi nhan cau mo ta cua thu vien, da cat ngan.
   // Nguyen van loi tu ben ngoai khong duoc ghi vao log: chinh cac fixture kiem ro ri cua bai test
   // da lam "BEGIN PRIVATE KEY" va "C:\\Users\\..." hien ra trong log CI qua dung dong nay. Bit duong

@@ -34,7 +34,8 @@ const settings=()=>({
   ttsProvider:$("#ttsProvider").value,
   ttsSpeed:+$("#ttsSpeed").value,
   geminiSpeaker1Voice:$("#voice").value,
-  ttsVoice:$("#googleVoice").value,
+  ttsVoice:$("#ttsProvider").value==="lucylab"?($("#lucylabVoice")?.value||"vcXEe1p3FxPfpswf3BhwbG"):$("#googleVoice").value,
+  lucylabVoice:$("#lucylabVoice")?.value||"vcXEe1p3FxPfpswf3BhwbG",
   originalAudioVolume:+$("#originalVolume").value,
   ttsVolume:+$("#ttsVolume").value,
   subtitleEnabled:$("#subtitleEnabled").checked,
@@ -97,21 +98,37 @@ function setControl(id,value,fallback){
 }
 
 const GOOGLE_DEFAULT_VOICE="vi-VN-Neural2-D";
+const LUCYLAB_DEFAULT_VOICE="vcXEe1p3FxPfpswf3BhwbG";
+const isLucylab=()=>$("#ttsProvider").value==="lucylab";
 const usingGoogleVoice=()=>$("#ttsProvider").value==="google";
-const pickedVoice=()=>usingGoogleVoice()?$("#googleVoice").value:$("#voice").value;
+const pickedVoice=()=>{
+  if(isLucylab())return $("#lucylabVoice").value;
+  return usingGoogleVoice()?$("#googleVoice").value:$("#voice").value;
+};
 
-// Hai nhà cung cấp đặt tên giọng theo hai hệ khác nhau và không đọc được tên của nhau. Chỉ hiện
-// bộ chọn của nhà cung cấp đang bật, để không ai chọn được "Google + Kore" rồi nghe ra một giọng
-// khác hẳn lúc nghe thử và lúc render.
 function syncVoiceFields(){
-  const google=usingGoogleVoice();
-  $("#voiceField").hidden=google;
-  $("#voice").disabled=google;
+  const provider=$("#ttsProvider").value;
+  const lucy=provider==="lucylab";
+  const google=provider==="google";
+  const vertex=!lucy&&!google;
+
+  $("#voiceField").hidden=!vertex;
+  $("#voice").disabled=!vertex;
   $("#googleVoiceField").hidden=!google;
   $("#googleVoice").disabled=!google;
-  $("#voiceNote").textContent=google
-    ?`Google TTS đọc bằng ${$("#googleVoice").value}. Giọng Vertex (Kore, Puck…) không dùng được ở đây.`
-    :`Vertex Gemini đọc bằng ${$("#voice").value}.`;
+  if($("#lucylabVoiceField")){
+    $("#lucylabVoiceField").hidden=!lucy;
+    $("#lucylabVoice").disabled=!lucy;
+  }
+
+  if(lucy){
+    const opt=$("#lucylabVoice").selectedOptions[0];
+    $("#voiceNote").textContent=`Lucylab AI đọc bằng ${opt?opt.textContent:$("#lucylabVoice").value}.`;
+  }else if(google){
+    $("#voiceNote").textContent=`Google TTS đọc bằng ${$("#googleVoice").value}. Giọng Vertex (Kore, Puck…) không dùng được ở đây.`;
+  }else{
+    $("#voiceNote").textContent=`Vertex Gemini đọc bằng ${$("#voice").value}.`;
+  }
 }
 
 // Brief do AI sinh có thể đã lưu một giọng ngoài danh sách. Giữ lại làm một lựa chọn để lần lưu
@@ -143,6 +160,7 @@ function fill(){
   setControl("ttsSpeed",saved.ttsSpeed,1);
   setControl("voice",saved.geminiSpeaker1Voice,"Kore");
   fillGoogleVoice(saved.ttsVoice);
+  setControl("lucylabVoice",saved.lucylabVoice||saved.ttsVoice,LUCYLAB_DEFAULT_VOICE);
   setControl("originalVolume",saved.originalAudioVolume,.25);
   setControl("ttsVolume",saved.ttsVolume,1);
   setControl("subtitleStyle",saved.subtitleStyle,"karaoke");
