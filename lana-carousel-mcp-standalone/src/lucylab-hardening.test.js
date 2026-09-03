@@ -90,7 +90,11 @@ test("does not expose raw Lucylab provider failures to callers", async () => {
 test("Lucylab JSON-RPC aborts a hung request at the configured timeout", async () => {
  const originalFetch = globalThis.fetch;
  globalThis.fetch = async (_url, options = {}) => new Promise((resolve, reject) => {
-  options.signal.addEventListener("abort", () => reject(options.signal.reason), { once: true });
+  const keepAlive = setTimeout(() => resolve({ ok: true, json: async () => ({ result: {} }) }), 1000);
+  options.signal.addEventListener("abort", () => {
+   clearTimeout(keepAlive);
+   reject(options.signal.reason);
+  }, { once: true });
  });
  try {
   const startedAt = Date.now();
