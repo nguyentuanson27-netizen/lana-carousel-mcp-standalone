@@ -127,7 +127,7 @@ test("keeps the project's reading style so the sample matches the render", () =>
 
 test("applies a Lucylab voice that the picker offers and samples its name", () => {
  const settings = voiceSampleSettings({}, { ttsProvider: "lucylab", voice: "vcXEe1p3FxPfpswf3BhwbG" });
- assert.equal(settings.ttsVoice, "vcXEe1p3FxPfpswf3BhwbG");
+ assert.equal(settings.ttsVoice, GOOGLE_DEFAULT_VOICE);
  assert.equal(settings.lucylabVoice, "vcXEe1p3FxPfpswf3BhwbG");
  assert.equal(sampledVoiceName(settings), "My Review");
 });
