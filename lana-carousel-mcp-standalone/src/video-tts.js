@@ -221,6 +221,13 @@ export const LUCYLAB_VOICES = [
 ];
 export const LUCYLAB_VOICE_IDS = LUCYLAB_VOICES.map(v => v.id);
 export const LUCYLAB_DEFAULT_VOICE = "vcXEe1p3FxPfpswf3BhwbG";
+
+// Lucylab does not document an account/credit JSON-RPC method. Keep the existing route contract
+// fail-closed instead of guessing a provider method or exposing account-wide data to project sessions.
+export async function getLucylabCredits() {
+ throw new AppError("TTS_CREDITS_UNAVAILABLE", "Lucylab chưa công bố API credit được hỗ trợ.", 501);
+}
+
 export const isLucylabProvider = provider => ["lucylab", "lucylab-ai", "lucylab_ai"].includes(String(provider || "").toLowerCase());
 
 export function resolveLucylabVoice(settings = {}) {
