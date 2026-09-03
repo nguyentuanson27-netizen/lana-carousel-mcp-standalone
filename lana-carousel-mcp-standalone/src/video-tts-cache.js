@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { config } from "./config.js";
 import { videoAnalysisAssetDir } from "./video-analysis-service.js";
 import { decodeAudioDataUrl, measureAudioDuration } from "./video-audio-file.js";
-import { generateSpeechForText, isLucylabProvider, resolveLucylabVoice } from "./video-tts.js";
+import { generateSpeechForText, isLucylabProvider, resolveGoogleVoice, resolveLucylabVoice } from "./video-tts.js";
 
 const AUDIO_EXTENSIONS = ["wav", "mp3", "ogg", "webm"];
 const CACHE_RETENTION_MS = 30 * 864e5;
@@ -24,7 +24,7 @@ export function ttsCacheKey({ text, settings = {} }) {
   }
   : provider === "lucylab"
    ? { provider, text: String(text || ""), voice: resolveLucylabVoice(settings) }
-   : { provider, text: String(text || ""), voice: settings.ttsVoice || "" };
+   : { provider, text: String(text || ""), voice: resolveGoogleVoice(settings) };
  return createHash("sha256").update(JSON.stringify(payload)).digest("hex").slice(0, 40);
 }
 
