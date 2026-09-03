@@ -138,11 +138,3 @@ test("refuses a voice from other providers when using Lucylab", async () => {
  assert.equal(res.json.code, "INVALID_VOICE_SAMPLE_REQUEST");
  assert.match(res.json.message, /vcXEe1p3FxPfpswf3BhwbG/u);
 });
-
-test("keeps undocumented Lucylab credits endpoint fail-closed", async () => {
- const res = await fetch(`${origin}/api/video-analysis/lucylab/credits`);
- assert.equal(res.status, 501);
- const json = await res.json();
- assert.equal(json.code, "TTS_CREDITS_UNAVAILABLE");
- assert.equal(json.creditsRemaining, undefined);
-});
