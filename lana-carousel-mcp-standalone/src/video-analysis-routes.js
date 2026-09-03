@@ -29,7 +29,7 @@ import {
 } from "./video-analysis-service.js";
 import {buildVoiceTracks,getVideoAnalysisFile,getVideoAnalysisJob,startVideoAnalysisJob} from "./video-analysis-jobs.js";
 import {synthesizeCachedSpeech} from "./video-tts-cache.js";
-import {allowedSampleVoices,sampledVoiceName,voiceSampleSettings} from "./video-tts.js";
+import {LUCYLAB_VOICE_IDS,allowedSampleVoices,sampledVoiceName,voiceSampleSettings} from "./video-tts.js";
 import {buildSubtitleFile} from "./video-subtitles.js";
 import {createSignedMediaUrl} from "./media-access.js";
 import {probeVideoDurationSeconds} from "./video-source-importer.js";
@@ -68,7 +68,7 @@ const preparedSegmentSchema=segmentSchema.extend({
 const editableVideoSettingsSchema=z.object({
  ttsEnabled:z.boolean().optional(),
  ttsProvider:z.enum(["vertex","gemini","google","lucylab"]).optional(),
- lucylabVoice:z.string().min(1).max(100).optional(),
+ lucylabVoice:z.enum(LUCYLAB_VOICE_IDS).optional(),
  ttsSpeed:ttsSpeedSchema.optional(),
  ttsVolume:z.number().min(0).max(1).optional(),
  ttsVoice:z.string().min(1).max(100).optional(),
