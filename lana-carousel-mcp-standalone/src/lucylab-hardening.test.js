@@ -147,6 +147,21 @@ test("safe remote-audio downloader rejects loopback export URLs before making a 
  );
 });
 
+test("every public settings boundary accepts only the curated Lucylab voice IDs", async () => {
+ const [routes, mcp, http] = await Promise.all([
+  fs.readFile(new URL("./video-analysis-routes.js", import.meta.url), "utf8"),
+  fs.readFile(new URL("./mcp-tools.js", import.meta.url), "utf8"),
+  fs.readFile(new URL("./http-server.js", import.meta.url), "utf8")
+ ]);
+ for (const [name, source] of [["video-analysis", routes], ["MCP", mcp], ["carousel API", http]]) {
+  assert.match(
+   source,
+   /lucylabVoice\s*:\s*z\.enum\(LUCYLAB_VOICE_IDS\)/u,
+   `${name} must reject unsupported Lucylab voice IDs instead of persisting a value the renderer will ignore`
+  );
+ }
+});
+
 test("Carousel Studio does not advertise Lucylab until it has a complete supported flow", async () => {
  const widget = await fs.readFile(new URL("../public/widget.js", import.meta.url), "utf8");
  assert.doesNotMatch(widget, /videoLucylabVoice|value="lucylab"/u);
