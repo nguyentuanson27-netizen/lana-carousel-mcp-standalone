@@ -6,18 +6,6 @@ const params = new URLSearchParams(location.search);
 const projectId = params.get("projectId");
 const $ = id => document.getElementById(id);
 const fonts = ["TikTok Sans", "Montserrat", "Poppins", "Bebas Neue", "Roboto", "Playfair Display", "Courier New"];
-const LUCYLAB_VOICES = [
-  ["vcXEe1p3FxPfpswf3BhwbG", "My Review (Nữ miền Nam)"],
-  ["orBfJ4Q68FyVbckjJgDvkj", "Thư Review (Nữ miền Nam)"],
-  ["nqak8C85bsAG5mihyunRkj", "Chi Chi (Nữ miền Nam)"],
-  ["5r2MVjMfzwsSDzTpaLjbY9", "Adam 3 (Nam miền Nam)"],
-  ["mhsL3CPLxmLYdSTKp3GANz", "Truyện Audio - tiết kiệm (Nữ miền Bắc)"],
-  ["uCMfUVPwStduZMyFC7iuQv", "Trinh Review (Nữ miền Nam)"],
-  ["shAfRJNufJUhQSgJUL8NST", "Hà Review (Nữ miền Bắc)"],
-  ["wkKKgWq7ajLoSaVH38Y3gE", "Trinh Review style 2 (Nữ miền Nam)"],
-  ["un7ZPTWAwwYAMNdpgMwHjf", "Adam 2 (Nam miền Nam)"],
-  ["mhsL3CPLxmLYdSTKp3GANj", "Giọng Adam - monotone (Nam miền Bắc)"]
-];
 // Bebas Neue, Poppins và Courier New thiếu glyph tiếng Việt dựng sẵn. Khai báo sẵn font dự phòng
 // để trình duyệt và bản render lấy glyph từ cùng một file — phải trùng FALLBACK_FAMILY trong src/fonts.js.
 let project, assets, view = "content", renderTimer;
@@ -57,12 +45,16 @@ function syncContentLayers(slide, headline, body) {
   data.layers = layers;
   return layers;
 }
+// Ô lưới đang được chỉnh. Thanh trượt crop và thao tác kéo tác động lên ô này;
+// slide chỉ có một ảnh thì luôn là ảnh đó.
 function activeCell(slide) {
   const ids = selectedIds(slide);
   const chosen = activeCells.get(slide.id);
   return ids.includes(chosen) ? chosen : ids[0] || null;
 }
+/** Đọc crop hiệu lực của ô đang chỉnh để đổ vào thanh trượt. */
 function activeCrop(slide, data) { return cropFor(data, activeCell(slide)); }
+/** Ghi một giá trị crop: slide nhiều ảnh thì ghi riêng cho ô, một ảnh thì ghi thẳng cấp slide. */
 function setCrop(slide, data, patch) {
   const ids = selectedIds(slide);
   if (ids.length <= 1) { Object.assign(data, patch); return; }
@@ -76,6 +68,7 @@ function markDesignDirty(slideId) {
   const editor = document.querySelector(`[data-editor="${slideId}"]`);
   if (editor) editor.dataset.designSaved = "false";
 }
+// Lịch sử hoàn tác được giữ trong sessionStorage nên không mất khi tải lại trang hay khi lưu thiết kế.
 const HISTORY_LIMIT = 30;
 const historyKey = slideId => `lana-history:${projectId}:${slideId}`;
 function loadHistory(slideId) {
@@ -88,9 +81,16 @@ function loadHistory(slideId) {
   return { history, redo };
 }
 function persistHistory(slideId) {
+  // Bộ nhớ phiên có hạn; hỏng thì bỏ qua chứ không chặn thao tác sửa.
   try { sessionStorage.setItem(historyKey(slideId), JSON.stringify({ history: histories.get(slideId) || [], redo: redos.get(slideId) || [] })); }
   catch { /* hết dung lượng thì chỉ giữ lịch sử trong bộ nhớ */ }
 }
+/**
+ * Ghi một ảnh chụp bản nháp vào lịch sử. Tách khỏi `remember()` để thao tác kéo có thể chụp
+ * trạng thái ngay khi bấm chuột nhưng chỉ ghi vào lịch sử lúc thả — `markDesignDirty()` đổi DOM,
+ * mà mọi thay đổi DOM giữa lúc kéo đều làm MutationObserver của stitch-ui.js chạy và cướp mất
+ * pointer capture, khiến thao tác kéo đứt sau vài pixel.
+ */
 function commitHistory(slideId, snapshot, markDirty = true) {
   const { history } = loadHistory(slideId);
   history.push(snapshot);
@@ -158,6 +158,7 @@ function applyDirectStyle(slideId, index, patch) {
   render();
 }
 function sectionIsOpen(slideId, section) { return sectionStates.get(`${slideId}:${section}`) === true; }
+/** Bối cảnh mà các bảng điều khiển cần; gom một chỗ để chữ ký hàm không phình ra. */
 function controlContext(slideId, data) {
   const slide = project.slides.find(item => item.id === slideId);
   return { fonts, sectionIsOpen, selectedIds, activeCell, slide, crop: activeCrop(slide, data) };
@@ -187,10 +188,6 @@ function videoPanelHtml(){
   const cfg=project.videoSettings||{},enabled=project.videoEnabled,voices=["Kore","Puck","Aoede","Charon","Fenrir","Laomedeia","Leda","Pulcherrima","Achernar","Orus","Zephyr","Gacrux","Sulafat","Umbriel"],animations=[["none","Không hiển thị"],["static","Tĩnh"],["block","Bật lên"],["by-line","Theo dòng"],["by-word","Theo từ"],["typewriter","Gõ chữ"]];
   const voiceOptions=value=>voices.map(v=>`<option value="${v}" ${value===v?"selected":""}>${v}</option>`).join("");
   const animationOptions=value=>animations.map(([v,label])=>`<option value="${v}" ${value===v?"selected":""}>${label}</option>`).join("");
-  const savedLucylabVoice=cfg.lucylabVoice||cfg.ttsVoice;
-  const lucylabVoice=LUCYLAB_VOICES.some(([id])=>id===savedLucylabVoice)?savedLucylabVoice:LUCYLAB_VOICES[0][0];
-  const lucylabVoiceOptions=LUCYLAB_VOICES.map(([id,label])=>`<option value="${id}" ${id===lucylabVoice?"selected":""}>${label}</option>`).join("");
-  const providerMeta=cfg.ttsProvider==="lucylab"?"Lucylab AI":["vertex","gemini"].includes(cfg.ttsProvider)?"Vertex AI":"Google";
   const assetMap=new Map(project.assets.map(a=>[a.id,a])),firstSlide=project.slides.find(s=>(s.video||{}).enabled!==false)||project.slides[0],firstAsset=firstSlide&&assetMap.get((firstSlide.selectedAssetIds||[])[0]||firstSlide.selectedAssetId);
   const slidePicker=project.slides.map(slide=>{const v=slide.video||{},asset=assetMap.get((slide.selectedAssetIds||[])[0]||slide.selectedAssetId);return `<label class="video-slide-pick" data-pick-slide="${slide.id}"><input type="checkbox" data-video-pick="${slide.id}" ${v.enabled!==false?"checked":""}>${asset?`<img src="${esc(asset.publicUrl)}">`:""}<span>Slide ${slide.position}<strong>${esc(slide.headline)}</strong></span></label>`}).join("");
   const sceneRows=project.slides.map((slide,index)=>{const v=slide.video||{},asset=assetMap.get((slide.selectedAssetIds||[])[0]||slide.selectedAssetId),layers=slide.textLayers||[];
@@ -199,7 +196,7 @@ function videoPanelHtml(){
   <main class="video-controls"><details class="editor-section" open><summary><strong>Cấu hình chung</strong><span class="section-meta">Remotion</span></summary><div class="section-body"><div class="card-head"><label class="toggle"><input id="videoEnabled" type="checkbox" ${enabled?"checked":""}> Bật video</label><label class="toggle"><input id="videoAutoTiming" type="checkbox" ${cfg.autoTiming!==false?"checked":""}> Căn cảnh theo TTS</label></div><div class="fields"><label class="field">Tỷ lệ<select id="videoAspect"><option value="vertical">9:16 TikTok/Reels</option><option value="square" ${cfg.aspectRatio==="square"?"selected":""}>1:1</option><option value="landscape" ${cfg.aspectRatio==="landscape"?"selected":""}>16:9</option></select></label><label class="field">Preset<select id="videoPreset"><option value="fashion">Fashion</option><option value="tiktok" ${cfg.preset==="tiktok"?"selected":""}>TikTok nhanh</option><option value="minimal" ${cfg.preset==="minimal"?"selected":""}>Tối giản</option><option value="editorial" ${cfg.preset==="editorial"?"selected":""}>Editorial</option></select></label><label class="field">Chuyển cảnh<select id="videoTransition"><option value="fade">Fade</option><option value="cut" ${cfg.transition==="cut"?"selected":""}>Cut</option><option value="slide" ${cfg.transition==="slide"?"selected":""}>Slide</option><option value="zoom" ${cfg.transition==="zoom"?"selected":""}>Zoom</option></select></label><label class="field">Animation mặc định<select id="videoTextAnimation">${animationOptions(cfg.textAnimation||"block")}</select></label><label class="field">Trễ giữa các lớp <strong id="videoLayerStaggerValue">${Number(cfg.layerStagger??.12).toFixed(2)}s</strong><input id="videoLayerStagger" type="range" min="0" max="1" step=".05" value="${cfg.layerStagger??.12}"></label><label class="toggle"><input id="videoSmartKenBurns" type="checkbox" ${cfg.smartKenBurns!==false?"checked":""}> Smart Ken Burns</label><label class="field">Cường độ Ken Burns <strong id="videoKenBurnsValue">${Math.round((cfg.kenBurnsIntensity??.14)*100)}%</strong><input id="videoKenBurns" type="range" min="4" max="35" value="${Math.round((cfg.kenBurnsIntensity??.14)*100)}"></label><label class="toggle"><input id="videoBeat" type="checkbox" ${cfg.beatSync?"checked":""}> Beat sync</label><label class="field">BPM<input id="videoBpm" type="number" min="40" max="240" value="${cfg.bpm||120}"></label></div></div></details>
   <details class="editor-section" open><summary><strong>Phụ đề động</strong><span class="section-meta">${cfg.subtitleStyle||"karaoke"}</span></summary><div class="section-body"><div class="fields"><label class="toggle"><input id="videoSubtitles" type="checkbox" ${cfg.subtitles?"checked":""}> Bật phụ đề</label><label class="toggle"><input id="videoShowSlideTitle" type="checkbox" ${cfg.showSlideTitle?"checked":""}> Hiện tiêu đề slide thay cho nội dung</label><label class="field">Kiểu<select id="videoSubtitleStyle"><option value="karaoke">Karaoke highlight</option><option value="word" ${cfg.subtitleStyle==="word"?"selected":""}>Từng từ</option><option value="pop" ${cfg.subtitleStyle==="pop"?"selected":""}>Hộp sáng</option><option value="static" ${cfg.subtitleStyle==="static"?"selected":""}>Tĩnh</option></select></label><label class="field">Font<select id="videoSubtitleFont">${fonts.map(font=>`<option ${font===(cfg.subtitleFont||"TikTok Sans")?"selected":""}>${font}</option>`).join("")}</select></label><label class="field">Màu chữ<input id="videoSubtitleColor" type="color" value="${cfg.subtitleColor||"#FFFFFF"}"></label><label class="field">Màu nền<input id="videoSubtitleBg" type="color" value="${cfg.subtitleBackgroundColor||"#000000"}"></label><label class="field">Cỡ chữ <strong id="videoSubtitleSizeValue">${cfg.subtitleSize||38}px</strong><input id="videoSubtitleSize" type="range" min="20" max="96" value="${cfg.subtitleSize||38}"></label><label class="field">Độ mờ nền <strong id="videoSubtitleOpacityValue">${Math.round((cfg.subtitleBackgroundOpacity??.72)*100)}%</strong><input id="videoSubtitleOpacity" type="range" min="0" max="100" value="${Math.round((cfg.subtitleBackgroundOpacity??.72)*100)}"></label><label class="field">Vị trí <strong id="videoSubtitlePositionValue">${cfg.subtitlePosition??88}%</strong><input id="videoSubtitlePosition" type="range" min="55" max="94" value="${cfg.subtitlePosition??88}"></label></div></div></details>
   <details class="editor-section" open><summary><strong>Chọn slide đưa vào video</strong><span class="section-meta">Theo mục 3 · Sửa ảnh</span></summary><div class="section-body"><div class="tools"><button id="selectAllVideoSlides" type="button" class="tool">Chọn tất cả</button><button id="clearAllVideoSlides" type="button" class="tool">Bỏ chọn</button></div><div class="video-slide-picker">${slidePicker}</div></div></details>
-  <details class="editor-section"><summary><strong>Giọng đọc và nhạc</strong><span class="section-meta">${providerMeta}</span></summary><div class="section-body"><div class="fields"><label class="field wide">Nhạc nền<input id="videoAudio" value="${esc(cfg.audioUrl||"")}" placeholder="URL trực tiếp MP3, M4A, WAV hoặc MP4"><small>Không dán link trang TikTok/YouTube. Có thể tải MP3 trực tiếp bên dưới.</small></label><label class="field wide video-audio-upload">Tải MP3 từ máy<input id="videoAudioFile" type="file" accept=".mp3,audio/mpeg"><span><button id="uploadVideoAudio" type="button" class="tool">Tải MP3 lên</button> <small id="videoAudioUploadStatus"></small></span></label><label class="field">Âm lượng nhạc <strong id="videoVolumeValue">${Math.round((cfg.audioVolume??.6)*100)}%</strong><input id="videoVolume" type="range" min="0" max="100" value="${Math.round((cfg.audioVolume??.6)*100)}"></label><label class="toggle"><input id="videoTts" type="checkbox" ${cfg.ttsEnabled?"checked":""}> Bật giọng đọc TTS</label><label class="field">Nhà cung cấp<select id="videoTtsProvider"><option value="google">Google TTS</option><option value="vertex" ${["vertex","gemini"].includes(cfg.ttsProvider)?"selected":""}>Vertex AI Gemini TTS</option><option value="lucylab" ${cfg.ttsProvider==="lucylab"?"selected":""}>Lucylab AI</option></select></label><label id="videoLucylabVoiceField" class="field" ${cfg.ttsProvider==="lucylab"?"":"hidden"}>Giọng Lucylab<select id="videoLucylabVoice">${lucylabVoiceOptions}</select></label><label class="field">Tốc độ <strong id="videoTtsSpeedValue">${Number(cfg.ttsSpeed||1).toFixed(2)}x</strong><input id="videoTtsSpeed" type="range" min=".5" max="2" step=".05" value="${cfg.ttsSpeed||1}"></label><label class="field">Âm lượng giọng <strong id="videoTtsVolumeValue">${Math.round((cfg.ttsVolume??1)*100)}%</strong><input id="videoTtsVolume" type="range" min="0" max="100" value="${Math.round((cfg.ttsVolume??1)*100)}"></label><label class="field">Model<select id="geminiModel"><option value="gemini-2.5-flash-tts">Gemini 2.5 Flash TTS</option><option value="gemini-2.5-pro-tts" ${cfg.geminiModel==="gemini-2.5-pro-tts"?"selected":""}>Gemini 2.5 Pro TTS</option><option value="gemini-3.1-flash-tts-preview" ${cfg.geminiModel==="gemini-3.1-flash-tts-preview"?"selected":""}>Gemini 3.1 Flash TTS</option></select></label><label class="toggle"><input id="geminiMultiSpeaker" type="checkbox" ${cfg.geminiMultiSpeaker?"checked":""}> Hai giọng</label><label class="field">Nhân vật 1<input id="geminiSpeaker1Name" value="${esc(cfg.geminiSpeaker1Name||"Người dẫn")}"></label><label class="field">Giọng 1<select id="geminiSpeaker1Voice">${voiceOptions(cfg.geminiSpeaker1Voice||"Kore")}</select></label><label class="field">Nhân vật 2<input id="geminiSpeaker2Name" value="${esc(cfg.geminiSpeaker2Name||"Khách mời")}"></label><label class="field">Giọng 2<select id="geminiSpeaker2Voice">${voiceOptions(cfg.geminiSpeaker2Voice||"Puck")}</select></label><label class="field wide">Phong cách giọng<textarea id="geminiStylePrompt">${esc(cfg.geminiStylePrompt||"")}</textarea></label></div></div></details>
+  <details class="editor-section"><summary><strong>Giọng đọc và nhạc</strong><span class="section-meta">${cfg.ttsProvider==="vertex"?"Vertex AI":"Google"}</span></summary><div class="section-body"><div class="fields"><label class="field wide">Nhạc nền<input id="videoAudio" value="${esc(cfg.audioUrl||"")}" placeholder="URL trực tiếp MP3, M4A, WAV hoặc MP4"><small>Không dán link trang TikTok/YouTube. Có thể tải MP3 trực tiếp bên dưới.</small></label><label class="field wide video-audio-upload">Tải MP3 từ máy<input id="videoAudioFile" type="file" accept=".mp3,audio/mpeg"><span><button id="uploadVideoAudio" type="button" class="tool">Tải MP3 lên</button> <small id="videoAudioUploadStatus"></small></span></label><label class="field">Âm lượng nhạc <strong id="videoVolumeValue">${Math.round((cfg.audioVolume??.6)*100)}%</strong><input id="videoVolume" type="range" min="0" max="100" value="${Math.round((cfg.audioVolume??.6)*100)}"></label><label class="toggle"><input id="videoTts" type="checkbox" ${cfg.ttsEnabled?"checked":""}> Bật giọng đọc TTS</label><label class="field">Nhà cung cấp<select id="videoTtsProvider"><option value="google">Google TTS</option><option value="vertex" ${["vertex","gemini"].includes(cfg.ttsProvider)?"selected":""}>Vertex AI Gemini TTS</option></select></label><label class="field">Tốc độ <strong id="videoTtsSpeedValue">${Number(cfg.ttsSpeed||1).toFixed(2)}x</strong><input id="videoTtsSpeed" type="range" min=".5" max="2" step=".05" value="${cfg.ttsSpeed||1}"></label><label class="field">Âm lượng giọng <strong id="videoTtsVolumeValue">${Math.round((cfg.ttsVolume??1)*100)}%</strong><input id="videoTtsVolume" type="range" min="0" max="100" value="${Math.round((cfg.ttsVolume??1)*100)}"></label><label class="field">Model<select id="geminiModel"><option value="gemini-2.5-flash-tts">Gemini 2.5 Flash TTS</option><option value="gemini-2.5-pro-tts" ${cfg.geminiModel==="gemini-2.5-pro-tts"?"selected":""}>Gemini 2.5 Pro TTS</option><option value="gemini-3.1-flash-tts-preview" ${cfg.geminiModel==="gemini-3.1-flash-tts-preview"?"selected":""}>Gemini 3.1 Flash TTS</option></select></label><label class="toggle"><input id="geminiMultiSpeaker" type="checkbox" ${cfg.geminiMultiSpeaker?"checked":""}> Hai giọng</label><label class="field">Nhân vật 1<input id="geminiSpeaker1Name" value="${esc(cfg.geminiSpeaker1Name||"Người dẫn")}"></label><label class="field">Giọng 1<select id="geminiSpeaker1Voice">${voiceOptions(cfg.geminiSpeaker1Voice||"Kore")}</select></label><label class="field">Nhân vật 2<input id="geminiSpeaker2Name" value="${esc(cfg.geminiSpeaker2Name||"Khách mời")}"></label><label class="field">Giọng 2<select id="geminiSpeaker2Voice">${voiceOptions(cfg.geminiSpeaker2Voice||"Puck")}</select></label><label class="field wide">Phong cách giọng<textarea id="geminiStylePrompt">${esc(cfg.geminiStylePrompt||"")}</textarea></label></div></div></details>
   <details class="editor-section timeline-section" open><summary><strong>Timeline chỉnh sửa</strong><span class="section-meta">Kéo để sắp xếp</span></summary><div class="section-body"><div class="timeline-ruler"><span>0s</span><span>Cảnh và lớp chữ</span><span id="timelineTotal"></span></div><div class="video-timeline" id="videoTimeline">${sceneRows}</div></div></details><button id="saveVideo" class="action">Lưu thiết kế video</button></main></div>`;
 }
 
@@ -219,6 +216,8 @@ function render() {
   if(view==="video"){updateTimelineTotal();const firstVideoRow=document.querySelector(".timeline-scene");if(firstVideoRow)showVideoScene(firstVideoRow);}
 }
 
+// Payload thiết kế của một slide. Nút "Lưu thiết kế" và nút "Xem ảnh thật" dùng chung hàm này
+// để ảnh render thử luôn phản ánh đúng thứ sắp được lưu.
 function designPayload(slide, data) {
   const primary = data.layers[0] || defaultLayer(slide);
   return {
@@ -347,6 +346,7 @@ $("edit").onclick = async event => {
       if (!history.length) return;
       redo.push(JSON.stringify(data)); redos.set(slideId, redo);
       drafts.set(slideId, JSON.parse(history.pop()));
+      // Hoàn tác đưa thiết kế về trạng thái khác bản đã lưu, nên phải đánh dấu là chưa lưu.
       markDesignDirty(slideId); persistHistory(slideId); render(); return;
     }
     if (event.target.closest(".redo")) {
@@ -412,11 +412,13 @@ $("edit").onclick = async event => {
         method:"PATCH", headers:{"Content-Type":"application/json"},
         body:JSON.stringify(designPayload(slide, data))
       });
+      // Giữ lịch sử để vẫn hoàn tác được sau khi lưu; chỉ bỏ bản nháp để đọc lại từ dữ liệu vừa lưu.
       designDirty.delete(slideId); drafts.delete(slideId); render();
     }
   } catch(error){alert(error.message);}
 };
 
+// Đồng bộ thanh trượt với thao tác kéo/lăn chuột trên khung xem trước mà không phải render lại cả trang.
 function syncImageControls(slideId) {
   const editor = document.querySelector(`[data-editor="${slideId}"]`), data = drafts.get(slideId);
   const slide = project.slides.find(item => item.id === slideId);
@@ -430,6 +432,12 @@ function syncImageControls(slideId) {
   }
 }
 
+/**
+ * Cập nhật số hiển thị mà không thay cấu trúc DOM.
+ * `textContent` thay hẳn nút văn bản nên là một thay đổi `childList`, đủ để đánh thức
+ * MutationObserver của stitch-ui.js; observer chạy giữa lúc kéo sẽ cướp mất pointer capture.
+ * Sửa thẳng `nodeValue` chỉ là thay đổi `characterData` nên không bị theo dõi.
+ */
 function setReadout(element, text) {
   if (element.firstChild?.nodeType === Node.TEXT_NODE && element.childNodes.length === 1) element.firstChild.nodeValue = text;
   else element.textContent = text;
@@ -441,6 +449,7 @@ function bindCanvasPan() {
     const surface = canvas.querySelector("[data-canvas-bg]"), slideId = canvas.dataset.canvas, data = drafts.get(slideId);
     const slide = project.slides.find(item => item.id === slideId);
     if (!surface || !data || !slide) return;
+    // Chỉ vẽ lại ô đang chỉnh, các ô khác giữ nguyên.
     const applyZoom = () => {
       const crop = activeCrop(slide, data), id = activeCell(slide);
       const cell = surface.querySelector(`[data-cell="${CSS.escape(id)}"] .canvas-zoom`);
@@ -450,21 +459,32 @@ function bindCanvasPan() {
     };
     surface.onpointerdown = event => {
       if (event.target.closest(".layer")) return;
+      // Ảnh mặc định kéo–thả được: nếu không chặn, trình duyệt khởi động thao tác kéo ảnh gốc và
+      // bắn pointercancel ngay sau pixel đầu tiên, làm chết thao tác đổi trọng tâm.
       event.preventDefault();
+      // Kéo trên một ô khác thì chuyển sang chỉnh ô đó.
       const cellId = event.target.closest("[data-cell]")?.dataset.cell;
       if (cellId && cellId !== activeCell(slide)) { activeCells.set(slideId, cellId); render(); return; }
+      // Chuẩn hoá theo ô đang chỉnh chứ không phải cả canvas: trong lưới, ảnh nằm gọn trong một ô
+      // nên dùng kích thước canvas sẽ làm thao tác kéo chậm đi đúng bằng số cột/số hàng.
       const activeId = activeCell(slide);
       const cellElement = surface.querySelector(`[data-cell="${CSS.escape(activeId)}"]`) || surface;
       const rect = cellElement.getBoundingClientRect(), startX = event.clientX, startY = event.clientY;
       const origin = activeCrop(slide, data);
+      // Chụp trạng thái ngay bây giờ; chỉ ghi vào lịch sử khi thả chuột để không đụng DOM giữa chừng.
       const snapshot = JSON.stringify(data);
       let moved = false;
       surface.setPointerCapture(event.pointerId);
+      // Đổi con trỏ bằng style chứ không bằng class: `class` nằm trong attributeFilter của
+      // MutationObserver trong stitch-ui.js, đổi nó giữa lúc kéo sẽ làm mất pointer capture.
       surface.style.cursor = "grabbing";
       surface.onpointermove = move => {
         const dx = move.clientX - startX, dy = move.clientY - startY;
         if (!moved && Math.hypot(dx, dy) < 4) return;
         moved = true;
+        // Luôn tính từ trọng tâm lúc bấm chuột, nhưng so với giá trị **đang áp dụng** để biết có
+        // cần ghi hay không: so với `origin` thì khi kéo đi rồi kéo về đúng chỗ cũ, phép so sẽ
+        // thấy "không đổi" và bỏ qua, khiến bản nháp kẹt ở vị trí trung gian cuối cùng.
         const live = activeCrop(slide, data);
         const next = panCrop({ ...origin, cropZoom: live.cropZoom }, dx, dy, rect.width, rect.height);
         if (next.cropX === live.cropX && next.cropY === live.cropY) return;
@@ -480,6 +500,8 @@ function bindCanvasPan() {
       surface.onpointerup = finish; surface.onpointercancel = finish;
     };
     surface.onwheel = event => {
+      // Chỉ thu phóng khi giữ Ctrl/Cmd (cũng là tín hiệu của thao tác chụm hai ngón trên trackpad),
+      // để lăn chuột thường vẫn cuộn trang như bình thường.
       if (!event.ctrlKey && !event.metaKey) return;
       event.preventDefault();
       const current = activeCrop(slide, data).cropZoom;
@@ -494,6 +516,8 @@ function bindCanvasPan() {
   });
 }
 
+// Gọi renderer thật của server với đúng thiết kế đang sửa rồi hiện ảnh chồng lên khung xem trước.
+// Đây là cách chắc chắn nhất để thấy ảnh sắp tải về, và cũng để lộ ngay nếu preview lệch bản render.
 async function showProof(slide, data, editor) {
   const status = editor.querySelector(`[data-proof-status="${slide.id}"]`);
   const button = editor.querySelector(".show-proof");
@@ -509,6 +533,7 @@ async function showProof(slide, data, editor) {
     editor.querySelector(".proof-overlay")?.remove();
     const canvas = editor.querySelector(".canvas");
     canvas.insertAdjacentHTML("afterend", `<div class="proof-overlay"><img src="${url}" alt="Ảnh render thật"><div class="proof-actions"><span>Ảnh render thật · 1080×1920</span><button type="button" class="tool close-proof">Đóng</button></div></div>`);
+    // Ảnh đã nằm trong DOM nên thu hồi được URL tạm.
     editor.querySelector(".proof-overlay img").onload = () => URL.revokeObjectURL(url);
     if (status) status.textContent = "";
   } catch (error) {
@@ -538,11 +563,7 @@ document.addEventListener("selectionchange", () => {
 });
 (async()=>{try{if(!projectId)throw Error("Thiếu projectId");project=await json(`/api/projects/${projectId}`);$("loading").classList.add("hidden");$("app").classList.remove("hidden");render();}catch(error){$("loading").textContent=error.message;}})();
 
-function videoSettingsFromDom(){
-  const provider=$("videoTtsProvider").value;
-  const lucylabVoice=$("videoLucylabVoice").value;
-  return {aspectRatio:$("videoAspect").value,fps:30,defaultSceneDuration:3,transition:$("videoTransition").value,motion:"zoom-in",textAnimation:$("videoTextAnimation").value,audioUrl:$("videoAudio").value,audioVolume:Number($("videoVolume").value)/100,subtitles:$("videoSubtitles").checked,subtitleStyle:$("videoSubtitleStyle").value,subtitlePosition:Number($("videoSubtitlePosition").value),subtitleFont:$("videoSubtitleFont").value,subtitleColor:$("videoSubtitleColor").value,subtitleBackgroundColor:$("videoSubtitleBg").value,subtitleBackgroundOpacity:Number($("videoSubtitleOpacity").value)/100,subtitleSize:Number($("videoSubtitleSize").value),showSlideTitle:$("videoShowSlideTitle").checked,beatSync:$("videoBeat").checked,bpm:Number($("videoBpm").value),ttsEnabled:$("videoTts").checked,ttsProvider:provider,ttsVoice:provider==="lucylab"?lucylabVoice:"vi-VN-Neural2-D",lucylabVoice:$("videoLucylabVoice").value,ttsSpeed:Number($("videoTtsSpeed").value),ttsVolume:Number($("videoTtsVolume").value)/100,geminiModel:$("geminiModel").value,geminiMultiSpeaker:$("geminiMultiSpeaker").checked,geminiSpeaker1Name:$("geminiSpeaker1Name").value||"Nguoi dan",geminiSpeaker1Voice:$("geminiSpeaker1Voice").value,geminiSpeaker2Name:$("geminiSpeaker2Name").value||"Khach moi",geminiSpeaker2Voice:$("geminiSpeaker2Voice").value,geminiStylePrompt:$("geminiStylePrompt").value,autoTiming:$("videoAutoTiming").checked,smartKenBurns:$("videoSmartKenBurns").checked,kenBurnsIntensity:Number($("videoKenBurns").value)/100,layerStagger:Number($("videoLayerStagger").value),preset:$("videoPreset").value};
-}
+function videoSettingsFromDom(){return {aspectRatio:$("videoAspect").value,fps:30,defaultSceneDuration:3,transition:$("videoTransition").value,motion:"zoom-in",textAnimation:$("videoTextAnimation").value,audioUrl:$("videoAudio").value,audioVolume:Number($("videoVolume").value)/100,subtitles:$("videoSubtitles").checked,subtitleStyle:$("videoSubtitleStyle").value,subtitlePosition:Number($("videoSubtitlePosition").value),subtitleFont:$("videoSubtitleFont").value,subtitleColor:$("videoSubtitleColor").value,subtitleBackgroundColor:$("videoSubtitleBg").value,subtitleBackgroundOpacity:Number($("videoSubtitleOpacity").value)/100,subtitleSize:Number($("videoSubtitleSize").value),showSlideTitle:$("videoShowSlideTitle").checked,beatSync:$("videoBeat").checked,bpm:Number($("videoBpm").value),ttsEnabled:$("videoTts").checked,ttsProvider:$("videoTtsProvider").value,ttsVoice:"vi-VN-Neural2-D",ttsSpeed:Number($("videoTtsSpeed").value),ttsVolume:Number($("videoTtsVolume").value)/100,geminiModel:$("geminiModel").value,geminiMultiSpeaker:$("geminiMultiSpeaker").checked,geminiSpeaker1Name:$("geminiSpeaker1Name").value||"Nguoi dan",geminiSpeaker1Voice:$("geminiSpeaker1Voice").value,geminiSpeaker2Name:$("geminiSpeaker2Name").value||"Khach moi",geminiSpeaker2Voice:$("geminiSpeaker2Voice").value,geminiStylePrompt:$("geminiStylePrompt").value,autoTiming:$("videoAutoTiming").checked,smartKenBurns:$("videoSmartKenBurns").checked,kenBurnsIntensity:Number($("videoKenBurns").value)/100,layerStagger:Number($("videoLayerStagger").value),preset:$("videoPreset").value};}
 function sceneSettingsFromRow(row){const get=n=>row.querySelector(`[data-v="${n}"]`),layerAnimations={};row.querySelectorAll("[data-layer-animation]").forEach(input=>layerAnimations[input.dataset.layerAnimation]=input.value);return {enabled:get("enabled").checked,order:Number(get("order").value),duration:Number(get("duration").value),motion:get("motion").value,speaker:get("speaker").value,focusX:Number(get("focusX").value),focusY:Number(get("focusY").value),kenBurnsIntensity:Number($("videoKenBurns").value)/100,subtitleStyle:$("videoSubtitleStyle").value,subtitlePosition:Number($("videoSubtitlePosition").value),subtitleFont:$("videoSubtitleFont").value,subtitleColor:$("videoSubtitleColor").value,subtitleBackgroundColor:$("videoSubtitleBg").value,subtitleBackgroundOpacity:Number($("videoSubtitleOpacity").value)/100,subtitleSize:Number($("videoSubtitleSize").value),showSlideTitle:$("videoShowSlideTitle").checked,layerAnimations};}
 async function saveVideoProjectFromDom(){project=await json(`/api/projects/${projectId}/video`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:$("videoEnabled").checked,settings:videoSettingsFromDom()})});}
 async function saveVideoSceneRow(row){project=await json(`/api/projects/${projectId}/slides/${row.dataset.videoSlide}/video`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(sceneSettingsFromRow(row))});}
@@ -553,7 +574,7 @@ function scheduleVideoAutosave(){clearTimeout(videoAutosaveTimer);updateTimeline
 function updateSubtitlePreview(slide){const caption=$("videoStillCaption");if(!caption)return;const text=$("videoShowSlideTitle")?.checked?slide?.headline:(slide?.video?.caption??slide?.body??"");caption.textContent=text||"";caption.style.display=$("videoSubtitles")?.checked&&text?"block":"none";caption.style.fontFamily=$("videoSubtitleFont")?.value||"TikTok Sans";caption.style.color=$("videoSubtitleColor")?.value||"#FFFFFF";caption.style.fontSize=((Number($("videoSubtitleSize")?.value||38)/38)*16)+"px";caption.style.background=rgba($("videoSubtitleBg")?.value||"#000000",Number($("videoSubtitleOpacity")?.value||72)/100);caption.style.bottom=(100-Number($("videoSubtitlePosition")?.value||88))+"%";}
 function showVideoScene(row){if(!row)return;document.querySelectorAll(".timeline-scene").forEach(x=>x.classList.toggle("active",x===row));const slide=project.slides.find(x=>x.id===row.dataset.videoSlide);if($("videoStillPreview"))$("videoStillPreview").src=row.dataset.previewImage||"";if($("videoPreviewTitle"))$("videoPreviewTitle").textContent=slide?.headline||"";updateSubtitlePreview(slide);}
 $("video").oninput=event=>{if(event.target.id==="videoVolume")$("videoVolumeValue").textContent=event.target.value+"%";if(event.target.id==="videoTtsSpeed")$("videoTtsSpeedValue").textContent=Number(event.target.value).toFixed(2)+"x";if(event.target.id==="videoTtsVolume")$("videoTtsVolumeValue").textContent=event.target.value+"%";if(event.target.id==="videoLayerStagger")$("videoLayerStaggerValue").textContent=Number(event.target.value).toFixed(2)+"s";if(event.target.id==="videoKenBurns")$("videoKenBurnsValue").textContent=event.target.value+"%";if(event.target.id==="videoSubtitlePosition")$("videoSubtitlePositionValue").textContent=event.target.value+"%";if(event.target.id==="videoSubtitleSize")$("videoSubtitleSizeValue").textContent=event.target.value+"px";if(event.target.id==="videoSubtitleOpacity")$("videoSubtitleOpacityValue").textContent=event.target.value+"%";const row=event.target.closest("[data-video-slide]")||document.querySelector(".timeline-scene.active")||document.querySelector(".timeline-scene");if(row)showVideoScene(row);scheduleVideoAutosave();};
-$("video").onchange=event=>{if(event.target.id==="videoTtsProvider"&&$("videoLucylabVoiceField"))$("videoLucylabVoiceField").hidden=event.target.value!=="lucylab";const pick=event.target.closest("[data-video-pick]");if(pick){const row=document.querySelector(`[data-video-slide="${pick.dataset.videoPick}"]`);if(row){row.querySelector('[data-v="enabled"]').checked=pick.checked;showVideoScene(row);}}const enabled=event.target.closest('[data-v="enabled"]');if(enabled){const row=enabled.closest("[data-video-slide]"),pickInput=document.querySelector(`[data-video-pick="${row.dataset.videoSlide}"]`);if(pickInput)pickInput.checked=enabled.checked;}scheduleVideoAutosave();};
+$("video").onchange=event=>{const pick=event.target.closest("[data-video-pick]");if(pick){const row=document.querySelector(`[data-video-slide="${pick.dataset.videoPick}"]`);if(row){row.querySelector('[data-v="enabled"]').checked=pick.checked;showVideoScene(row);}}const enabled=event.target.closest('[data-v="enabled"]');if(enabled){const row=enabled.closest("[data-video-slide]"),pickInput=document.querySelector(`[data-video-pick="${row.dataset.videoSlide}"]`);if(pickInput)pickInput.checked=enabled.checked;}scheduleVideoAutosave();};
 $("video").ondragstart=event=>{draggedVideoScene=event.target.closest("[data-video-slide]");if(draggedVideoScene)draggedVideoScene.classList.add("dragging");};
 $("video").ondragover=event=>{const row=event.target.closest("[data-video-slide]");if(row&&draggedVideoScene&&row!==draggedVideoScene){event.preventDefault();const rect=row.getBoundingClientRect();row.parentNode.insertBefore(draggedVideoScene,event.clientY<rect.top+rect.height/2?row:row.nextSibling);updateTimelineTotal();}};
 $("video").ondragend=()=>{draggedVideoScene?.classList.remove("dragging");draggedVideoScene=null;scheduleVideoAutosave();};
