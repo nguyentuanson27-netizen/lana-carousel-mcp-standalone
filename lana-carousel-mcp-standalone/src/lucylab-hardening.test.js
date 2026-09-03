@@ -120,19 +120,15 @@ test("Carousel Studio does not advertise Lucylab until it has a complete support
  assert.doesNotMatch(widget, /videoLucylabVoice|value="lucylab"/u);
 });
 
-test("undocumented Lucylab credit lookup stays fail-closed and never calls the provider", async () => {
- const originalFetch = globalThis.fetch;
- let called = false;
- globalThis.fetch = async () => { called = true; throw new Error("should not be called"); };
- try {
-  await assert.rejects(
-   tts.getLucylabCredits(),
-   error => error?.code === "TTS_CREDITS_UNAVAILABLE" && error?.status === 501
-  );
-  assert.equal(called, false);
-  const videoTts = await fs.readFile(new URL("./video-tts.js", import.meta.url), "utf8");
-  assert.doesNotMatch(videoTts, /getUserInfo/u);
- } finally {
-  globalThis.fetch = originalFetch;
- }
+test("unsupported Lucylab credits surface is absent from routes and UI", async () => {
+ const [html, studio, routes, videoTts] = await Promise.all([
+  fs.readFile(new URL("../public/video-studio.html", import.meta.url), "utf8"),
+  fs.readFile(new URL("../public/video-studio.js", import.meta.url), "utf8"),
+  fs.readFile(new URL("./video-analysis-routes.js", import.meta.url), "utf8"),
+  fs.readFile(new URL("./video-tts.js", import.meta.url), "utf8")
+ ]);
+ assert.doesNotMatch(html, /lucylabCredit|refreshCreditsBtn|ViVibe/u);
+ assert.doesNotMatch(studio, /fetchLucylabCredits|lucylab-credits|refreshCreditsBtn/u);
+ assert.doesNotMatch(routes, /lucylab-credits|getLucylabCredits/u);
+ assert.doesNotMatch(videoTts, /getUserInfo/u);
 });
