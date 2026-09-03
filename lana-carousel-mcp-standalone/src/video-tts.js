@@ -4,7 +4,7 @@ import fs from "node:fs";
 import {AppError} from "./errors.js";
 import {config} from "./config.js";
 import {downloadRemoteAudioBuffer} from "./remote-media.js";
-import {lucylabJsonRpc} from "./lucylab-client.js";
+import {lucylabJsonRpc,waitForLucylabExport} from "./lucylab-client.js";
 const {TextToSpeechClient}=textToSpeech;
 
 const enabledSlides=project=>project.slides.filter(s=>(s.video||{}).enabled!==false);
@@ -196,7 +196,7 @@ async function generateGoogle(project,settings){
   const fileProblem=credentialFileProblem();
   if(fileProblem)throw new AppError("TTS_NOT_CONFIGURED",`Máy chủ chưa cấu hình Google TTS (${fileProblem}). Xem log máy chủ để biết chi tiết.`,503);
   const client=new TextToSpeechClient();
-  const [response]=await client.synthesizeSpeech({input:{text},voice:{languageCode:"vi-VN",name:settings.ttsVoice||GOOGLE_DEFAULT_VOICE},audioConfig:{audioEncoding:"MP3",speakingRate:1}});
+  const [response]=await client.synthesizeSpeech({input:{text},voice:{languageCode:"vi-VN",name:resolveGoogleVoice(settings)},audioConfig:{audioEncoding:"MP3",speakingRate:1}});
   buffer=typeof response.audioContent==="string"?Buffer.from(response.audioContent,"base64"):Buffer.from(response.audioContent);
  }else{
   const chunks=text.match(/.{1,180}(?:\s|$)/gu)||[text],parts=[];
@@ -222,12 +222,6 @@ export const LUCYLAB_VOICES = [
 export const LUCYLAB_VOICE_IDS = LUCYLAB_VOICES.map(v => v.id);
 export const LUCYLAB_DEFAULT_VOICE = "vcXEe1p3FxPfpswf3BhwbG";
 
-// Lucylab does not document an account/credit JSON-RPC method. Keep the existing route contract
-// fail-closed instead of guessing a provider method or exposing account-wide data to project sessions.
-export async function getLucylabCredits() {
- throw new AppError("TTS_CREDITS_UNAVAILABLE", "Lucylab chưa công bố API credit được hỗ trợ.", 501);
-}
-
 export const isLucylabProvider = provider => ["lucylab", "lucylab-ai", "lucylab_ai"].includes(String(provider || "").toLowerCase());
 
 export function resolveLucylabVoice(settings = {}) {
@@ -250,18 +244,7 @@ async function generateLucylab(project, settings = {}) {
  const started = await lucylabJsonRpc({ apiKey, method: "ttsLongText", input: lucylabSynthesisInput(text, settings) });
  const exportId = started?.projectExportId;
  if (!exportId) throw new AppError("TTS_PROVIDER_FAILED", "Lucylab AI tạm thời không đọc được. Vui lòng thử lại.", 502);
-
- let audioUrl = "";
- for (let attempt = 0; attempt < 30; attempt++) {
-  if (attempt > 0) await new Promise(resolve => setTimeout(resolve, 2000));
-  const result = await lucylabJsonRpc({ apiKey, method: "getExportStatus", input: { projectExportId: exportId } });
-  if (result?.state === "failed") throw new AppError("TTS_PROVIDER_FAILED", "Lucylab AI tạo audio thất bại. Vui lòng thử lại.", 502);
-  if (result?.state === "completed" && result.url) {
-   audioUrl = result.url;
-   break;
-  }
- }
- if (!audioUrl) throw new AppError("TTS_PROVIDER_FAILED", "Lucylab AI tạo audio quá lâu. Vui lòng thử lại.", 504);
+ const audioUrl = await waitForLucylabExport({apiKey,projectExportId:exportId});
 
  let downloaded;
  try { downloaded = await downloadRemoteAudioBuffer(audioUrl); }
@@ -299,14 +282,21 @@ export const GOOGLE_VOICES=[
  "vi-VN-Standard-A","vi-VN-Standard-B","vi-VN-Standard-C","vi-VN-Standard-D"
 ];
 
+// `ttsVoice` historically accepted custom Google voice IDs, so keep unknown non-Lucylab IDs.
+// Known Lucylab IDs are provider-scoped and must never be forwarded to Google or keyed as Google.
+export function resolveGoogleVoice(settings={}){
+ const voice=String(settings.ttsVoice||"").trim();
+ return voice&&!LUCYLAB_VOICE_IDS.includes(voice)?voice:GOOGLE_DEFAULT_VOICE;
+}
+
 // Brief do AI sinh ra co quyen ghi ttsVoice, nen mot du an co the dang giu giong nam ngoai danh
 // sach tren. Giong do van phai nghe thu duoc, neu khong studio se tu choi doc dung thu ma ban
-// render se doc.
+// render se doc. Rieng ID Lucylab thi la voice cua provider khac nen phai canonicalize ve Google.
 export function allowedSampleVoices(projectSettings={},provider){
  if(isLucylabProvider(provider))return LUCYLAB_VOICE_IDS;
  if(isVertexProvider(provider))return VERTEX_VOICES;
- const persisted=projectSettings.ttsVoice;
- return persisted&&!GOOGLE_VOICES.includes(persisted)?[...GOOGLE_VOICES,persisted]:GOOGLE_VOICES;
+ const persisted=resolveGoogleVoice(projectSettings);
+ return !GOOGLE_VOICES.includes(persisted)?[...GOOGLE_VOICES,persisted]:GOOGLE_VOICES;
 }
 
 // Nghe thu phai doc dung giong ma render se doc: nhanh Vertex lay geminiSpeaker1Voice, nhanh
@@ -316,11 +306,11 @@ export function voiceSampleSettings(projectSettings={},{ttsProvider,voice}={}){
  const base={...projectSettings,ttsProvider,geminiMultiSpeaker:false};
  if(isLucylabProvider(ttsProvider)){
   const picked=LUCYLAB_VOICE_IDS.includes(voice)?voice:LUCYLAB_DEFAULT_VOICE;
-  return{...base,ttsVoice:picked,lucylabVoice:picked};
+  return{...base,ttsVoice:resolveGoogleVoice(projectSettings),lucylabVoice:picked};
  }
  if(isVertexProvider(ttsProvider))return{...base,geminiSpeaker1Voice:voice};
  const picked=allowedSampleVoices(projectSettings,ttsProvider).includes(voice)?voice:"";
- return{...base,ttsVoice:picked||projectSettings.ttsVoice||GOOGLE_DEFAULT_VOICE};
+ return{...base,ttsVoice:picked||resolveGoogleVoice(projectSettings)};
 }
 
 export const sampledVoiceName=settings=>{
