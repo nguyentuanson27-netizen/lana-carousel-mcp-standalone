@@ -4,6 +4,7 @@ import fs from "node:fs";
 import {AppError} from "./errors.js";
 import {config} from "./config.js";
 import {downloadRemoteAudioBuffer} from "./remote-media.js";
+import {lucylabJsonRpc} from "./lucylab-client.js";
 const {TextToSpeechClient}=textToSpeech;
 
 const enabledSlides=project=>project.slides.filter(s=>(s.video||{}).enabled!==false);
@@ -59,7 +60,12 @@ export const safeCause=error=>{
 };
 
 const notConfigured=(detail,cause)=>{
+ // generateVideoTtsTrack nem thang AppError ra ngoai truoc khi toi console.error cua no, nen
+ // khong ghi o day thi cac ca thieu cau hinh khong de lai dau vet nao trong log.
  console.error("Vertex AI TTS not configured:",detail,safeCause(cause));
+ // Chi mach "doi sang Google TTS" khi loi di do that su thong: generateGoogle chuyen sang Cloud
+ // TTS ngay khi GOOGLE_APPLICATION_CREDENTIALS co gia tri, nen luc bien do dang dat sai thi ca
+ // hai nha cung cap cung hong va loi khuyen se thanh lac huong.
  const fallbackWorks=!process.env.GOOGLE_APPLICATION_CREDENTIALS&&!process.env.GOOGLE_CLOUD_PROJECT;
  return new AppError(
   "TTS_NOT_CONFIGURED",
@@ -68,6 +74,17 @@ const notConfigured=(detail,cause)=>{
  );
 };
 
+// GOOGLE_APPLICATION_CREDENTIALS tro toi tep khong doc duoc lam google-gax bo lai mot promise bi
+// tu choi ma khong ai bat (createStub), va Node 22 bien no thanh uncaught exception — ca tien
+// trinh http-server chet vi mot khoa TTS het han. Kiem tep truoc khi cham vao client la chan duoc
+// ca duong do, dong thoi noi dung chuyen gi dang sai.
+// Chi nhan hai loai credential ma ung dung nay that su dung: tep service account cho may chu, va
+// authorized_user do `gcloud auth application-default login` sinh ra cho may lap trinh.
+//
+// Da thu nhan them external_account/impersonated/gdch va do la mot sai lam: moi loai con mot bo
+// rang buoc long nhau rieng (external_account phai co credential_source hop le, neu khong
+// IdentityPoolClient nem ngay trong constructor), nen kiem vai truong o tang tren chi tao ra cam
+// giac an toan. Duoi mot cong kiem, thu khong hieu ro thi tu choi thang van dung hon la doan.
 const CREDENTIAL_REQUIREMENTS={
  service_account:["client_email","private_key"],
  authorized_user:["client_id","client_secret","refresh_token"]
@@ -76,6 +93,10 @@ const CREDENTIAL_REQUIREMENTS={
 function credentialFileProblem(){
  const file=process.env.GOOGLE_APPLICATION_CREDENTIALS;
  if(!file)return "";
+ // Kiem doc duoc thoi la khong du: accessSync() cho qua ca thu muc lan tep JSON hong, va
+ // google-auth-library van di tiep roi nga o dung cho sinh ra promise bi bo roi. Phai kiem tro
+ // thanh cai ma thu vien se chap nhan. Khong cau nao duoi day duoc nhac lai duong dan hay noi
+ // dung tep — chinh loi JSON.parse cua thu vien nhet ca noi dung tep khoa vao cau bao.
  let raw;
  try{
   if(!fs.statSync(file).isFile())return "GOOGLE_APPLICATION_CREDENTIALS trỏ tới thư mục chứ không phải tệp";
@@ -87,6 +108,7 @@ function credentialFileProblem(){
  const required=CREDENTIAL_REQUIREMENTS[parsed?.type];
  if(!required)return `chỉ nhận credential loại ${Object.keys(CREDENTIAL_REQUIREMENTS).join(" hoặc ")}`;
  const missing=required.filter(field=>!parsed[field]);
+ // Ten truong la ten trong lieu do cua Google, khong phai gia tri — noi ra duoc ma khong lo gi.
  if(missing.length)return `tệp credential thiếu trường ${missing.join(", ")}`;
  return "";
 }
@@ -94,12 +116,23 @@ function credentialFileProblem(){
 function vertexClient(){
  vertexClientPromise??=(async()=>{
   const auth=new GoogleAuth({scopes:["https://www.googleapis.com/auth/cloud-platform"]});
+  // Kiem tep khoa TRUOC getProjectId(): khi VERTEX_AI_PROJECT de trong, getProjectId() tu doc
+  // chinh tep nay de do project id, nghia la no cham vao tep hong truoc khi ban kiem kip chay.
+  // No con lam sai han cau bao — tep khoa hong lai bi quy thanh "chua dat VERTEX_AI_PROJECT",
+  // day nguoi van hanh di dat mot bien von da dung. Trong Docker chi ./data duoc mount nen duong
+  // dan cua host tro thanh tep khong ton tai ben trong container, ca dat nham pho bien nhat.
   const fileProblem=credentialFileProblem();
   if(fileProblem)throw notConfigured(fileProblem);
+  // getProjectId() nem khi khong do ra project chu khong tra ve rong, nen nhanh `if(!projectId)`
+  // truoc day la code chet: may chu chua cau hinh thi nguoi dung nhan nguyen cau tieng Anh cua
+  // thu vien kem mot URL bi cat do, thay vi loi huong dan da viet san ngay duoi no.
   let detectFailure;
   const projectId=process.env.VERTEX_AI_PROJECT||process.env.GOOGLE_CLOUD_PROJECT
    ||await auth.getProjectId().catch(error=>{detectFailure=error;return""});
   if(!projectId)throw notConfigured("chưa đặt VERTEX_AI_PROJECT",detectFailure);
+  // Khong noi thang la "chua dat GOOGLE_APPLICATION_CREDENTIALS": tren GCE/Cloud Run bien do dung
+  // ra phai de trong vi credential den tu metadata server, bao vay se day nguoi van hanh di gan
+  // mot tep khoa von khong phai van de.
   const client=await auth.getClient().catch(error=>{
    throw notConfigured("chưa có credential Google dùng được",error);
   });
@@ -137,6 +170,9 @@ async function generateVertex(project,settings){
   await new Promise(resolve=>setTimeout(resolve,400*(attempt+1)));
  }
  if(!response?.ok){
+  // Than phan hoi cua Vertex chua duong dan model kem project id va chi tiet IAM. Ghi log cho
+  // nguoi van hanh doc, con phia nguoi goi chi can ma loi de phan biet thieu quyen (403) voi
+  // sai ten model (404) — endpoint nay mo cho ca phien chia se link.
   const detail=await response.text().catch(()=>"");
   console.error("Vertex AI TTS error body:",detail.slice(0,500));
   throw new AppError("TTS_PROVIDER_FAILED",`Vertex AI TTS lỗi ${response?.status||"mạng"}. Xem log máy chủ để biết chi tiết.`,502);
@@ -154,6 +190,9 @@ async function generateGoogle(project,settings){
  if(!text)return emptyTrack();
  let buffer;
  if(process.env.GOOGLE_APPLICATION_CREDENTIALS||process.env.GOOGLE_CLOUD_PROJECT){
+  // Cung cai bay nhu ben Vertex, va o day no da duoc dung lai: google-gax bo mot promise bi tu
+  // choi khong ai bat khi tep khoa khong doc duoc, Node 22 nem tiep thanh uncaught exception va
+  // http-server tat han. Chan truoc khi dung toi client.
   const fileProblem=credentialFileProblem();
   if(fileProblem)throw new AppError("TTS_NOT_CONFIGURED",`Máy chủ chưa cấu hình Google TTS (${fileProblem}). Xem log máy chủ để biết chi tiết.`,503);
   const client=new TextToSpeechClient();
@@ -189,158 +228,45 @@ export function resolveLucylabVoice(settings = {}) {
  return candidates.find(voice => LUCYLAB_VOICE_IDS.includes(voice)) || LUCYLAB_DEFAULT_VOICE;
 }
 
-// Reading speed belongs to the render timeline. Keeping provider synthesis at 1x means cached
-// bytes depend only on text + voice, exactly like Google/Vertex, and avoids applying ttsSpeed twice.
+// Tốc độ đọc thuộc timeline render. Lucylab luôn tổng hợp ở 1x để cache phụ thuộc đúng text + voice
+// và để playbackRate không vô tình áp tốc độ lần thứ hai.
 export function lucylabSynthesisInput(text, settings = {}) {
- return {
-  text: String(text || ""),
-  userVoiceId: resolveLucylabVoice(settings),
-  speed: 1
- };
-}
-
-const lucylabUnavailable=(message="Lucylab AI tạm thời không đọc được. Vui lòng thử lại.",status=502)=>
- new AppError("TTS_PROVIDER_FAILED",message,status);
-const logLucylabFailure=(context,error)=>console.error(`Lucylab ${context}:`,safeCause(error));
-
-export async function getLucylabCredits() {
- const apiKey = String(process.env.LUCYLAB_API_KEY || config.lucylabApiKey || "").trim();
- if (!apiKey) {
-  throw new AppError("TTS_NOT_CONFIGURED", "Máy chủ chưa cấu hình Lucylab API Key (thiếu LUCYLAB_API_KEY).", 503);
- }
- let res;
- try {
-  res = await fetch("https://api.lucylab.io/json-rpc", {
-   method: "POST",
-   headers: {
-    "Authorization": `Bearer ${apiKey}`,
-    "Content-Type": "application/json"
-   },
-   body: JSON.stringify({ method: "getUserInfo", input: {} })
-  });
- } catch (error) {
-  logLucylabFailure("credit request failed",error);
-  throw lucylabUnavailable("Không lấy được số credit Lucylab. Vui lòng thử lại.");
- }
- if (!res.ok) {
-  console.error("Lucylab credit request rejected:",`status=${res.status}`);
-  throw lucylabUnavailable("Không lấy được số credit Lucylab. Vui lòng thử lại.");
- }
- const data = await res.json().catch(() => ({}));
- if (data.error) {
-  console.error("Lucylab credit JSON-RPC returned an error response.");
-  throw lucylabUnavailable("Không lấy được số credit Lucylab. Vui lòng thử lại.");
- }
- const user = data.result?.user || {};
- return {
-  creditsRemaining: Number(user.creditsRemaining ?? 0),
-  isPremium: Boolean(user.isPremium),
-  subscriptionTier: user.subscriptionTier || "free",
-  updatedAt: user.updatedAt || new Date().toISOString()
- };
+ return { text: String(text || ""), userVoiceId: resolveLucylabVoice(settings), speed: 1 };
 }
 
 async function generateLucylab(project, settings = {}) {
  const text = enabledSlides(project).map(slideText).filter(Boolean).join(". ");
  if (!text) return emptyTrack();
-
  const apiKey = String(process.env.LUCYLAB_API_KEY || config.lucylabApiKey || "").trim();
- if (!apiKey) {
-  throw new AppError("TTS_NOT_CONFIGURED", "Máy chủ chưa cấu hình Lucylab API Key (thiếu LUCYLAB_API_KEY).", 503);
- }
+ if (!apiKey) throw new AppError("TTS_NOT_CONFIGURED", "Máy chủ chưa cấu hình Lucylab API Key (thiếu LUCYLAB_API_KEY).", 503);
 
- let startRes;
- try {
-  startRes = await fetch("https://api.lucylab.io/json-rpc", {
-   method: "POST",
-   headers: {
-    "Authorization": `Bearer ${apiKey}`,
-    "Content-Type": "application/json"
-   },
-   body: JSON.stringify({
-    method: "ttsLongText",
-    input: lucylabSynthesisInput(text, settings)
-   })
-  });
- } catch (error) {
-  logLucylabFailure("synthesis request failed",error);
-  throw lucylabUnavailable();
- }
-
- if (!startRes.ok) {
-  console.error("Lucylab synthesis request rejected:",`status=${startRes.status}`);
-  throw lucylabUnavailable();
- }
-
- const startData = await startRes.json().catch(() => ({}));
- if (startData.error) {
-  console.error("Lucylab synthesis JSON-RPC returned an error response.");
-  throw lucylabUnavailable();
- }
-
- const exportId = startData.result?.projectExportId;
- if (!exportId) {
-  console.error("Lucylab synthesis response omitted projectExportId.");
-  throw lucylabUnavailable();
- }
+ const started = await lucylabJsonRpc({ apiKey, method: "ttsLongText", input: lucylabSynthesisInput(text, settings) });
+ const exportId = started?.projectExportId;
+ if (!exportId) throw new AppError("TTS_PROVIDER_FAILED", "Lucylab AI tạm thời không đọc được. Vui lòng thử lại.", 502);
 
  let audioUrl = "";
- const maxAttempts = 30;
- for (let attempt = 0; attempt < maxAttempts; attempt++) {
-  await new Promise(r => setTimeout(r, 1500));
-  let statusRes;
-  try {
-   statusRes = await fetch("https://api.lucylab.io/json-rpc", {
-    method: "POST",
-    headers: {
-     "Authorization": `Bearer ${apiKey}`,
-     "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-     method: "getExportStatus",
-     input: { projectExportId: exportId }
-    })
-   });
-  } catch (error) {
-   logLucylabFailure("export status request failed",error);
-   continue;
-  }
-
-  if (!statusRes.ok) {
-   console.error("Lucylab export status request rejected:",`status=${statusRes.status}`);
-   continue;
-  }
-  const statusData = await statusRes.json().catch(() => ({}));
-  const result = statusData.result || {};
-  if (result.state === "failed" || statusData.error) {
-   console.error("Lucylab export reported a failed state.");
-   throw lucylabUnavailable();
-  }
-  if (result.state === "completed" && result.url) {
+ for (let attempt = 0; attempt < 30; attempt++) {
+  if (attempt > 0) await new Promise(resolve => setTimeout(resolve, 2000));
+  const result = await lucylabJsonRpc({ apiKey, method: "getExportStatus", input: { projectExportId: exportId } });
+  if (result?.state === "failed") throw new AppError("TTS_PROVIDER_FAILED", "Lucylab AI tạo audio thất bại. Vui lòng thử lại.", 502);
+  if (result?.state === "completed" && result.url) {
    audioUrl = result.url;
    break;
   }
  }
-
- if (!audioUrl) {
-  throw lucylabUnavailable("Lucylab AI tạo audio quá lâu. Vui lòng thử lại.",504);
- }
+ if (!audioUrl) throw new AppError("TTS_PROVIDER_FAILED", "Lucylab AI tạo audio quá lâu. Vui lòng thử lại.", 504);
 
  let downloaded;
- try {
-  downloaded = await downloadRemoteAudioBuffer(audioUrl);
- } catch (error) {
-  logLucylabFailure("export download failed",error);
-  throw lucylabUnavailable();
+ try { downloaded = await downloadRemoteAudioBuffer(audioUrl); }
+ catch (error) {
+  console.error("Lucylab export download failed:", safeCause(error));
+  throw new AppError("TTS_PROVIDER_FAILED", "Lucylab AI tạm thời không đọc được. Vui lòng thử lại.", 502);
  }
  const buffer = downloaded.buffer;
  const isWav = buffer.length > 44
   && buffer.toString("ascii", 0, 4) === "RIFF"
   && buffer.toString("ascii", 8, 12) === "WAVE";
- if (!isWav) {
-  console.error("Lucylab export did not contain a WAV payload.");
-  throw lucylabUnavailable();
- }
+ if (!isWav) throw new AppError("TTS_PROVIDER_FAILED", "Lucylab AI trả về tệp âm thanh không hợp lệ.", 502);
 
  let durationSeconds = 0;
  const byteRate = buffer.readUInt32LE(28);
@@ -349,16 +275,16 @@ async function generateLucylab(project, settings = {}) {
   const words = text.trim().split(/\s+/u).length;
   durationSeconds = Math.max(1, words / 2.5);
  }
-
- return {
-  dataUrl: `data:audio/wav;base64,${buffer.toString("base64")}`,
-  durationSeconds: Number(durationSeconds.toFixed(2))
- };
+ return { dataUrl: `data:audio/wav;base64,${buffer.toString("base64")}`, durationSeconds: Number(durationSeconds.toFixed(2)) };
 }
 
 export const GOOGLE_DEFAULT_VOICE="vi-VN-Neural2-D";
 export const isVertexProvider=provider=>["gemini","vertex"].includes(provider);
 
+// Hai nha cung cap dat ten giong theo hai he khac han nhau: Vertex nhan ten ngan (Kore, Puck),
+// Google Cloud TTS nhan voice id day du (vi-VN-Neural2-D). Danh sach nay la nguon duy nhat cho
+// ca bo chon trong studio lan phan kiem o route, de giao dien khong bao gio moi nguoi dung chon
+// mot giong ma nha cung cap dang bat khong doc duoc.
 export const VERTEX_VOICES=["Kore","Puck","Aoede","Charon","Fenrir","Laomedeia","Leda","Pulcherrima","Achernar"];
 export const GOOGLE_VOICES=[
  "vi-VN-Neural2-A","vi-VN-Neural2-D",
@@ -366,6 +292,9 @@ export const GOOGLE_VOICES=[
  "vi-VN-Standard-A","vi-VN-Standard-B","vi-VN-Standard-C","vi-VN-Standard-D"
 ];
 
+// Brief do AI sinh ra co quyen ghi ttsVoice, nen mot du an co the dang giu giong nam ngoai danh
+// sach tren. Giong do van phai nghe thu duoc, neu khong studio se tu choi doc dung thu ma ban
+// render se doc.
 export function allowedSampleVoices(projectSettings={},provider){
  if(isLucylabProvider(provider))return LUCYLAB_VOICE_IDS;
  if(isVertexProvider(provider))return VERTEX_VOICES;
@@ -373,6 +302,9 @@ export function allowedSampleVoices(projectSettings={},provider){
  return persisted&&!GOOGLE_VOICES.includes(persisted)?[...GOOGLE_VOICES,persisted]:GOOGLE_VOICES;
 }
 
+// Nghe thu phai doc dung giong ma render se doc: nhanh Vertex lay geminiSpeaker1Voice, nhanh
+// Google lay ttsVoice. Gia tri gui len chi duoc dung khi no thuoc he ten cua nha cung cap dang
+// bat; ten cua he kia bi bo qua de roi ve dung giong cua render thay vi lam hong loi goi.
 export function voiceSampleSettings(projectSettings={},{ttsProvider,voice}={}){
  const base={...projectSettings,ttsProvider,geminiMultiSpeaker:false};
  if(isLucylabProvider(ttsProvider)){
@@ -393,6 +325,9 @@ export const sampledVoiceName=settings=>{
  return isVertexProvider(settings.ttsProvider)?settings.geminiSpeaker1Voice:settings.ttsVoice;
 };
 
+// Thieu credential, het quota, model khong ton tai — nha cung cap nem ra Error thuong, va
+// publicError goi tat ca thanh 500 "Loi he thong.". Nguoi bam "Nghe thu" vi the khong biet phai
+// sua gi. Danh dau lai thanh 502 kem nguyen van ly do, va job render cung ghi lai duoc cau do.
 export async function generateVideoTtsTrack(project,settings={}){
  try{
   if(isLucylabProvider(settings.ttsProvider))return await generateLucylab(project,settings);
@@ -402,6 +337,10 @@ export async function generateVideoTtsTrack(project,settings={}){
  }catch(error){
   if(error instanceof AppError)throw error;
   const provider=isLucylabProvider(settings.ttsProvider)?"Lucylab AI":isVertexProvider(settings.ttsProvider)?"Vertex AI":"Google TTS";
+  // Ghi nguyen ven de con dau vet; phia nguoi goi chi nhan cau mo ta cua thu vien, da cat ngan.
+  // Nguyen van loi tu ben ngoai khong duoc ghi vao log: chinh cac fixture kiem ro ri cua bai test
+  // da lam "BEGIN PRIVATE KEY" va "C:\\Users\\..." hien ra trong log CI qua dung dong nay. Bit duong
+  // ra phia nguoi dung ma de log nguyen van thi chi doi cho ro chu khong bit duoc gi.
   console.error(`${provider} TTS failed:`,safeCause(error));
   throw new AppError("TTS_PROVIDER_FAILED",`${provider} không đọc được: ${providerReason(error)}`,502);
  }
