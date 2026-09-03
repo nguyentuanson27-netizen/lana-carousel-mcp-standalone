@@ -262,6 +262,36 @@ test("keeps a saved Google voice that the picker does not list", async () => {
   }, saved);
 });
 
+test("does not leak a legacy Lucylab voice into the Google picker", async () => {
+  const lucylabVoice = LUCYLAB_VOICE_IDS[1];
+  const saved = {
+    ...project,
+    settings: { ...project.settings, ttsProvider: "lucylab", ttsVoice: lucylabVoice, lucylabVoice }
+  };
+  await withPage(async page => {
+    assert.equal(await page.locator("#lucylabVoice").inputValue(), lucylabVoice);
+    assert.ok(!(await options(page, "#googleVoice")).includes(lucylabVoice));
+    await page.locator("#ttsProvider").selectOption("google");
+    assert.equal(await page.locator("#googleVoice").inputValue(), "vi-VN-Neural2-D");
+  }, saved);
+});
+
+test("saves Google and Lucylab voice choices independently", async () => {
+  await withPage(async page => {
+    await page.locator("#ttsProvider").selectOption("google");
+    await page.locator("#googleVoice").selectOption("vi-VN-Wavenet-C");
+    await page.locator("#ttsProvider").selectOption("lucylab");
+    await page.locator("#lucylabVoice").selectOption(LUCYLAB_VOICE_IDS[1]);
+
+    const requestPromise = page.waitForRequest(request => request.url().endsWith("/script") && request.method() === "PUT");
+    await page.locator("#save").click();
+    const request = await requestPromise;
+    const body = request.postDataJSON();
+    assert.equal(body.settings.ttsVoice, "vi-VN-Wavenet-C");
+    assert.equal(body.settings.lucylabVoice, LUCYLAB_VOICE_IDS[1]);
+  });
+});
+
 const budgets = page => page.locator(".segment .budget").evaluateAll(nodes => nodes.map(node => ({
   text: node.textContent,
   status: node.className.replace("budget", "").trim()
@@ -300,7 +330,7 @@ test("recalculates the budget as the segment or the reading speed changes", asyn
   });
 });
 
-test("swaps to Lucylab AI and shows Lucylab voice picker", async () => {
+test("swaps to Lucylab AI and keeps the Lucylab voice note in sync", async () => {
   await withPage(async page => {
     await page.locator("#ttsProvider").selectOption("lucylab");
     const state = await page.evaluate(() => ({
@@ -317,5 +347,8 @@ test("swaps to Lucylab AI and shows Lucylab voice picker", async () => {
       lucylabDisabled: false,
       note: "Lucylab AI đọc bằng My Review (Nữ miền Nam)."
     });
+
+    await page.locator("#lucylabVoice").selectOption(LUCYLAB_VOICE_IDS[1]);
+    assert.match(await page.locator("#voiceNote").textContent(), /Thư Review/u);
   });
 });
