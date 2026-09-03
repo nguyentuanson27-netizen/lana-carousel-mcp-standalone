@@ -106,6 +106,24 @@ const pickedVoice=()=>{
   return usingGoogleVoice()?$("#googleVoice").value:$("#voice").value;
 };
 
+
+async function fetchLucylabCredits(btn){
+  const creditsEl=$("#lucylabCredits");
+  if(!creditsEl)return;
+  if(btn)btn.classList.add("spinning");
+  try{
+    const data=await api("/api/video-analysis/lucylab/credits");
+    if(typeof data.creditsRemaining==="number"){
+      creditsEl.textContent=data.creditsRemaining.toLocaleString("vi-VN");
+    }
+  }catch(err){
+    creditsEl.textContent="--";
+    console.warn("Could not fetch Lucylab credits:",err);
+  }finally{
+    if(btn)setTimeout(()=>btn.classList.remove("spinning"),500);
+  }
+}
+
 function syncVoiceFields(){
   const provider=$("#ttsProvider").value;
   const lucy=provider==="lucylab";
@@ -116,6 +134,10 @@ function syncVoiceFields(){
   $("#voice").disabled=!vertex;
   $("#googleVoiceField").hidden=!google;
   $("#googleVoice").disabled=!google;
+  if($("#lucylabCreditRow")){
+    $("#lucylabCreditRow").hidden=!lucy;
+    if(lucy&&$("#lucylabCredits").textContent==="--")fetchLucylabCredits();
+  }
   if($("#lucylabVoiceField")){
     $("#lucylabVoiceField").hidden=!lucy;
     $("#lucylabVoice").disabled=!lucy;
@@ -410,6 +432,7 @@ $("#voiceSample").onclick=async()=>{
     // Server mới là nơi quyết định giọng nào được đọc, nên nói lại đúng tên nó trả về.
     $("#voiceNote").textContent=`Đang đọc thử bằng ${response.voice}.`;
     await sampleAudio.play();
+    if(isLucylab())fetchLucylabCredits();
   }catch(error){
     if(generation!==sampleGeneration)return;
     syncVoiceFields();

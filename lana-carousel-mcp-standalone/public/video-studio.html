@@ -162,6 +162,15 @@
     .voice-row label{flex:1;min-width:0}
     .voice-row label[hidden]{display:none}
     .voice-note{margin:-2px 0 0;font-size:12px;color:var(--muted)}
+    .lucylab-credit-row{display:flex;align-items:center;gap:8px;margin-top:6px}
+    .lucylab-credit-row[hidden]{display:none}
+    .lucylab-credit-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:999px;font-size:12px;color:#166534;font-weight:600}
+    .lucylab-credit-pill strong{color:#15803d;font-variant-numeric:tabular-nums}
+    .btn-refresh-credits{background:none;border:none;color:#15803d;cursor:pointer;font-size:13px;padding:0 2px;line-height:1;transition:transform .2s}
+    .btn-refresh-credits:hover{transform:rotate(180deg)}
+    .btn-refresh-credits.spinning{animation:spin-credits 0.8s linear infinite}
+    @keyframes spin-credits{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+
     .segments-empty{padding:20px;border:1px dashed var(--line);border-radius:var(--radius-sm);color:var(--muted);text-align:center;font-size:13px}
 
     /* Versions */
@@ -348,6 +357,12 @@
                 <button class="btn secondary small" id="voiceSample" type="button">▶ Nghe thử</button>
               </div>
               <p class="voice-note full" id="voiceNote"></p>
+              <div class="lucylab-credit-row full" id="lucylabCreditRow" hidden>
+                <span class="lucylab-credit-pill">
+                  <span>⚡ ViVibe: <strong id="lucylabCredits">--</strong> credits</span>
+                  <button type="button" class="btn-refresh-credits" id="refreshCreditsBtn" title="Làm mới số credit ViVibe">↻</button>
+                </span>
+              </div>
               <label class="full">Tốc độ đọc
                 <div class="range-control">
                   <select id="ttsSpeed"><option value="0.8">Chậm (x0.8)</option><option value="1">Bình thường (x1)</option><option value="1.2">Nhanh (x1.2)</option><option value="1.5">Rất nhanh (x1.5)</option><option value="1.8">Siêu nhanh (x1.8)</option><option value="2">Tối đa (x2)</option></select>

@@ -29,7 +29,7 @@ import {
 } from "./video-analysis-service.js";
 import {buildVoiceTracks,getVideoAnalysisFile,getVideoAnalysisJob,startVideoAnalysisJob} from "./video-analysis-jobs.js";
 import {synthesizeCachedSpeech} from "./video-tts-cache.js";
-import {allowedSampleVoices,sampledVoiceName,voiceSampleSettings} from "./video-tts.js";
+import {allowedSampleVoices,getLucylabCredits,sampledVoiceName,voiceSampleSettings} from "./video-tts.js";
 import {buildSubtitleFile} from "./video-subtitles.js";
 import {createSignedMediaUrl} from "./media-access.js";
 import {probeVideoDurationSeconds} from "./video-source-importer.js";
@@ -225,6 +225,12 @@ const voiceSampleBody=z.object({
  ttsProvider:z.enum(["vertex","gemini","google","lucylab"]).default("vertex"),
  voice:z.string().min(1).max(100)
 }).strict();
+
+
+videoAnalysisRouter.get("/lucylab/credits", safe(async (req, res) => {
+ const credits = await getLucylabCredits();
+ res.json(credits);
+}));
 
 videoAnalysisRouter.post("/projects/:id/voice-sample",safe(async(req,res)=>{
  // publicError đã biến ZodError thành 422, nhưng ở đây vẫn tự kiểm để thông báo nói đúng ngôn

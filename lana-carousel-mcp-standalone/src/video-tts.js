@@ -220,6 +220,41 @@ export const LUCYLAB_VOICES = [
 ];
 export const LUCYLAB_VOICE_IDS = LUCYLAB_VOICES.map(v => v.id);
 export const LUCYLAB_DEFAULT_VOICE = "vcXEe1p3FxPfpswf3BhwbG";
+
+export async function getLucylabCredits() {
+ const apiKey = String(process.env.LUCYLAB_API_KEY || config.lucylabApiKey || "").trim();
+ if (!apiKey) {
+  throw new AppError("TTS_NOT_CONFIGURED", "Máy chủ chưa cấu hình Lucylab API Key (thiếu LUCYLAB_API_KEY).", 503);
+ }
+ let res;
+ try {
+  res = await fetch("https://api.lucylab.io/json-rpc", {
+   method: "POST",
+   headers: {
+    "Authorization": `Bearer ${apiKey}`,
+    "Content-Type": "application/json"
+   },
+   body: JSON.stringify({ method: "getUserInfo", input: {} })
+  });
+ } catch (err) {
+  throw new AppError("TTS_PROVIDER_FAILED", `Không kết nối được tới Lucylab: ${err.message}`, 502);
+ }
+ if (!res.ok) {
+  throw new AppError("TTS_PROVIDER_FAILED", `Lucylab API trả về lỗi ${res.status}`, 502);
+ }
+ const data = await res.json().catch(() => ({}));
+ if (data.error) {
+  throw new AppError("TTS_PROVIDER_FAILED", `Lucylab API lỗi: ${data.error.message || JSON.stringify(data.error)}`, 502);
+ }
+ const user = data.result?.user || {};
+ return {
+  creditsRemaining: Number(user.creditsRemaining ?? 0),
+  isPremium: Boolean(user.isPremium),
+  subscriptionTier: user.subscriptionTier || "free",
+  updatedAt: user.updatedAt || new Date().toISOString()
+ };
+}
+
 export const isLucylabProvider = provider => ["lucylab", "lucylab-ai", "lucylab_ai"].includes(String(provider || "").toLowerCase());
 
 async function generateLucylab(project, settings = {}) {

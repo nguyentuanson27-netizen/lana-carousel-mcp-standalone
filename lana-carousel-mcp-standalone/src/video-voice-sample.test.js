@@ -138,3 +138,12 @@ test("refuses a voice from other providers when using Lucylab", async () => {
  assert.equal(res.json.code, "INVALID_VOICE_SAMPLE_REQUEST");
  assert.match(res.json.message, /vcXEe1p3FxPfpswf3BhwbG/u);
 });
+
+test("provides Lucylab ViVibe credits endpoint", async () => {
+ const res = await fetch(`${origin}/api/video-analysis/lucylab/credits`);
+ assert.ok([200, 503].includes(res.status));
+ if (res.status === 200) {
+  const json = await res.json();
+  assert.equal(typeof json.creditsRemaining, "number");
+ }
+});
