@@ -20,6 +20,7 @@ import { deleteVideoRenderJob, getVideoRenderFile, getVideoRenderJob, startVideo
 import { videoAnalysisAssetDir, purgeExpiredVideoAnalysis } from "./video-analysis-service.js";
 import { videoAnalysisRouter } from "./video-analysis-routes.js";
 import { purgeExpiredTtsCache } from "./video-tts-cache.js";
+import { LUCYLAB_VOICE_IDS } from "./video-tts.js";
 import { registerSocialRoutes } from "./social-routes.js";
 import {
   addSlide, approveProjectContent, approveSlideAsset, approveSlideAssets, cloneProject,
@@ -220,7 +221,7 @@ app.patch("/api/projects/:projectId/slides/:slideId/design", handle(async (req, 
 }));
 
 // Render thử một slide theo thiết kế đang sửa và trả thẳng ảnh, không ghi gì vào cơ sở dữ liệu.
-// Nhờ vậy studio hiện được đúng ảnh sắp tải về ngay cả khi thiết kế chưa lưu.
+// Nhờ vậy studio hiện được đúng ảnh sắp tải về ngay cả khi thiết kế chưa được lưu.
 app.post("/api/projects/:projectId/slides/:slideId/preview-render", handle(async (req, res) => {
   const body = z.object({
     design: slideDesignShape.partial().default({}),
@@ -262,7 +263,7 @@ const projectVideoSchema = z.object({
   audioUrl: z.union([z.string().url(), z.literal("")]).default(""), audioVolume: z.number().min(0).max(1).default(.6),
   subtitles: z.boolean().default(false), beatSync: z.boolean().default(false), bpm: z.number().min(40).max(240).default(120),
   ttsEnabled: z.boolean().default(false), ttsProvider: z.enum(["google", "gemini", "vertex", "lucylab"]).default("google"),
-  lucylabVoice: z.string().max(100).default("vcXEe1p3FxPfpswf3BhwbG"),
+  lucylabVoice: z.enum(LUCYLAB_VOICE_IDS).default("vcXEe1p3FxPfpswf3BhwbG"),
   ttsVoice: z.string().max(100).default("vi-VN-Neural2-D"), ttsSpeed: z.number().min(.5).max(2).default(1), ttsVolume: z.number().min(0).max(1).default(1),
   geminiModel: z.string().max(100).default("gemini-2.5-flash-tts"), geminiMultiSpeaker: z.boolean().default(false),
   geminiSpeaker1Name: z.string().min(1).max(50).default("Nguoi dan"), geminiSpeaker1Voice: z.string().min(1).max(50).default("Kore"),
@@ -298,7 +299,7 @@ app.patch("/api/projects/:projectId/slides/:slideId/video", handle(async (req, r
 }));
 app.post("/api/projects/:projectId/video-render-jobs", handle(async (req, res) => res.status(202).json(startVideoRenderJob(req.params.projectId))));
 app.get("/api/video-render-jobs/:jobId", handle(async (req, res) => res.json(getVideoRenderJob(req.params.jobId))));
-app.get("/api/video-render-jobs/:jobId/download", handle(async (req, res) => res.download(getVideoRenderFile(req.params.jobId), `lana-video-${req.params.jobId}.mp4`)));
+app.get("/api/video-render-jobs/:jobId/download", handle(async (req, res) => res.download(getVideoRenderFile(req.params.jobId), `lana-video-${req.params.projectId}.mp4`)));
 app.delete("/api/video-render-jobs/:jobId", handle(async (req, res) => res.json(await deleteVideoRenderJob(req.params.jobId))));
 
 app.post("/api/projects/:projectId/render-jobs", handle(async (req, res) => { getProject(req.params.projectId); res.status(202).json(startRenderJob(req.params.projectId)); }));
