@@ -307,7 +307,6 @@ test("swaps to Lucylab AI and shows Lucylab voice picker", async () => {
       vertexShown: !document.querySelector("#voiceField").hidden,
       googleShown: !document.querySelector("#googleVoiceField").hidden,
       lucylabShown: !document.querySelector("#lucylabVoiceField").hidden,
-      lucylabCreditShown: !document.querySelector("#lucylabCreditRow").hidden,
       lucylabDisabled: document.querySelector("#lucylabVoice").disabled,
       note: document.querySelector("#voiceNote").textContent
     }));
@@ -315,7 +314,6 @@ test("swaps to Lucylab AI and shows Lucylab voice picker", async () => {
       vertexShown: false,
       googleShown: false,
       lucylabShown: true,
-      lucylabCreditShown: true,
       lucylabDisabled: false,
       note: "Lucylab AI đọc bằng My Review (Nữ miền Nam)."
     });
