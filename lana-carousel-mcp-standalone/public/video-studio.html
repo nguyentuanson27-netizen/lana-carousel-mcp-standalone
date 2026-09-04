@@ -311,7 +311,7 @@
             <div class="grid">
               <label class="toggle-row"><input id="ttsEnabled" type="checkbox"> <span>Bật TTS<small>Đọc voice-over bằng giọng AI khi render</small></span></label>
               <label>Nhà cung cấp
-                <select id="ttsProvider"><option value="vertex">Vertex Gemini</option><option value="google">Google TTS</option></select>
+                <select id="ttsProvider"><option value="vertex">Vertex Gemini</option><option value="google">Google TTS</option><option value="lucylab">Lucylab AI</option></select>
               </label>
               <div class="voice-row">
                 <label id="voiceField">Giọng Vertex
@@ -329,6 +329,20 @@
                     <option value="vi-VN-Standard-B">vi-VN-Standard-B</option>
                     <option value="vi-VN-Standard-C">vi-VN-Standard-C</option>
                     <option value="vi-VN-Standard-D">vi-VN-Standard-D</option>
+                  </select>
+                </label>
+                <label id="lucylabVoiceField" hidden>Giọng Lucylab
+                  <select id="lucylabVoice">
+                    <option value="vcXEe1p3FxPfpswf3BhwbG">My Review (Nữ miền Nam)</option>
+                    <option value="orBfJ4Q68FyVbckjJgDvkj">Thư Review (Nữ miền Nam)</option>
+                    <option value="nqak8C85bsAG5mihyunRkj">Chi Chi (Nữ miền Nam)</option>
+                    <option value="5r2MVjMfzwsSDzTpaLjbY9">Adam 3 (Nam miền Nam)</option>
+                    <option value="mhsL3CPLxmLYdSTKp3GANz">Truyện Audio - tiết kiệm (Nữ miền Bắc)</option>
+                    <option value="uCMfUVPwStduZMyFC7iuQv">Trinh Review (Nữ miền Nam)</option>
+                    <option value="shAfRJNufJUhQSgJUL8NST">Hà Review (Nữ miền Bắc)</option>
+                    <option value="wkKKgWq7ajLoSaVH38Y3gE">Trinh Review style 2 (Nữ miền Nam)</option>
+                    <option value="un7ZPTWAwwYAMNdpgMwHjf">Adam 2 (Nam miền Nam)</option>
+                    <option value="mhsL3CPLxmLYdSTKp3GANj">Giọng Adam - monotone (Nam miền Bắc)</option>
                   </select>
                 </label>
                 <button class="btn secondary small" id="voiceSample" type="button">▶ Nghe thử</button>

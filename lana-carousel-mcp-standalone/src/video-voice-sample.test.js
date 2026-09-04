@@ -124,3 +124,17 @@ test("keeps the project's reading style so the sample matches the render", () =>
  assert.equal(settings.geminiStylePrompt, "Đọc tiếng Việt sang trọng, tinh tế.");
  assert.equal(settings.geminiModel, "gemini-2.5-pro-tts");
 });
+
+test("applies a Lucylab voice that the picker offers and samples its name", () => {
+ const settings = voiceSampleSettings({}, { ttsProvider: "lucylab", voice: "vcXEe1p3FxPfpswf3BhwbG" });
+ assert.equal(settings.ttsVoice, GOOGLE_DEFAULT_VOICE);
+ assert.equal(settings.lucylabVoice, "vcXEe1p3FxPfpswf3BhwbG");
+ assert.equal(sampledVoiceName(settings), "My Review");
+});
+
+test("refuses a voice from other providers when using Lucylab", async () => {
+ const res = await postSample({ ttsProvider: "lucylab", voice: "Kore" });
+ assert.equal(res.status, 422);
+ assert.equal(res.json.code, "INVALID_VOICE_SAMPLE_REQUEST");
+ assert.match(res.json.message, /vcXEe1p3FxPfpswf3BhwbG/u);
+});

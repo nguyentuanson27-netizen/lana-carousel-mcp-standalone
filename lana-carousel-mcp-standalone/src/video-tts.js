@@ -2,6 +2,9 @@ import textToSpeech from "@google-cloud/text-to-speech";
 import {GoogleAuth} from "google-auth-library";
 import fs from "node:fs";
 import {AppError} from "./errors.js";
+import {config} from "./config.js";
+import {downloadRemoteAudioBuffer} from "./remote-media.js";
+import {lucylabJsonRpc,waitForLucylabExport} from "./lucylab-client.js";
 const {TextToSpeechClient}=textToSpeech;
 
 const enabledSlides=project=>project.slides.filter(s=>(s.video||{}).enabled!==false);
@@ -193,7 +196,7 @@ async function generateGoogle(project,settings){
   const fileProblem=credentialFileProblem();
   if(fileProblem)throw new AppError("TTS_NOT_CONFIGURED",`Máy chủ chưa cấu hình Google TTS (${fileProblem}). Xem log máy chủ để biết chi tiết.`,503);
   const client=new TextToSpeechClient();
-  const [response]=await client.synthesizeSpeech({input:{text},voice:{languageCode:"vi-VN",name:settings.ttsVoice||GOOGLE_DEFAULT_VOICE},audioConfig:{audioEncoding:"MP3",speakingRate:1}});
+  const [response]=await client.synthesizeSpeech({input:{text},voice:{languageCode:"vi-VN",name:resolveGoogleVoice(settings)},audioConfig:{audioEncoding:"MP3",speakingRate:1}});
   buffer=typeof response.audioContent==="string"?Buffer.from(response.audioContent,"base64"):Buffer.from(response.audioContent);
  }else{
   const chunks=text.match(/.{1,180}(?:\s|$)/gu)||[text],parts=[];
@@ -202,6 +205,67 @@ async function generateGoogle(project,settings){
  }
  const words=text.trim().split(/\s+/u).length;
  return {dataUrl:`data:audio/mpeg;base64,${buffer.toString("base64")}`,durationSeconds:Math.max(1,words/2.7)};
+}
+
+export const LUCYLAB_VOICES = [
+ { id: "vcXEe1p3FxPfpswf3BhwbG", name: "My Review", label: "My Review (Nữ miền Nam)" },
+ { id: "orBfJ4Q68FyVbckjJgDvkj", name: "Thư Review", label: "Thư Review (Nữ miền Nam)" },
+ { id: "nqak8C85bsAG5mihyunRkj", name: "Chi Chi", label: "Chi Chi (Nữ miền Nam)" },
+ { id: "5r2MVjMfzwsSDzTpaLjbY9", name: "Adam 3", label: "Adam 3 (Nam miền Nam)" },
+ { id: "mhsL3CPLxmLYdSTKp3GANz", name: "Truyện Audio (tiết kiệm)", label: "Truyện Audio - tiết kiệm (Nữ miền Bắc)" },
+ { id: "uCMfUVPwStduZMyFC7iuQv", name: "Trinh Review", label: "Trinh Review (Nữ miền Nam)" },
+ { id: "shAfRJNufJUhQSgJUL8NST", name: "Hà Review", label: "Hà Review (Nữ miền Bắc)" },
+ { id: "wkKKgWq7ajLoSaVH38Y3gE", name: "Trinh Review (style 2)", label: "Trinh Review style 2 (Nữ miền Nam)" },
+ { id: "un7ZPTWAwwYAMNdpgMwHjf", name: "Adam 2", label: "Adam 2 (Nam miền Nam)" },
+ { id: "mhsL3CPLxmLYdSTKp3GANj", name: "Giọng Adam (monotone)", label: "Giọng Adam - monotone (Nam miền Bắc)" }
+];
+export const LUCYLAB_VOICE_IDS = LUCYLAB_VOICES.map(v => v.id);
+export const LUCYLAB_DEFAULT_VOICE = "vcXEe1p3FxPfpswf3BhwbG";
+
+export const isLucylabProvider = provider => ["lucylab", "lucylab-ai", "lucylab_ai"].includes(String(provider || "").toLowerCase());
+
+export function resolveLucylabVoice(settings = {}) {
+ const candidates = [settings.lucylabVoice, settings.userVoiceId, settings.ttsVoice];
+ return candidates.find(voice => LUCYLAB_VOICE_IDS.includes(voice)) || LUCYLAB_DEFAULT_VOICE;
+}
+
+// Tốc độ đọc thuộc timeline render. Lucylab luôn tổng hợp ở 1x để cache phụ thuộc đúng text + voice
+// và để playbackRate không vô tình áp tốc độ lần thứ hai.
+export function lucylabSynthesisInput(text, settings = {}) {
+ return { text: String(text || ""), userVoiceId: resolveLucylabVoice(settings), speed: 1 };
+}
+
+async function generateLucylab(project, settings = {}) {
+ const text = enabledSlides(project).map(slideText).filter(Boolean).join(". ");
+ if (!text) return emptyTrack();
+ const apiKey = String(process.env.LUCYLAB_API_KEY || config.lucylabApiKey || "").trim();
+ if (!apiKey) throw new AppError("TTS_NOT_CONFIGURED", "Máy chủ chưa cấu hình Lucylab API Key (thiếu LUCYLAB_API_KEY).", 503);
+
+ const started = await lucylabJsonRpc({ apiKey, method: "ttsLongText", input: lucylabSynthesisInput(text, settings) });
+ const exportId = started?.projectExportId;
+ if (!exportId) throw new AppError("TTS_PROVIDER_FAILED", "Lucylab AI tạm thời không đọc được. Vui lòng thử lại.", 502);
+ const audioUrl = await waitForLucylabExport({apiKey,projectExportId:exportId});
+
+ let downloaded;
+ try { downloaded = await downloadRemoteAudioBuffer(audioUrl); }
+ catch (error) {
+  console.error("Lucylab export download failed:", safeCause(error));
+  throw new AppError("TTS_PROVIDER_FAILED", "Lucylab AI tạm thời không đọc được. Vui lòng thử lại.", 502);
+ }
+ const buffer = downloaded.buffer;
+ const isWav = buffer.length > 44
+  && buffer.toString("ascii", 0, 4) === "RIFF"
+  && buffer.toString("ascii", 8, 12) === "WAVE";
+ if (!isWav) throw new AppError("TTS_PROVIDER_FAILED", "Lucylab AI trả về tệp âm thanh không hợp lệ.", 502);
+
+ let durationSeconds = 0;
+ const byteRate = buffer.readUInt32LE(28);
+ if (byteRate > 0) durationSeconds = (buffer.length - 44) / byteRate;
+ if (!durationSeconds || !Number.isFinite(durationSeconds)) {
+  const words = text.trim().split(/\s+/u).length;
+  durationSeconds = Math.max(1, words / 2.5);
+ }
+ return { dataUrl: `data:audio/wav;base64,${buffer.toString("base64")}`, durationSeconds: Number(durationSeconds.toFixed(2)) };
 }
 
 export const GOOGLE_DEFAULT_VOICE="vi-VN-Neural2-D";
@@ -218,13 +282,21 @@ export const GOOGLE_VOICES=[
  "vi-VN-Standard-A","vi-VN-Standard-B","vi-VN-Standard-C","vi-VN-Standard-D"
 ];
 
+// `ttsVoice` historically accepted custom Google voice IDs, so keep unknown non-Lucylab IDs.
+// Known Lucylab IDs are provider-scoped and must never be forwarded to Google or keyed as Google.
+export function resolveGoogleVoice(settings={}){
+ const voice=String(settings.ttsVoice||"").trim();
+ return voice&&!LUCYLAB_VOICE_IDS.includes(voice)?voice:GOOGLE_DEFAULT_VOICE;
+}
+
 // Brief do AI sinh ra co quyen ghi ttsVoice, nen mot du an co the dang giu giong nam ngoai danh
 // sach tren. Giong do van phai nghe thu duoc, neu khong studio se tu choi doc dung thu ma ban
-// render se doc.
+// render se doc. Rieng ID Lucylab thi la voice cua provider khac nen phai canonicalize ve Google.
 export function allowedSampleVoices(projectSettings={},provider){
+ if(isLucylabProvider(provider))return LUCYLAB_VOICE_IDS;
  if(isVertexProvider(provider))return VERTEX_VOICES;
- const persisted=projectSettings.ttsVoice;
- return persisted&&!GOOGLE_VOICES.includes(persisted)?[...GOOGLE_VOICES,persisted]:GOOGLE_VOICES;
+ const persisted=resolveGoogleVoice(projectSettings);
+ return !GOOGLE_VOICES.includes(persisted)?[...GOOGLE_VOICES,persisted]:GOOGLE_VOICES;
 }
 
 // Nghe thu phai doc dung giong ma render se doc: nhanh Vertex lay geminiSpeaker1Voice, nhanh
@@ -232,26 +304,36 @@ export function allowedSampleVoices(projectSettings={},provider){
 // bat; ten cua he kia bi bo qua de roi ve dung giong cua render thay vi lam hong loi goi.
 export function voiceSampleSettings(projectSettings={},{ttsProvider,voice}={}){
  const base={...projectSettings,ttsProvider,geminiMultiSpeaker:false};
+ if(isLucylabProvider(ttsProvider)){
+  const picked=LUCYLAB_VOICE_IDS.includes(voice)?voice:LUCYLAB_DEFAULT_VOICE;
+  return{...base,ttsVoice:resolveGoogleVoice(projectSettings),lucylabVoice:picked};
+ }
  if(isVertexProvider(ttsProvider))return{...base,geminiSpeaker1Voice:voice};
  const picked=allowedSampleVoices(projectSettings,ttsProvider).includes(voice)?voice:"";
- return{...base,ttsVoice:picked||projectSettings.ttsVoice||GOOGLE_DEFAULT_VOICE};
+ return{...base,ttsVoice:picked||resolveGoogleVoice(projectSettings)};
 }
 
-export const sampledVoiceName=settings=>isVertexProvider(settings.ttsProvider)
- ?settings.geminiSpeaker1Voice
- :settings.ttsVoice;
+export const sampledVoiceName=settings=>{
+ if(isLucylabProvider(settings.ttsProvider)){
+  const id=resolveLucylabVoice(settings);
+  const v=LUCYLAB_VOICES.find(item=>item.id===id);
+  return v?v.name:"My Review";
+ }
+ return isVertexProvider(settings.ttsProvider)?settings.geminiSpeaker1Voice:settings.ttsVoice;
+};
 
 // Thieu credential, het quota, model khong ton tai — nha cung cap nem ra Error thuong, va
 // publicError goi tat ca thanh 500 "Loi he thong.". Nguoi bam "Nghe thu" vi the khong biet phai
 // sua gi. Danh dau lai thanh 502 kem nguyen van ly do, va job render cung ghi lai duoc cau do.
 export async function generateVideoTtsTrack(project,settings={}){
  try{
+  if(isLucylabProvider(settings.ttsProvider))return await generateLucylab(project,settings);
   return isVertexProvider(settings.ttsProvider)
    ?await generateVertex(project,settings)
    :await generateGoogle(project,settings);
  }catch(error){
   if(error instanceof AppError)throw error;
-  const provider=isVertexProvider(settings.ttsProvider)?"Vertex AI":"Google TTS";
+  const provider=isLucylabProvider(settings.ttsProvider)?"Lucylab AI":isVertexProvider(settings.ttsProvider)?"Vertex AI":"Google TTS";
   // Ghi nguyen ven de con dau vet; phia nguoi goi chi nhan cau mo ta cua thu vien, da cat ngan.
   // Nguyen van loi tu ben ngoai khong duoc ghi vao log: chinh cac fixture kiem ro ri cua bai test
   // da lam "BEGIN PRIVATE KEY" va "C:\\Users\\..." hien ra trong log CI qua dung dong nay. Bit duong

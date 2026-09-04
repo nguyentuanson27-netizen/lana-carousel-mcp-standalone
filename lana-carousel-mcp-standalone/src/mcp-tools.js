@@ -25,6 +25,7 @@ import {
  saveVideoAnalysisScript
 } from "./video-analysis-service.js";
 import {getVideoAnalysisJob,startVideoAnalysisJob} from "./video-analysis-jobs.js";
+import {LUCYLAB_VOICE_IDS} from "./video-tts.js";
 
 const ok=value=>({content:[{type:"text",text:JSON.stringify(value)}],structuredContent:value});
 const fail=error=>{const safe=publicError(error);return{isError:true,content:[{type:"text",text:JSON.stringify(safe)}]}};
@@ -42,7 +43,8 @@ const legacyDraftSegmentSchema=z.object({
 }).strict();
 const editableVideoSettingsSchema=z.object({
  ttsEnabled:z.boolean().optional(),
- ttsProvider:z.enum(["vertex","gemini","google"]).optional(),
+ ttsProvider:z.enum(["vertex","gemini","google","lucylab"]).optional(),
+ lucylabVoice:z.enum(LUCYLAB_VOICE_IDS).optional(),
  ttsVolume:z.number().min(0).max(1).optional(),
  ttsVoice:z.string().min(1).max(100).optional(),
  originalAudioVolume:z.number().min(0).max(1).optional(),
@@ -315,7 +317,7 @@ function registerVideoAnalysisTools(server){
 }
 
 export function createMcpServer({quotaClientId=currentQuotaClientId()}={}){
- const server=installToolQuota(new McpServer({name:"lana-carousel-standalone",version:"1.7.0"}),quotaClientId);
+ const server=installToolQuota(new McpServer({name:"lana-carousel-standalone",version:"1.8.0"}),quotaClientId);
  registerCarouselTools(server);
  registerVideoAnalysisTools(server);
  return server;

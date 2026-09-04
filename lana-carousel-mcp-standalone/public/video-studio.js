@@ -34,7 +34,10 @@ const settings=()=>({
   ttsProvider:$("#ttsProvider").value,
   ttsSpeed:+$("#ttsSpeed").value,
   geminiSpeaker1Voice:$("#voice").value,
+  // Giữ voice theo từng provider độc lập. `ttsVoice` thuộc Google; Lucylab có field riêng.
+  // Nếu ghi Lucylab ID vào `ttsVoice`, lần reload rồi đổi sang Google sẽ lộ đúng ID sai hệ đó.
   ttsVoice:$("#googleVoice").value,
+  lucylabVoice:$("#lucylabVoice")?.value||"vcXEe1p3FxPfpswf3BhwbG",
   originalAudioVolume:+$("#originalVolume").value,
   ttsVolume:+$("#ttsVolume").value,
   subtitleEnabled:$("#subtitleEnabled").checked,
@@ -97,31 +100,49 @@ function setControl(id,value,fallback){
 }
 
 const GOOGLE_DEFAULT_VOICE="vi-VN-Neural2-D";
+const LUCYLAB_DEFAULT_VOICE="vcXEe1p3FxPfpswf3BhwbG";
+const isLucylab=()=>$("#ttsProvider").value==="lucylab";
 const usingGoogleVoice=()=>$("#ttsProvider").value==="google";
-const pickedVoice=()=>usingGoogleVoice()?$("#googleVoice").value:$("#voice").value;
+const isLucylabVoice=voice=>[...$("#lucylabVoice").options].some(option=>option.value===voice);
+const pickedVoice=()=>{
+  if(isLucylab())return $("#lucylabVoice").value;
+  return usingGoogleVoice()?$("#googleVoice").value:$("#voice").value;
+};
 
-// Hai nhà cung cấp đặt tên giọng theo hai hệ khác nhau và không đọc được tên của nhau. Chỉ hiện
-// bộ chọn của nhà cung cấp đang bật, để không ai chọn được "Google + Kore" rồi nghe ra một giọng
-// khác hẳn lúc nghe thử và lúc render.
 function syncVoiceFields(){
-  const google=usingGoogleVoice();
-  $("#voiceField").hidden=google;
-  $("#voice").disabled=google;
+  const provider=$("#ttsProvider").value;
+  const lucy=provider==="lucylab";
+  const google=provider==="google";
+  const vertex=!lucy&&!google;
+
+  $("#voiceField").hidden=!vertex;
+  $("#voice").disabled=!vertex;
   $("#googleVoiceField").hidden=!google;
   $("#googleVoice").disabled=!google;
-  $("#voiceNote").textContent=google
-    ?`Google TTS đọc bằng ${$("#googleVoice").value}. Giọng Vertex (Kore, Puck…) không dùng được ở đây.`
-    :`Vertex Gemini đọc bằng ${$("#voice").value}.`;
+  if($("#lucylabVoiceField")){
+    $("#lucylabVoiceField").hidden=!lucy;
+    $("#lucylabVoice").disabled=!lucy;
+  }
+
+  if(lucy){
+    const opt=$("#lucylabVoice").selectedOptions[0];
+    $("#voiceNote").textContent=`Lucylab AI đọc bằng ${opt?opt.textContent:$("#lucylabVoice").value}.`;
+  }else if(google){
+    $("#voiceNote").textContent=`Google TTS đọc bằng ${$("#googleVoice").value}. Giọng Vertex (Kore, Puck…) không dùng được ở đây.`;
+  }else{
+    $("#voiceNote").textContent=`Vertex Gemini đọc bằng ${$("#voice").value}.`;
+  }
 }
 
-// Brief do AI sinh có thể đã lưu một giọng ngoài danh sách. Giữ lại làm một lựa chọn để lần lưu
-// sau không âm thầm đổi giọng của dự án.
+// Brief do AI sinh có thể đã lưu một giọng Google ngoài danh sách. Giữ lại để lần lưu sau không
+// âm thầm đổi giọng, nhưng loại các Lucylab ID từ bản PR cũ để chúng không lọt sang Google.
 function fillGoogleVoice(saved){
   const select=$("#googleVoice");
-  if(saved&&![...select.options].some(option=>option.value===saved)){
-    select.append(new Option(saved,saved));
+  const googleVoice=isLucylabVoice(saved)?GOOGLE_DEFAULT_VOICE:saved;
+  if(googleVoice&&![...select.options].some(option=>option.value===googleVoice)){
+    select.append(new Option(googleVoice,googleVoice));
   }
-  setControl("googleVoice",saved,GOOGLE_DEFAULT_VOICE);
+  setControl("googleVoice",googleVoice,GOOGLE_DEFAULT_VOICE);
 }
 
 function syncRangeOutputs(){
@@ -143,6 +164,8 @@ function fill(){
   setControl("ttsSpeed",saved.ttsSpeed,1);
   setControl("voice",saved.geminiSpeaker1Voice,"Kore");
   fillGoogleVoice(saved.ttsVoice);
+  const legacyLucylabVoice=isLucylabVoice(saved.ttsVoice)?saved.ttsVoice:LUCYLAB_DEFAULT_VOICE;
+  setControl("lucylabVoice",saved.lucylabVoice||legacyLucylabVoice,LUCYLAB_DEFAULT_VOICE);
   setControl("originalVolume",saved.originalAudioVolume,.25);
   setControl("ttsVolume",saved.ttsVolume,1);
   setControl("subtitleStyle",saved.subtitleStyle,"karaoke");
@@ -229,7 +252,6 @@ function renderCaptionText(caption,segment,style,time){
     caption.append(span);
   }
 }
-
 // Preview phải nghe giống bản render: Remotion bỏ hẳn tiếng gốc khi âm lượng bằng 0,
 // nên thẻ <video> cũng phải mute thay vì giữ nguyên âm lượng của trình duyệt.
 function applyPreviewVolume(currentSettings){
@@ -458,7 +480,7 @@ for(const event of ["timeupdate","play","pause","seeking","seeked","ratechange"]
 $("#segments").addEventListener("input",event=>{
   if(voicePreviewOn()&&event.target.matches(".voice,.start,.end"))stopVoicePreview();
 });
-for(const id of ["#voice","#googleVoice","#ttsProvider","#ttsSpeed"]){
+for(const id of ["#voice","#googleVoice","#lucylabVoice","#ttsProvider","#ttsSpeed"]){
   $(id).addEventListener("change",()=>{syncVoiceFields();if(voicePreviewOn())stopVoicePreview()});
 }
 

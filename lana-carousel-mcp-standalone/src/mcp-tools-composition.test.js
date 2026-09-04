@@ -52,5 +52,5 @@ test("hardening wrappers remain active after stale-schema integration",()=>{
 });
 
 test("MCP version changes when the public tool contract changes",()=>{
-  assert.match(source,/version:"1\.7\.0"/u);
+  assert.match(source,/version:"1\.8\.0"/u);
 });

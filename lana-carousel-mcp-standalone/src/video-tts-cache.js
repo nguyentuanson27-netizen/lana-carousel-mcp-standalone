@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { config } from "./config.js";
 import { videoAnalysisAssetDir } from "./video-analysis-service.js";
 import { decodeAudioDataUrl, measureAudioDuration } from "./video-audio-file.js";
-import { generateSpeechForText } from "./video-tts.js";
+import { generateSpeechForText, isLucylabProvider, resolveGoogleVoice, resolveLucylabVoice } from "./video-tts.js";
 
 const AUDIO_EXTENSIONS = ["wav", "mp3", "ogg", "webm"];
 const CACHE_RETENTION_MS = 30 * 864e5;
@@ -13,7 +13,7 @@ const CACHE_RETENTION_MS = 30 * 864e5;
 // sau khi chỉ sửa phụ đề hay màu sắc sẽ không gọi lại TTS. Tốc độ đọc không nằm trong khoá vì
 // nó được áp bằng playbackRate lúc render, không đổi byte audio mà nhà cung cấp trả về.
 export function ttsCacheKey({ text, settings = {} }) {
- const provider = ["gemini", "vertex"].includes(settings.ttsProvider) ? "vertex" : "google";
+ const provider = isLucylabProvider(settings.ttsProvider) ? "lucylab" : ["gemini", "vertex"].includes(settings.ttsProvider) ? "vertex" : "google";
  const payload = provider === "vertex"
   ? {
    provider,
@@ -22,7 +22,9 @@ export function ttsCacheKey({ text, settings = {} }) {
    style: settings.geminiStylePrompt || "",
    model: settings.geminiModel || ""
   }
-  : { provider, text: String(text || ""), voice: settings.ttsVoice || "" };
+  : provider === "lucylab"
+   ? { provider, text: String(text || ""), voice: resolveLucylabVoice(settings) }
+   : { provider, text: String(text || ""), voice: resolveGoogleVoice(settings) };
  return createHash("sha256").update(JSON.stringify(payload)).digest("hex").slice(0, 40);
 }
 
