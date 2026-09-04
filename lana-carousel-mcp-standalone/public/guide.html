@@ -1627,6 +1627,83 @@ Không:
 
 Cuối cùng gọi get_project_link và gửi link cho tôi.</pre>
       </div>
+
+      <div class="card" style="margin-top: 20px;">
+        <div class="card-body">
+          <h3 class="sub-heading">Tra cứu nhanh các phương án lựa chọn trong Brief</h3>
+          <p>Khi dùng prompt master, bạn hãy chọn một trong các phương án hợp lệ sau:</p>
+          
+          <div class="table-container" style="margin-top:12px;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Trường Brief</th>
+                  <th>Danh sách các phương án lựa chọn (Enum)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Lĩnh vực</strong><br><code>contentDomain</code></td>
+                  <td>
+                    <code>fashion</code> (Thời trang) · 
+                    <code>beauty</code> (Làm đẹp) · 
+                    <code>entertainment</code> (Giải trí) · 
+                    <code>food</code> (Ẩm thực) · 
+                    <code>travel</code> (Du lịch) · 
+                    <code>technology</code> (Công nghệ) · 
+                    <code>education</code> (Giáo dục) · 
+                    <code>business</code> (Kinh doanh) · 
+                    <code>lifestyle</code> (Đời sống) · 
+                    <code>other</code> (Khác)
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Mục tiêu</strong><br><code>contentGoal</code></td>
+                  <td>
+                    <code>product_showcase</code> (Trưng bày sản phẩm) · 
+                    <code>sales</code> (Bán hàng) · 
+                    <code>review</code> (Đánh giá) · 
+                    <code>tutorial</code> (Hướng dẫn) · 
+                    <code>storytelling</code> (Kể chuyện) · 
+                    <code>entertainment</code> (Giải trí) · 
+                    <code>brand_awareness</code> (Nhận diện) · 
+                    <code>engagement</code> (Tương tác) · 
+                    <code>other</code> (Khác)
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Tone</strong><br><code>toneStyle</code></td>
+                  <td>
+                    <code>humorous</code> (Hài hước) · 
+                    <code>witty</code> (Sắc sảo) · 
+                    <code>friendly</code> (Thân thiện) · 
+                    <code>energetic</code> (Năng động) · 
+                    <code>trendy</code> (Bắt trend) · 
+                    <code>luxurious</code> (Sang trọng) · 
+                    <code>serious</code> (Nghiêm túc) · 
+                    <code>expert</code> (Chuyên gia) · 
+                    <code>emotional</code> (Cảm xúc) · 
+                    <code>storytelling</code> (Tự sự) · 
+                    <code>persuasive_sales</code> (Thuyết phục bán hàng) · 
+                    <code>minimal</code> (Tối giản)
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>TTS speed</strong><br><code>ttsSpeed</code></td>
+                  <td>
+                    <code>0.8</code> (Chậm) · 
+                    <code>1</code> (Chuẩn) · 
+                    <code>1.2</code> (Khuyên dùng) · 
+                    <code>1.5</code> (Nhanh) · 
+                    <code>1.8</code> (Rất nhanh) · 
+                    <code>2</code> (Tối đa)
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- ═══ MỤC 16 ═══ -->
@@ -1738,9 +1815,73 @@ Hãy:
         <div class="card-body">
           <p>Trước khi tạo Video Analysis project, cần có 3 giá trị:</p>
 
-          <h3 class="sub-heading">Content domain</h3>
+          <h3 class="sub-heading">1. Content domain (Lĩnh vực nội dung)</h3>
+          <p>Giá trị enum đại diện cho ngành hàng hoặc chủ đề chính của video:</p>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Enum</th>
+                  <th>Ý nghĩa tiếng Việt</th>
+                  <th>Ví dụ áp dụng</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>fashion</code></td>
+                  <td>Thời trang</td>
+                  <td>Quần áo, váy đầm, phụ kiện, outfit, lookbook, phối đồ</td>
+                </tr>
+                <tr>
+                  <td><code>beauty</code></td>
+                  <td>Làm đẹp</td>
+                  <td>Mỹ phẩm, skincare, makeup, dưỡng tóc, chăm sóc da</td>
+                </tr>
+                <tr>
+                  <td><code>entertainment</code></td>
+                  <td>Giải trí</td>
+                  <td>Hài hước, parody, điện ảnh, âm nhạc, tiểu phẩm ngắn</td>
+                </tr>
+                <tr>
+                  <td><code>food</code></td>
+                  <td>Ẩm thực</td>
+                  <td>Món ăn, đồ uống, review quán ăn, công thức nấu nướng</td>
+                </tr>
+                <tr>
+                  <td><code>travel</code></td>
+                  <td>Du lịch</td>
+                  <td>Khám phá địa điểm, khách sạn, resort, trải nghiệm tour</td>
+                </tr>
+                <tr>
+                  <td><code>technology</code></td>
+                  <td>Công nghệ</td>
+                  <td>Smartphone, laptop, đồ điện tử, thiết bị gia dụng thông minh, app/phần mềm</td>
+                </tr>
+                <tr>
+                  <td><code>education</code></td>
+                  <td>Giáo dục</td>
+                  <td>Kiến thức, mẹo vặt, kỹ năng mềm, bài học, hướng dẫn học tập</td>
+                </tr>
+                <tr>
+                  <td><code>business</code></td>
+                  <td>Kinh doanh</td>
+                  <td>Bán lẻ, tài chính, đầu tư, khởi nghiệp, dịch vụ doanh nghiệp</td>
+                </tr>
+                <tr>
+                  <td><code>lifestyle</code></td>
+                  <td>Phong cách sống</td>
+                  <td>Nhà cửa, đời sống hằng ngày, gia đình, thú cưng, sức khỏe &amp; thể thao</td>
+                </tr>
+                <tr>
+                  <td><code>other</code></td>
+                  <td>Khác</td>
+                  <td>Lĩnh vực tùy chỉnh khác (kèm <code>customContentDomain</code> để chỉ rõ)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
           <div class="code-box">
-            <div class="code-box-head"><span class="code-box-lang">Domain Enums</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <div class="code-box-head"><span class="code-box-lang">Domain Enums (danh sách sao chép)</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
             <pre>fashion
 beauty
 entertainment
@@ -1753,9 +1894,156 @@ lifestyle
 other</pre>
           </div>
 
-          <h3 class="sub-heading">Tone style</h3>
+          <h3 class="sub-heading">2. Content goal (Mục tiêu nội dung)</h3>
+          <p>Mục đích truyền thông hoặc mục tiêu chuyển đổi của video (<code>content_goal</code> - tùy chọn):</p>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Enum</th>
+                  <th>Mục tiêu</th>
+                  <th>Mô tả chi tiết</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>product_showcase</code></td>
+                  <td>Trưng bày sản phẩm</td>
+                  <td>Làm nổi bật kiểu dáng, chất liệu, tính năng, chi tiết cận cảnh sản phẩm</td>
+                </tr>
+                <tr>
+                  <td><code>sales</code></td>
+                  <td>Thúc đẩy bán hàng</td>
+                  <td>Kêu gọi chốt đơn, kích thích mua sắm, giới thiệu ưu đãi/khuyến mãi</td>
+                </tr>
+                <tr>
+                  <td><code>review</code></td>
+                  <td>Đánh giá / Trải nghiệm</td>
+                  <td>Nhận xét trải nghiệm thực tế, phân tích ưu điểm và nhược điểm khách quan</td>
+                </tr>
+                <tr>
+                  <td><code>tutorial</code></td>
+                  <td>Hướng dẫn sử dụng</td>
+                  <td>Chỉ dẫn từng bước thao tác (how-to), cách phối đồ, mẹo ứng dụng</td>
+                </tr>
+                <tr>
+                  <td><code>storytelling</code></td>
+                  <td>Kể chuyện</td>
+                  <td>Chia sẻ câu chuyện thương hiệu, hậu trường sản xuất, kỷ niệm đáng nhớ</td>
+                </tr>
+                <tr>
+                  <td><code>entertainment</code></td>
+                  <td>Tạo sự giải trí</td>
+                  <td>Đem lại tiếng cười, thư giãn, giải trí nhẹ nhàng bắt trend</td>
+                </tr>
+                <tr>
+                  <td><code>brand_awareness</code></td>
+                  <td>Nhận diện thương hiệu</td>
+                  <td>Định vị phong cách, lan tỏa thông điệp và giá trị cốt lõi của thương hiệu</td>
+                </tr>
+                <tr>
+                  <td><code>engagement</code></td>
+                  <td>Tăng tương tác</td>
+                  <td>Kích thích người xem để lại bình luận, thả tim, chia sẻ và thảo luận</td>
+                </tr>
+                <tr>
+                  <td><code>other</code></td>
+                  <td>Mục tiêu khác</td>
+                  <td>Mục tiêu riêng biệt khác (kèm <code>customContentGoal</code> để chỉ rõ)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
           <div class="code-box">
-            <div class="code-box-head"><span class="code-box-lang">Tone Enums</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <div class="code-box-head"><span class="code-box-lang">Goal Enums (danh sách sao chép)</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>product_showcase
+sales
+review
+tutorial
+storytelling
+entertainment
+brand_awareness
+engagement
+other</pre>
+          </div>
+
+          <h3 class="sub-heading">3. Tone style (Phong cách thể hiện)</h3>
+          <p>Tông giọng kịch bản và cảm xúc lời thoại được AI áp dụng khi viết voice-over:</p>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Enum</th>
+                  <th>Phong cách</th>
+                  <th>Đặc trưng tông giọng</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>humorous</code></td>
+                  <td>Hài hước</td>
+                  <td>Vui vẻ, hóm hỉnh, dí dỏm, tạo tiếng cười sảng khoái</td>
+                </tr>
+                <tr>
+                  <td><code>witty</code></td>
+                  <td>Sắc sảo</td>
+                  <td>Thông minh, dí dỏm, châm biếm nhẹ nhàng, chơi chữ khéo léo</td>
+                </tr>
+                <tr>
+                  <td><code>friendly</code></td>
+                  <td>Thân thiện</td>
+                  <td>Gần gũi, ấm áp, tự nhiên như hai người bạn trò chuyện</td>
+                </tr>
+                <tr>
+                  <td><code>energetic</code></td>
+                  <td>Năng động</td>
+                  <td>Sôi nổi, tiết tấu nhanh, nhiệt huyết, truyền cảm hứng mạnh mẽ</td>
+                </tr>
+                <tr>
+                  <td><code>trendy</code></td>
+                  <td>Bắt trend</td>
+                  <td>Thời thượng, cập nhật ngôn ngữ mạng xã hội và giới trẻ (Gen Z)</td>
+                </tr>
+                <tr>
+                  <td><code>luxurious</code></td>
+                  <td>Sang trọng</td>
+                  <td>Cao cấp, tinh tế, đẳng cấp, câu từ trau chuốt và thanh lịch</td>
+                </tr>
+                <tr>
+                  <td><code>serious</code></td>
+                  <td>Nghiêm túc</td>
+                  <td>Trang trọng, chuẩn mực, mang tính chính luận hoặc tin tức</td>
+                </tr>
+                <tr>
+                  <td><code>expert</code></td>
+                  <td>Chuyên gia</td>
+                  <td>Phân tích sâu sắc, kiến thức chuyên môn, khoa học, đáng tin cậy</td>
+                </tr>
+                <tr>
+                  <td><code>emotional</code></td>
+                  <td>Cảm xúc</td>
+                  <td>Lắng đọng, sâu sắc, chạm tới trái tim và sự đồng cảm của người xem</td>
+                </tr>
+                <tr>
+                  <td><code>storytelling</code></td>
+                  <td>Tự sự</td>
+                  <td>Lối dẫn chuyện mạch lạc có mở đầu, diễn biến, cao trào và kết thúc</td>
+                </tr>
+                <tr>
+                  <td><code>persuasive_sales</code></td>
+                  <td>Thuyết phục bán hàng</td>
+                  <td>Lý lẽ sắc bén, làm nổi bật giá trị, lời kêu gọi hành động (CTA) dứt khoát</td>
+                </tr>
+                <tr>
+                  <td><code>minimal</code></td>
+                  <td>Tối giản</td>
+                  <td>Ngắn gọn, súc tích, đi thẳng vào trọng tâm, không rườm rà</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Tone Enums (danh sách sao chép)</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
             <pre>humorous
 witty
 friendly
@@ -1770,7 +2058,7 @@ persuasive_sales
 minimal</pre>
           </div>
 
-          <h3 class="sub-heading">TTS speed</h3>
+          <h3 class="sub-heading">4. TTS speed (Tốc độ đọc giọng AI)</h3>
           <div class="code-box">
             <div class="code-box-head"><span class="code-box-lang">Speed Multipliers</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
             <pre>0.8
@@ -1779,20 +2067,6 @@ minimal</pre>
 1.5
 1.8
 2</pre>
-          </div>
-
-          <p>Ngoài ra có <code>content_goal</code> tùy chọn:</p>
-          <div class="code-box">
-            <div class="code-box-head"><span class="code-box-lang">Goal Enums (Optional)</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
-            <pre>product_showcase
-sales
-review
-tutorial
-storytelling
-entertainment
-brand_awareness
-engagement
-other</pre>
           </div>
 
           <p>Ví dụ brief:</p>
@@ -2585,9 +2859,9 @@ KIỂM SOÁT
 Hãy sử dụng Video Analysis của Lana MCP.
 
 BRIEF
-- Lĩnh vực: &lt;fashion|beauty|food|...&gt;
-- Mục tiêu: &lt;product_showcase|sales|review|...&gt;
-- Tone: &lt;humorous|friendly|luxurious|...&gt;
+- Lĩnh vực: &lt;fashion|beauty|entertainment|food|travel|technology|education|business|lifestyle|other&gt;
+- Mục tiêu: &lt;product_showcase|sales|review|tutorial|storytelling|entertainment|brand_awareness|engagement|other&gt;
+- Tone: &lt;humorous|witty|friendly|energetic|trendy|luxurious|serious|expert|emotional|storytelling|persuasive_sales|minimal&gt;
 - TTS speed: &lt;0.8|1|1.2|1.5|1.8|2&gt;
 - Ngôn ngữ: Tiếng Việt
 
