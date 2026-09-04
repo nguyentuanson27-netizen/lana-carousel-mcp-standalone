@@ -41,8 +41,8 @@ test("logs safe Lucylab HTTP failure diagnostics without secrets or provider bod
    const output = serializedLogs(logs);
    assert.match(output, /lucylab_json_rpc_failed/u);
    assert.match(output, /ttsLongText/u);
-   assert.match(output, new RegExp(`\\"status\\":${status}`, "u"));
-   assert.match(output, new RegExp(`\\"group\\":\\"${group}\\"`, "u"));
+   assert.match(output, new RegExp(`"status":${status}`, "u"));
+   assert.match(output, new RegExp(`"group":"${group}"`, "u"));
    assert.doesNotMatch(output, /test-super-secret-lucylab-key|provider-secret-response-body|private input/u);
   }
  } finally {
@@ -71,7 +71,7 @@ test("logs timeout as a safe Lucylab diagnostic group", async () => {
   const output = serializedLogs(logs);
   assert.match(output, /lucylab_json_rpc_failed/u);
   assert.match(output, /getExportStatus/u);
-  assert.match(output, /\"group\":\"timeout\"/u);
+  assert.match(output, /"group":"timeout"/u);
   assert.doesNotMatch(output, /timeout-secret-key|private-export-id/u);
  } finally {
   globalThis.fetch = originalFetch;
