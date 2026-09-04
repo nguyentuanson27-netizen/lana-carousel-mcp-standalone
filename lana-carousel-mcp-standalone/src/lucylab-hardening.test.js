@@ -167,15 +167,54 @@ test("Carousel Studio does not advertise Lucylab until it has a complete support
  assert.doesNotMatch(widget, /videoLucylabVoice|value="lucylab"/u);
 });
 
-test("unsupported Lucylab credits surface is absent from routes and UI", async () => {
- const [html, studio, routes, videoTts] = await Promise.all([
+test("returns only a coarse Lucylab credit estimate from the legacy account method", async () => {
+ const originalFetch = globalThis.fetch;
+ const originalKey = process.env.LUCYLAB_API_KEY;
+ let requestBody;
+ let authorization;
+ process.env.LUCYLAB_API_KEY = "test-lucylab-key";
+ globalThis.fetch = async (_url, options = {}) => {
+  requestBody = JSON.parse(options.body || "{}");
+  authorization = options.headers?.Authorization;
+  return {
+   ok: true,
+   status: 200,
+   json: async () => ({
+    result: {
+     user: {
+      creditsRemaining: 12345.67,
+      isPremium: true,
+      subscriptionTier: "pro",
+      email: "private@example.com"
+     }
+    }
+   })
+  };
+ };
+ try {
+  const result = await tts.getLucylabCredits();
+  assert.equal(requestBody.method, "getUserInfo");
+  assert.deepEqual(requestBody.input, {});
+  assert.equal(authorization, "Bearer test-lucylab-key");
+  assert.deepEqual(result, { creditsRemaining: 12300, estimated: true });
+ } finally {
+  globalThis.fetch = originalFetch;
+  if (originalKey === undefined) delete process.env.LUCYLAB_API_KEY;
+  else process.env.LUCYLAB_API_KEY = originalKey;
+ }
+});
+
+test("exposes the Lucylab credit estimate only through the project-scoped studio surface", async () => {
+ const [html, studio, routes, update] = await Promise.all([
   fs.readFile(new URL("../public/video-studio.html", import.meta.url), "utf8"),
   fs.readFile(new URL("../public/video-studio.js", import.meta.url), "utf8"),
   fs.readFile(new URL("./video-analysis-routes.js", import.meta.url), "utf8"),
-  fs.readFile(new URL("./video-tts.js", import.meta.url), "utf8")
+  fs.readFile(new URL("../public/update.html", import.meta.url), "utf8")
  ]);
- assert.doesNotMatch(html, /lucylabCredit|refreshCreditsBtn|ViVibe/u);
- assert.doesNotMatch(studio, /fetchLucylabCredits|lucylab-credits|refreshCreditsBtn/u);
- assert.doesNotMatch(routes, /lucylab-credits|getLucylabCredits/u);
- assert.doesNotMatch(videoTts, /getLucylabCredits|TTS_CREDITS_UNAVAILABLE|getUserInfo/u);
+ assert.match(html, /lucylabCreditRow|refreshCreditsBtn|credit tạm tính/u);
+ assert.match(studio, /fetchLucylabCredits|lucylab-credits|refreshCreditsBtn/u);
+ assert.match(routes, /projects\/:id\/lucylab-credits|getLucylabCredits/u);
+ assert.doesNotMatch(routes, /get\("\/lucylab\/credits"/u);
+ assert.match(update, /PR #27|Quỳnh Giao|credit tạm tính/u);
+ assert.match(update, /PR #26|Lucylab AI/u);
 });
