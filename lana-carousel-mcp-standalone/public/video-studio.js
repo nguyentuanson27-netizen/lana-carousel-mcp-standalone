@@ -114,8 +114,7 @@ function ensureLucylabCreditUi(){
   if(row)return row;
   row=document.createElement("div");
   row.id="lucylabCreditRow";
-  row.hidden=true;
-  row.style.cssText="display:flex;align-items:center;gap:8px;margin-top:8px";
+  row.style.cssText="display:none;align-items:center;gap:8px;margin-top:8px";
 
   const pill=document.createElement("span");
   pill.style.cssText="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid #bbf7d0;border-radius:999px;background:#f0fdf4;color:#166534;font-size:12px";
@@ -171,7 +170,7 @@ function syncVoiceFields(){
     $("#lucylabVoice").disabled=!lucy;
   }
   const creditRow=ensureLucylabCreditUi();
-  creditRow.hidden=!lucy;
+  creditRow.style.display=lucy?"flex":"none";
 
   if(lucy){
     const opt=$("#lucylabVoice").selectedOptions[0];
