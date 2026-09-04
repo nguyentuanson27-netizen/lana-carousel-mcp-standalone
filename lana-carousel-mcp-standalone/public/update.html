@@ -351,13 +351,69 @@
 
   <div class="timeline">
 
-    <!-- ═══ PR #25 ═══ -->
+    <!-- ═══ PR #27 ═══ -->
     <div class="release latest">
+      <div class="release-dot"></div>
+      <div class="release-header">
+        <a class="pr-badge" href="https://github.com/nguyentuanson27-netizen/lana-carousel-mcp-standalone/pull/27" target="_blank" rel="noopener">#27</a>
+        <span class="release-title">Lucylab — thêm giọng Quỳnh Giao và hiển thị credit tạm tính</span>
+        <span class="new-badge">Mới nhất</span>
+        <span class="release-date">04/09/2026</span>
+      </div>
+      <div class="release-card">
+        <ul class="changes-list">
+          <li class="change-item">
+            <span class="change-type type-feat">feat</span>
+            <span class="change-text">Bổ sung giọng <strong>Quỳnh Giao (nữ đọc thơ)</strong> vào danh sách Lucylab của Video Analysis Studio.</span>
+          </li>
+          <li class="change-item">
+            <span class="change-type type-feat">feat</span>
+            <span class="change-text">Hiển thị <strong>credit tạm tính</strong> của ViVibe/Lucylab ngay dưới bộ chọn giọng, có nút làm mới và tự cập nhật sau khi nghe thử hoặc render.</span>
+          </li>
+          <li class="change-item">
+            <span class="change-type type-docs">docs</span>
+            <span class="change-text">Số credit chỉ dùng để tham khảo: backend dùng phương thức tài khoản legacy chưa nằm trong tài liệu API công khai, làm tròn kết quả và chỉ trả số credit ước tính; API key, tier, email và metadata tài khoản không được đưa ra frontend.</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ═══ PR #26 ═══ -->
+    <div class="release">
+      <div class="release-dot"></div>
+      <div class="release-header">
+        <a class="pr-badge" href="https://github.com/nguyentuanson27-netizen/lana-carousel-mcp-standalone/pull/26" target="_blank" rel="noopener">#26</a>
+        <span class="release-title">Tích hợp Lucylab AI TTS cho Video Analysis Studio</span>
+        <span class="release-date">04/09/2026</span>
+      </div>
+      <div class="release-card">
+        <ul class="changes-list">
+          <li class="change-item">
+            <span class="change-type type-feat">feat</span>
+            <span class="change-text">Thêm nhà cung cấp <strong>Lucylab AI</strong> vào Video Analysis Studio với danh sách giọng cộng đồng chọn lọc và trạng thái giọng tách riêng khỏi Google/Vertex.</span>
+          </li>
+          <li class="change-item">
+            <span class="change-type type-feat">feat</span>
+            <span class="change-text">Hỗ trợ đồng nhất từ nghe thử một câu, nghe thử giọng trên timeline đến render video Remotion; audio được cache theo provider, text và voice để tránh tổng hợp lại không cần thiết.</span>
+          </li>
+          <li class="change-item">
+            <span class="change-type type-fix">fix</span>
+            <span class="change-text">Giới hạn timeout/polling của Lucylab, tải file export qua biên SSRF-safe, kiểm tra WAV và giữ lỗi trả cho người dùng ở dạng đã làm sạch.</span>
+          </li>
+          <li class="change-item">
+            <span class="change-type type-fix">fix</span>
+            <span class="change-text">Bổ sung diagnostic metadata an toàn cho lỗi provider mà không ghi API key, request body hay response body vào log.</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ═══ PR #25 ═══ -->
+    <div class="release">
       <div class="release-dot"></div>
       <div class="release-header">
         <a class="pr-badge" href="https://github.com/nguyentuanson27-netizen/lana-carousel-mcp-standalone/pull/25" target="_blank" rel="noopener">#25</a>
         <span class="release-title">Trang Hướng dẫn &amp; Changelog, thêm giọng Vertex, sửa sai số ngân sách chữ</span>
-        <span class="new-badge">Mới nhất</span>
         <span class="release-date">28/08/2026</span>
       </div>
       <div class="release-card">
