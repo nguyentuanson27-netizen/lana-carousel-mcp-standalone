@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { lucylabJsonRpc } from "./lucylab-client.js";
+import { lucylabJsonRpc, waitForLucylabExport } from "./lucylab-client.js";
 
 const serializedLogs = logs => JSON.stringify(logs);
 
@@ -76,4 +76,46 @@ test("logs timeout as a safe Lucylab diagnostic group", async () => {
  } finally {
   globalThis.fetch = originalFetch;
  }
+});
+
+test("logs provider-declared export failure without exposing the export id", async () => {
+ const logs = await captureErrors(async () => {
+  await assert.rejects(
+   waitForLucylabExport({
+    projectExportId: "private-failed-export-id",
+    requestStatus: async () => ({ state: "failed" })
+   }),
+   error => error?.code === "TTS_PROVIDER_FAILED" && error?.status === 502
+  );
+ });
+ assert.equal(logs.length, 1);
+ const output = serializedLogs(logs);
+ assert.match(output, /lucylab_export_failed/u);
+ assert.match(output, /"group":"provider_state"/u);
+ assert.doesNotMatch(output, /private-failed-export-id/u);
+});
+
+test("logs total export deadline without exposing the export id", async () => {
+ let clock = 0;
+ const logs = await captureErrors(async () => {
+  await assert.rejects(
+   waitForLucylabExport({
+    projectExportId: "private-deadline-export-id",
+    totalTimeoutMs: 1_000,
+    pollIntervalMs: 500,
+    now: () => clock,
+    delay: async ms => { clock += ms; },
+    requestStatus: async () => {
+     clock += 600;
+     return { state: "processing" };
+    }
+   }),
+   error => error?.code === "TTS_PROVIDER_FAILED" && error?.status === 504
+  );
+ });
+ assert.equal(logs.length, 1);
+ const output = serializedLogs(logs);
+ assert.match(output, /lucylab_export_failed/u);
+ assert.match(output, /"group":"deadline"/u);
+ assert.doesNotMatch(output, /private-deadline-export-id/u);
 });
