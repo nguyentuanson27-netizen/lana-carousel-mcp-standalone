@@ -213,6 +213,7 @@ test("exposes the Lucylab credit estimate only through the project-scoped studio
  ]);
  assert.match(html, /97zRSQPtS6Fg3KEKekxssu|Quỳnh Giao/u);
  assert.match(studio, /lucylabCreditRow|refreshCreditsBtn|credit tạm tính|fetchLucylabCredits|lucylab-credits/u);
+ assert.match(studio, /creditRow\.style\.display=lucy\?"flex":"none"/u);
  assert.match(routes, /projects\/:id\/lucylab-credits|getLucylabCredits/u);
  assert.doesNotMatch(routes, /get\("\/lucylab\/credits"/u);
  assert.match(update, /PR #27|Quỳnh Giao|credit tạm tính/u);
