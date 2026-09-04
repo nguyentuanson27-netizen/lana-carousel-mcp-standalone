@@ -1,3 +1,4 @@
+import { config } from "./config.js";
 import { AppError } from "./errors.js";
 
 const LUCYLAB_API_URL = "https://api.lucylab.io/json-rpc";
@@ -75,6 +76,25 @@ export async function lucylabJsonRpc({ apiKey, method, input, timeoutMs = DEFAUL
   throw unavailable();
  }
  return data.result;
+}
+
+// `getUserInfo` is a legacy Lucylab method that is not part of the current public API docs. The
+// Studio uses it only for a rough operator-facing estimate, so keep the response intentionally
+// coarse and discard every account field except the rounded remaining-credit number.
+export async function getLucylabCredits({ apiKey } = {}) {
+ const key = String(apiKey || process.env.LUCYLAB_API_KEY || config.lucylabApiKey || "").trim();
+ if (!key) {
+  throw new AppError("TTS_NOT_CONFIGURED", "Máy chủ chưa cấu hình Lucylab API Key (thiếu LUCYLAB_API_KEY).", 503);
+ }
+ const result = await lucylabJsonRpc({ apiKey: key, method: "getUserInfo", input: {} });
+ const raw = Number(result?.user?.creditsRemaining);
+ if (!Number.isFinite(raw) || raw < 0) {
+  throw unavailable("Chưa lấy được credit Lucylab. Vui lòng thử lại.");
+ }
+ return {
+  creditsRemaining: Math.max(0, Math.round(raw / 100) * 100),
+  estimated: true
+ };
 }
 
 export async function waitForLucylabExport({
