@@ -109,6 +109,53 @@ const pickedVoice=()=>{
   return usingGoogleVoice()?$("#googleVoice").value:$("#voice").value;
 };
 
+function ensureLucylabCreditUi(){
+  let row=$("#lucylabCreditRow");
+  if(row)return row;
+  row=document.createElement("div");
+  row.id="lucylabCreditRow";
+  row.hidden=true;
+  row.style.cssText="display:flex;align-items:center;gap:8px;margin-top:8px";
+
+  const pill=document.createElement("span");
+  pill.style.cssText="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid #bbf7d0;border-radius:999px;background:#f0fdf4;color:#166534;font-size:12px";
+  const label=document.createElement("span");
+  label.append("⚡ ViVibe: ");
+  const value=document.createElement("strong");
+  value.id="lucylabCredits";
+  value.textContent="--";
+  label.append(value," credit tạm tính");
+  const button=document.createElement("button");
+  button.type="button";
+  button.id="refreshCreditsBtn";
+  button.title="Làm mới credit tạm tính";
+  button.setAttribute("aria-label","Làm mới credit Lucylab tạm tính");
+  button.textContent="↻";
+  button.style.cssText="border:0;background:transparent;color:inherit;cursor:pointer;padding:0 2px;font:inherit";
+  pill.append(label,button);
+  row.append(pill);
+  $("#voiceNote").after(row);
+  button.addEventListener("click",()=>fetchLucylabCredits(button));
+  return row;
+}
+
+async function fetchLucylabCredits(button=$("#refreshCreditsBtn")){
+  const creditsEl=$("#lucylabCredits");
+  if(!creditsEl||!projectId)return;
+  if(button){button.disabled=true;button.textContent="…"}
+  try{
+    const data=await api(`/api/video-analysis/projects/${encodeURIComponent(projectId)}/lucylab-credits`);
+    creditsEl.textContent=typeof data.creditsRemaining==="number"
+      ?`≈${data.creditsRemaining.toLocaleString("vi-VN")}`
+      :"--";
+  }catch(error){
+    creditsEl.textContent="--";
+    console.warn("Could not fetch Lucylab credit estimate:",error);
+  }finally{
+    if(button){button.disabled=false;button.textContent="↻"}
+  }
+}
+
 function syncVoiceFields(){
   const provider=$("#ttsProvider").value;
   const lucy=provider==="lucylab";
@@ -123,10 +170,13 @@ function syncVoiceFields(){
     $("#lucylabVoiceField").hidden=!lucy;
     $("#lucylabVoice").disabled=!lucy;
   }
+  const creditRow=ensureLucylabCreditUi();
+  creditRow.hidden=!lucy;
 
   if(lucy){
     const opt=$("#lucylabVoice").selectedOptions[0];
     $("#voiceNote").textContent=`Lucylab AI đọc bằng ${opt?opt.textContent:$("#lucylabVoice").value}.`;
+    fetchLucylabCredits();
   }else if(google){
     $("#voiceNote").textContent=`Google TTS đọc bằng ${$("#googleVoice").value}. Giọng Vertex (Kore, Puck…) không dùng được ở đây.`;
   }else{
@@ -370,6 +420,7 @@ async function poll(id){
         clearInterval(jobTimer);
         $("#download").hidden=false;
         $("#download").href=job.downloadUrl;
+        if(isLucylab())fetchLucylabCredits();
       }else if(job.status==="FAILED")clearInterval(jobTimer);
     }catch(error){
       clearInterval(jobTimer);
@@ -414,6 +465,7 @@ $("#voiceSample").onclick=async()=>{
     // Server mới là nơi quyết định giọng nào được đọc, nên nói lại đúng tên nó trả về.
     $("#voiceNote").textContent=`Đang đọc thử bằng ${response.voice}.`;
     await sampleAudio.play();
+    if(isLucylab())fetchLucylabCredits();
   }catch(error){
     if(generation!==sampleGeneration)return;
     syncVoiceFields();
@@ -467,6 +519,7 @@ $("#voicePreview").onclick=async()=>{
     $("#voicePreview").textContent="■ Tắt nghe thử";
     $("#voicePreviewInfo").textContent=`${voiceClips.length} đoạn đã sẵn sàng`;
     syncVoicePreview();
+    if(isLucylab())fetchLucylabCredits();
   }catch(error){stopVoicePreview();alert(error.message)}
   finally{button.disabled=false}
 };
