@@ -12,7 +12,7 @@ process.env.PUBLIC_BASE_URL = "https://lucylab-hardening.test";
 const tts = await import("./video-tts.js");
 const { ttsCacheKey } = await import("./video-tts-cache.js");
 const { downloadRemoteAudioBuffer } = await import("./remote-media.js");
-const { lucylabJsonRpc, waitForLucylabExport } = await import("./lucylab-client.js");
+const { getLucylabCredits, lucylabJsonRpc, waitForLucylabExport } = await import("./lucylab-client.js");
 
 after(async () => {
  await fs.rm(tempRoot, { recursive: true, force: true });
@@ -192,7 +192,7 @@ test("returns only a coarse Lucylab credit estimate from the legacy account meth
   };
  };
  try {
-  const result = await tts.getLucylabCredits();
+  const result = await getLucylabCredits();
   assert.equal(requestBody.method, "getUserInfo");
   assert.deepEqual(requestBody.input, {});
   assert.equal(authorization, "Bearer test-lucylab-key");
@@ -211,8 +211,8 @@ test("exposes the Lucylab credit estimate only through the project-scoped studio
   fs.readFile(new URL("./video-analysis-routes.js", import.meta.url), "utf8"),
   fs.readFile(new URL("../public/update.html", import.meta.url), "utf8")
  ]);
- assert.match(html, /lucylabCreditRow|refreshCreditsBtn|credit tạm tính/u);
- assert.match(studio, /fetchLucylabCredits|lucylab-credits|refreshCreditsBtn/u);
+ assert.match(html, /97zRSQPtS6Fg3KEKekxssu|Quỳnh Giao/u);
+ assert.match(studio, /lucylabCreditRow|refreshCreditsBtn|credit tạm tính|fetchLucylabCredits|lucylab-credits/u);
  assert.match(routes, /projects\/:id\/lucylab-credits|getLucylabCredits/u);
  assert.doesNotMatch(routes, /get\("\/lucylab\/credits"/u);
  assert.match(update, /PR #27|Quỳnh Giao|credit tạm tính/u);
