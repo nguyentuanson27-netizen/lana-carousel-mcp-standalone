@@ -218,7 +218,8 @@ export const LUCYLAB_VOICES = [
  { id: "wkKKgWq7ajLoSaVH38Y3gE", name: "Trinh Review (style 2)", label: "Trinh Review style 2 (Nữ miền Nam)" },
  { id: "un7ZPTWAwwYAMNdpgMwHjf", name: "Adam 2", label: "Adam 2 (Nam miền Nam)" },
  { id: "mhsL3CPLxmLYdSTKp3GANj", name: "Giọng Adam (monotone)", label: "Giọng Adam - monotone (Nam miền Bắc)" },
- { id: "cLZiqtzLcKYqwYrWJemAJK", name: "Chi Mai", label: "Chi Mai (Nữ miền Bắc)" }
+ { id: "cLZiqtzLcKYqwYrWJemAJK", name: "Chi Mai", label: "Chi Mai (Nữ miền Bắc)" },
+ { id: "97zRSQPtS6Fg3KEKekxssu", name: "Quỳnh Giao (nữ đọc thơ)", label: "Quỳnh Giao (nữ đọc thơ)" }
 ];
 export const LUCYLAB_VOICE_IDS = LUCYLAB_VOICES.map(v => v.id);
 export const LUCYLAB_DEFAULT_VOICE = "vcXEe1p3FxPfpswf3BhwbG";
