@@ -78,6 +78,30 @@ test("logs timeout as a safe Lucylab diagnostic group", async () => {
  }
 });
 
+test("rejects a primitive JSON-RPC payload as a sanitized protocol failure", async () => {
+ const originalFetch = globalThis.fetch;
+ globalThis.fetch = async () => ({
+  ok: true,
+  status: 200,
+  json: async () => "provider-secret-primitive"
+ });
+ try {
+  const logs = await captureErrors(async () => {
+   await assert.rejects(
+    lucylabJsonRpc({ apiKey: "primitive-secret-key", method: "ttsLongText", input: { text: "private input" } }),
+    error => error?.code === "TTS_PROVIDER_FAILED"
+   );
+  });
+  assert.equal(logs.length, 1);
+  const output = serializedLogs(logs);
+  assert.match(output, /lucylab_json_rpc_failed/u);
+  assert.match(output, /"group":"protocol"/u);
+  assert.doesNotMatch(output, /primitive-secret-key|provider-secret-primitive|private input/u);
+ } finally {
+  globalThis.fetch = originalFetch;
+ }
+});
+
 test("logs provider-declared export failure without exposing the export id", async () => {
  const logs = await captureErrors(async () => {
   await assert.rejects(
