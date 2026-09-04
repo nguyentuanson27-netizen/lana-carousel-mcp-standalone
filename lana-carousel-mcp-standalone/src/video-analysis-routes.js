@@ -28,6 +28,7 @@ import {
  videoAnalysisAssetDir
 } from "./video-analysis-service.js";
 import {buildVoiceTracks,getVideoAnalysisFile,getVideoAnalysisJob,startVideoAnalysisJob} from "./video-analysis-jobs.js";
+import {getLucylabCredits} from "./lucylab-client.js";
 import {synthesizeCachedSpeech} from "./video-tts-cache.js";
 import {LUCYLAB_VOICE_IDS,allowedSampleVoices,sampledVoiceName,voiceSampleSettings} from "./video-tts.js";
 import {buildSubtitleFile} from "./video-subtitles.js";
@@ -216,6 +217,13 @@ videoAnalysisRouter.get("/projects/:id/subtitles",safe((req,res)=>{
  res.type(format==="vtt"?"text/vtt; charset=utf-8":"application/x-subrip; charset=utf-8");
  res.setHeader("Content-Disposition",`attachment; filename="${name}"`);
  res.send(body);
+}));
+
+// Credit chỉ dùng để tham khảo trong Studio. Route vẫn buộc project tồn tại để giữ cùng phạm vi
+// truy cập với các thao tác Video Analysis khác và không mở một account endpoint toàn cục.
+videoAnalysisRouter.get("/projects/:id/lucylab-credits",safe(async(req,res)=>{
+ getVideoAnalysisProject(req.params.id);
+ res.json(await getLucylabCredits());
 }));
 
 // Nghe thử giọng đọc một câu cố định. Câu mẫu do server giữ chứ không nhận từ client, để một
