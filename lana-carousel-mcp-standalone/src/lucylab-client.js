@@ -33,6 +33,12 @@ function logRpcFailure({ method, status = 0, group }) {
  });
 }
 
+function logExportFailure(group) {
+ // Export ids identify provider-side work and are unnecessary for triage here. The state category
+ // is enough to distinguish an explicit provider failure from a workflow that exhausted its SLA.
+ console.error("lucylab_export_failed", { group });
+}
+
 export async function lucylabJsonRpc({ apiKey, method, input, timeoutMs = DEFAULT_TIMEOUT_MS }) {
  const signal = AbortSignal.timeout(timeoutMs);
  let response;
@@ -56,7 +62,7 @@ export async function lucylabJsonRpc({ apiKey, method, input, timeoutMs = DEFAUL
   throw unavailable();
  }
  const data = await response.json().catch(() => null);
- if (!data) {
+ if (!data || typeof data !== "object" || Array.isArray(data)) {
   logRpcFailure({ method, status: response.status, group: "protocol" });
   throw unavailable();
  }
@@ -106,10 +112,12 @@ export async function waitForLucylabExport({
    throw error;
   }
   if (result?.state === "failed") {
+   logExportFailure("provider_state");
    throw new AppError("TTS_PROVIDER_FAILED", "Lucylab AI tạo audio thất bại. Vui lòng thử lại.", 502);
   }
   if (result?.state === "completed" && result.url) return result.url;
  }
 
+ logExportFailure("deadline");
  throw new AppError("TTS_PROVIDER_FAILED", "Lucylab AI tạo audio quá lâu. Vui lòng thử lại.", 504);
 }
