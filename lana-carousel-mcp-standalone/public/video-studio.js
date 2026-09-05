@@ -256,6 +256,18 @@ async function load(){
   project=await api(`/api/video-analysis/projects/${projectId}`);
   fill();
   await loadVersions();
+  try{
+    const data=await api(`/api/video-analysis/projects/${projectId}/latest-job`);
+    if(data.job){
+      if(data.job.status==="READY"){
+        $("#job").textContent="READY · 100%";
+        $("#download").hidden=false;
+        $("#download").href=data.job.downloadUrl;
+      }else if(data.job.status==="QUEUED"||data.job.status==="RENDERING"){
+        await poll(data.job.id);
+      }
+    }
+  }catch{}
 }
 
 async function save(approved,{refresh=true}={}){
@@ -398,20 +410,22 @@ $("#render").onclick=async()=>{
     if(project.status!=="APPROVED")throw new Error("Hãy duyệt script trước khi render.");
     $("#render").disabled=true;
     $("#download").removeAttribute("href");
+    $("#download").hidden=true;
     $("#job").textContent="Đang lưu thiết lập mới nhất…";
     await save(true,{refresh:false});
     const job=await api(`/api/video-analysis/projects/${projectId}/render-jobs`,{method:"POST"});
     await poll(job.id);
-  }catch(error){alert(error.message);$("#job").textContent=error.message}
-  finally{$("#render").disabled=false}
+  }catch(error){
+    alert(error.message);
+    $("#job").textContent=error.message;
+    $("#render").disabled=false;
+  }
 };
 
 async function poll(id){
   clearInterval(jobTimer);
+  $("#render").disabled=true;
   const run=async()=>{
-    // Hàm này chạy trong setInterval nên không có ai bắt lỗi giùm: một lượt hỏi hỏng mà không
-    // xử lý sẽ thành unhandled rejection lặp lại mỗi 2 giây, vòng lặp không bao giờ dừng và
-    // dòng trạng thái đứng im ở con số cuối cùng.
     try{
       const job=await api(`/api/video-analysis/jobs/${id}`);
       $("#job").textContent=`${job.status} · ${job.progress}%${job.error?" · "+job.error:""}`;
@@ -419,10 +433,15 @@ async function poll(id){
         clearInterval(jobTimer);
         $("#download").hidden=false;
         $("#download").href=job.downloadUrl;
+        $("#render").disabled=false;
         if(isLucylab())fetchLucylabCredits();
-      }else if(job.status==="FAILED")clearInterval(jobTimer);
+      }else if(job.status==="FAILED"){
+        clearInterval(jobTimer);
+        $("#render").disabled=false;
+      }
     }catch(error){
       clearInterval(jobTimer);
+      $("#render").disabled=false;
       $("#job").textContent=`Mất liên lạc với job: ${error.message}`;
     }
   };

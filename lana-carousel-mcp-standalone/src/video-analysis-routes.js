@@ -27,7 +27,7 @@ import {
  saveVideoAnalysisScript,
  videoAnalysisAssetDir
 } from "./video-analysis-service.js";
-import {buildVoiceTracks,getVideoAnalysisFile,getVideoAnalysisJob,startVideoAnalysisJob} from "./video-analysis-jobs.js";
+import {buildVoiceTracks,getLatestVideoAnalysisJobForProject,getVideoAnalysisFile,getVideoAnalysisJob,startVideoAnalysisJob} from "./video-analysis-jobs.js";
 import {getLucylabCredits} from "./lucylab-client.js";
 import {synthesizeCachedSpeech} from "./video-tts-cache.js";
 import {LUCYLAB_VOICE_IDS,allowedSampleVoices,sampledVoiceName,voiceSampleSettings} from "./video-tts.js";
@@ -279,6 +279,7 @@ videoAnalysisRouter.post("/projects/:id/voice-preview",safe(async(req,res)=>{
 
 videoAnalysisRouter.get("/projects/:id/versions",safe((req,res)=>res.json({versions:getVideoAnalysisVersions(req.params.id)})));
 videoAnalysisRouter.post("/projects/:id/versions/:versionId/restore",safe((req,res)=>res.json(restoreVideoAnalysisVersion(req.params.id,req.params.versionId))));
+videoAnalysisRouter.get("/projects/:id/latest-job",safe((req,res)=>res.json({job:getLatestVideoAnalysisJobForProject(req.params.id)})));
 videoAnalysisRouter.post("/projects/:id/render-jobs",safe((req,res)=>res.status(202).json(startVideoAnalysisJob(req.params.id))));
 videoAnalysisRouter.get("/jobs/:id",safe((req,res)=>res.json(getVideoAnalysisJob(req.params.id))));
 videoAnalysisRouter.get("/jobs/:id/download",safe((req,res)=>res.download(getVideoAnalysisFile(req.params.id),`lana-analyzed-video-${req.params.id}.mp4`)));

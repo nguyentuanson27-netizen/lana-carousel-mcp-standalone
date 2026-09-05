@@ -255,6 +255,10 @@ export function startVideoAnalysisJob(projectId){
   );
  }
  getVideoAnalysisProject(projectId);
+ const existing=videoAnalysisJobRegistry.getActiveJobForProject(projectId);
+ if(existing){
+  return publish(existing);
+ }
  const job={id:randomUUID(),projectId,status:"QUEUED",progress:0,createdAt:new Date().toISOString()};
  videoAnalysisJobRegistry.add(job);
  insert.run(job.id,projectId,job.status,0,job.createdAt,job.createdAt,new Date(Date.now()+7*864e5).toISOString());
@@ -277,6 +281,15 @@ export function getVideoAnalysisJob(id){
   downloadUrl:row.status==="READY"?`/api/video-analysis/jobs/${row.id}/download`:null,
   createdAt:row.created_at
  };
+}
+
+
+export function getLatestVideoAnalysisJobForProject(projectId){
+ const live=videoAnalysisJobRegistry.getActiveJobForProject(projectId);
+ if(live)return publish(live);
+ const row=db.prepare("SELECT id FROM video_analysis_jobs WHERE project_id=? ORDER BY rowid DESC LIMIT 1").get(projectId);
+ if(!row)return null;
+ return getVideoAnalysisJob(row.id);
 }
 
 export function getVideoAnalysisFile(id){
