@@ -1,8 +1,8 @@
 // Cùng công thức với src/video-analysis-brief.js. Hai bên phải khớp nhau, nếu không studio sẽ
 // báo "vừa" cho câu mà phía render tính là quá dài; có test đối chiếu để chặn lệch.
 (function (global) {
-  const BASE_WORDS_PER_SECOND = 2.5;
-  const WORD_BUDGET_RESERVED_SECONDS = 0.2;
+  const BASE_WORDS_PER_SECOND = 3.3;
+  const WORD_BUDGET_RESERVED_SECONDS = 0;
   const TIGHT_RATIO = 0.9;
 
   const countWords = value => String(value || "").trim().split(/\s+/u).filter(Boolean).length;

@@ -25,8 +25,8 @@ export const VIDEO_EDITABLE_SETTING_KEYS = [
   "geminiSpeaker2Voice", "geminiSpeaker1Name", "geminiSpeaker2Name",
   "geminiMultiSpeaker", "geminiModel"
 ];
-export const BASE_WORDS_PER_SECOND = 2.5;
-export const WORD_BUDGET_RESERVED_SECONDS = 0.2;
+export const BASE_WORDS_PER_SECOND = 3.3;
+export const WORD_BUDGET_RESERVED_SECONDS = 0;
 
 const TIMELINE_TOLERANCE_SECONDS = 0.001;
 const MIN_DIFFERENT_SEGMENT_RATIO = 0.5;
@@ -304,7 +304,7 @@ export function evaluateVideoScriptOptions({brief, options}) {
     budgetModel: {
       baseWordsPerSecond: BASE_WORDS_PER_SECOND,
       reservedSeconds: WORD_BUDGET_RESERVED_SECONDS,
-      formula: "(enabled duration − 0.2s) × 2.5 words/s × ttsSpeed"
+      formula: "segment duration × 3.3 words/s × ttsSpeed"
     },
     options: evaluatedOptions,
     nextAction: "Hiển thị cả hai phương án cho người dùng và chờ họ chọn rõ một phương án trước khi lưu script."

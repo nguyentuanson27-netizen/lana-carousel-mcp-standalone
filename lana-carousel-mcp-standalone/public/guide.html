@@ -2189,12 +2189,7 @@ cùng trạng thái enabled</pre>
           <p>Server sử dụng công thức:</p>
           <div class="code-box">
             <div class="code-box-head"><span class="code-box-lang">Công thức tính Word Budget</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
-            <pre>maximum words
-=
-segment duration
-× 2.5 words/second
-× TTS speed
-(segment duration - 0.2s) × 2.5 words/second × TTS speed</pre>
+            <pre>maximum words = segment duration × 3.3 words/second × TTS speed</pre>
           </div>
 
           <p>Ví dụ:</p>
@@ -2204,8 +2199,7 @@ segment duration
 TTS speed: x1.2
 
 Budget:
-4 × 2.5 × 1.2 (segment duration - 0.2s) × 2.5 words/second × TTS speed
-≈ 10 từ</pre>
+4 × 3.3 × 1.2 ≈ 15 từ</pre>
           </div>
 
           <p>Nếu voice-over dài hơn budget, server có thể trả cảnh báo <code>too_long</code>.</p>
