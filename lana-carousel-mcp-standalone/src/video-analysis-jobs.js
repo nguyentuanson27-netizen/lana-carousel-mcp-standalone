@@ -11,6 +11,8 @@ import {videoAnalysisJobRegistry} from "./video-analysis-job-registry.js";
 import {isVideoSourceMutationPending} from "./video-analysis-project-locks.js";
 import {assertManagedVideoSourceUrl} from "./video-source-importer.js";
 import {synthesizeCachedSpeech} from "./video-tts-cache.js";
+import {isLucylabProvider} from "./video-tts.js";
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 export {wavDurationSeconds,mp3DurationSeconds} from "./video-audio-file.js";
 
 let running=false;
@@ -162,8 +164,15 @@ export function voiceTracksDuration(tracks){
 }
 
 export async function buildVoiceTracks({settings,segments,mediaScope}){
- const clips=await mapWithLimit(segments,TTS_CONCURRENCY,segment=>
-  synthesizeSegmentVoice({settings,segment}));
+ const lucy = isLucylabProvider(settings?.ttsProvider);
+ const limit = lucy ? 1 : TTS_CONCURRENCY;
+ const segmentDelayMs = lucy ? Math.max(0, Number.parseInt(process.env.LUCYLAB_SEGMENT_DELAY_MS || "", 10) || 3_000) : 0;
+ const clips=await mapWithLimit(segments,limit,async (segment,index)=>{
+  if (lucy && index > 0 && segmentDelayMs > 0) {
+   await sleep(segmentDelayMs);
+  }
+  return synthesizeSegmentVoice({settings,segment});
+ });
  return planVoiceTracks({segments,clips,ttsSpeed:settings.ttsSpeed})
   .map(track=>({...track,url:createSignedMediaUrl(track.url,mediaScope)}));
 }

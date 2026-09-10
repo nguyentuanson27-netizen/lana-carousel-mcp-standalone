@@ -2837,6 +2837,16 @@ static</pre>
           </div>
 
           <p>Video có thể cấu hình speaker 1/speaker 2 khi dùng Gemini multi-speaker.</p>
+
+          <h3 style="margin-top:1.5rem; font-size:1.1rem; color:var(--text-primary);">Điều phối &amp; Thời gian chờ khi gọi Lucylab AI</h3>
+          <p>Để tránh lỗi giới hạn tốc độ (rate limit) và lỗi <em>"You already have an export in progress"</em> từ nhà cung cấp Lucylab AI, hệ thống áp dụng cơ chế điều phối thời gian chờ tự động:</p>
+          <ul>
+            <li><strong>Khoảng cách kiểm tra tiến độ (Poll Interval):</strong> Mặc định <strong>4.000 ms</strong> (4 giây, tăng từ 2 giây ban đầu) giữa các lệnh <code>getExportStatus</code> gửi sang Lucylab. Có thể tùy chỉnh qua <code>LUCYLAB_POLL_INTERVAL_MS</code>.</li>
+            <li><strong>Thời gian chờ giữa các phân đoạn video:</strong> Khi dựng video gồm nhiều câu/phân đoạn, hệ thống tuần tự hóa các yêu cầu và chờ <strong>3.000 ms</strong> (3 giây) giữa các câu để Lucylab hoàn tất phiên cũ. Có thể tùy chỉnh qua <code>LUCYLAB_SEGMENT_DELAY_MS</code>.</li>
+            <li><strong>Thời gian hạ nhiệt giữa các lệnh export:</strong> Hàng đợi export áp dụng thời gian chờ <strong>2.000 ms</strong> (2 giây) sau mỗi lượt hoàn thành trước khi nhận lượt mới. Có thể tùy chỉnh qua <code>LUCYLAB_COOLDOWN_MS</code>.</li>
+            <li><strong>Thời hạn chờ export tối đa:</strong> Nâng lên <strong>120.000 ms</strong> (120 giây / 2 phút) để các video dài không bị ngắt quãng giữa chừng. Có thể tùy chỉnh qua <code>LUCYLAB_EXPORT_TIMEOUT_MS</code>.</li>
+            <li><strong>Tự động thử lại:</strong> Nếu Lucylab trả về thông báo đang có export dở dang, hệ thống sẽ tự động tạm dừng một nhịp và thử lại tối đa 3 lần thay vì báo lỗi ngay lập tức.</li>
+          </ul>
         </div>
       </div>
     </section>
