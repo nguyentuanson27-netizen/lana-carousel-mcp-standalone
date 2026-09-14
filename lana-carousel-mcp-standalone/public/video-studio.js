@@ -495,12 +495,13 @@ async function poll(id){
     }
   };
   if(await run()){
-    jobTimer=setInterval(async()=>{
+    const timer=setInterval(async()=>{
       if(!await run()){
-        clearInterval(jobTimer);
-        jobTimer=null;
+        clearInterval(timer);
+        if(jobTimer===timer)jobTimer=null;
       }
     },2000);
+    jobTimer=timer;
   }
 }
 
