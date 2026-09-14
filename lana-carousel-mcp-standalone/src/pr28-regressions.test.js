@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
+import {createHash,randomUUID} from "node:crypto";
 import fs from "node:fs";
 import test from "node:test";
-import {randomUUID} from "node:crypto";
 import {db} from "./db.js";
 import {
   createVideoAnalysisProject,
+  getVideoAnalysisProject,
   saveVideoAnalysisScript
 } from "./video-analysis-service.js";
 import {getLatestVideoAnalysisJobForProject} from "./video-analysis-jobs.js";
@@ -19,8 +20,37 @@ const segment = (text = "Xin chào") => ({
   enabled: true
 });
 
+const renderRevision = project => createHash("sha256").update(JSON.stringify({
+  projectVersion: Number(project.currentVersion || 0),
+  sourceUrl: String(project.source?.url || ""),
+  sourceDuration: Number(project.source?.duration || 0)
+})).digest("hex");
+
 function deleteProject(projectId) {
   db.prepare("DELETE FROM video_analysis_projects WHERE id=?").run(projectId);
+}
+
+function insertReadyJob(project) {
+  const now = new Date().toISOString();
+  const jobId = randomUUID();
+  db.prepare(`
+    INSERT INTO video_analysis_jobs(
+      id,project_id,project_version,render_revision,status,progress,error,output_path,created_at,updated_at,expires_at
+    ) VALUES(?,?,?,?,?,?,?,?,?,?,?)
+  `).run(
+    jobId,
+    project.id,
+    project.currentVersion,
+    renderRevision(project),
+    "READY",
+    100,
+    null,
+    null,
+    now,
+    now,
+    new Date(Date.now() + 864e5).toISOString()
+  );
+  return jobId;
 }
 
 test("legacy video-analysis projects keep SFX opt-in instead of enabling it implicitly", () => {
@@ -40,13 +70,7 @@ test("latest render job is restored only while its project version is current", 
       script: {summary: "v1", language: "vi-VN", segments: [segment("Phiên bản một")]},
       approved: true
     });
-    const now = new Date().toISOString();
-    const jobId = randomUUID();
-    db.prepare(`
-      INSERT INTO video_analysis_jobs(
-        id,project_id,project_version,status,progress,error,output_path,created_at,updated_at,expires_at
-      ) VALUES(?,?,?,?,?,?,?,?,?,?)
-    `).run(jobId, project.id, versionOne.currentVersion, "READY", 100, null, null, now, now, new Date(Date.now() + 864e5).toISOString());
+    const jobId = insertReadyJob(versionOne);
 
     assert.equal(getLatestVideoAnalysisJobForProject(project.id)?.id, jobId);
 
@@ -56,6 +80,36 @@ test("latest render job is restored only while its project version is current", 
       approved: true
     });
     assert.equal(versionTwo.currentVersion, versionOne.currentVersion + 1);
+    assert.equal(getLatestVideoAnalysisJobForProject(project.id), null);
+  } finally {
+    deleteProject(project.id);
+  }
+});
+
+test("latest render job is invalidated when the source changes without a version bump", () => {
+  const project = createVideoAnalysisProject({title: `render-source-${randomUUID()}`});
+  try {
+    const saved = saveVideoAnalysisScript({
+      projectId: project.id,
+      script: {summary: "source", language: "vi-VN", segments: [segment()]},
+      approved: true
+    });
+    const jobId = insertReadyJob(saved);
+    assert.equal(getLatestVideoAnalysisJobForProject(project.id)?.id, jobId);
+
+    db.prepare(`
+      UPDATE video_analysis_projects
+      SET source_url=?, duration=?, updated_at=?
+      WHERE id=?
+    `).run(
+      "http://localhost/video-analysis-assets/replacement.mp4",
+      12.5,
+      new Date(Date.now() + 1000).toISOString(),
+      project.id
+    );
+
+    const changed = getVideoAnalysisProject(project.id);
+    assert.equal(changed.currentVersion, saved.currentVersion);
     assert.equal(getLatestVideoAnalysisJobForProject(project.id), null);
   } finally {
     deleteProject(project.id);
