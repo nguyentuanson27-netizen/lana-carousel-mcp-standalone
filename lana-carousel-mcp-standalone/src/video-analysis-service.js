@@ -80,6 +80,8 @@ const defaults={
  subtitleX:50,
  subtitlePosition:86,
  subtitleStyle:"karaoke",
+ sfxEnabled:false,
+ sfxVolume:.25,
  geminiSpeaker1Voice:"Kore",
  geminiStylePrompt:"Đọc tiếng Việt tự nhiên, rõ ràng.",
  analysisBrief:null,

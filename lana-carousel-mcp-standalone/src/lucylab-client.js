@@ -3,8 +3,14 @@ import { AppError } from "./errors.js";
 
 const LUCYLAB_API_URL = "https://api.lucylab.io/json-rpc";
 const DEFAULT_TIMEOUT_MS = 15_000;
-const DEFAULT_EXPORT_TIMEOUT_MS = 60_000;
-const DEFAULT_POLL_INTERVAL_MS = 2_000;
+const DEFAULT_EXPORT_TIMEOUT_MS = Math.max(
+ 10_000,
+ Number.parseInt(process.env.LUCYLAB_EXPORT_TIMEOUT_MS || "", 10) || 120_000
+);
+const DEFAULT_POLL_INTERVAL_MS = Math.max(
+ 1_000,
+ Number.parseInt(process.env.LUCYLAB_POLL_INTERVAL_MS || "", 10) || 4_000
+);
 const DOCUMENTED_METHODS = new Set(["ttsLongText", "getExportStatus"]);
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -40,42 +46,49 @@ function logExportFailure(group) {
  console.error("lucylab_export_failed", { group });
 }
 
-export async function lucylabJsonRpc({ apiKey, method, input, timeoutMs = DEFAULT_TIMEOUT_MS }) {
- const signal = AbortSignal.timeout(timeoutMs);
- let response;
- try {
-  response = await fetch(LUCYLAB_API_URL, {
-   method: "POST",
-   headers: {
-    "Authorization": `Bearer ${apiKey}`,
-    "Content-Type": "application/json"
-   },
-   body: JSON.stringify({ method, input }),
-   signal
-  });
- } catch {
-  logRpcFailure({ method, group: signal.aborted ? "timeout" : "network" });
-  throw unavailable();
- }
+export async function lucylabJsonRpc({ apiKey, method, input, timeoutMs = DEFAULT_TIMEOUT_MS, maxRetries = 3 }) {
+ for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+  const signal = AbortSignal.timeout(timeoutMs);
+  let response;
+  try {
+   response = await fetch(LUCYLAB_API_URL, {
+    method: "POST",
+    headers: {
+     "Authorization": `Bearer ${apiKey}`,
+     "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ method, input }),
+    signal
+   });
+  } catch {
+   logRpcFailure({ method, group: signal.aborted ? "timeout" : "network" });
+   throw unavailable();
+  }
 
- if (!response.ok) {
-  logRpcFailure({ method, status: response.status, group: httpFailureGroup(response.status) });
-  throw unavailable();
+  if (!response.ok) {
+   logRpcFailure({ method, status: response.status, group: httpFailureGroup(response.status) });
+   throw unavailable();
+  }
+  const data = await response.json().catch(() => null);
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+   logRpcFailure({ method, status: response.status, group: "protocol" });
+   throw unavailable();
+  }
+  if (data.error) {
+   const msg = String(data.error?.message || "");
+   if (attempt < maxRetries && msg.includes("already have an export in progress")) {
+    await sleep(DEFAULT_POLL_INTERVAL_MS);
+    continue;
+   }
+   logRpcFailure({ method, status: response.status, group: "rpc" });
+   throw unavailable();
+  }
+  if (!("result" in data)) {
+   logRpcFailure({ method, status: response.status, group: "protocol" });
+   throw unavailable();
+  }
+  return data.result;
  }
- const data = await response.json().catch(() => null);
- if (!data || typeof data !== "object" || Array.isArray(data)) {
-  logRpcFailure({ method, status: response.status, group: "protocol" });
-  throw unavailable();
- }
- if (data.error) {
-  logRpcFailure({ method, status: response.status, group: "rpc" });
-  throw unavailable();
- }
- if (!("result" in data)) {
-  logRpcFailure({ method, status: response.status, group: "protocol" });
-  throw unavailable();
- }
- return data.result;
 }
 
 // `getUserInfo` is a legacy Lucylab method that is not part of the current public API docs. The

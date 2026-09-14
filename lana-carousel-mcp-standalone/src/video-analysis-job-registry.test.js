@@ -25,3 +25,11 @@ test("completed jobs are not considered active",()=>{
  registry.add({id:"failed",projectId:"project-1",status:"FAILED"});
  assert.equal(registry.hasActiveProject("project-1"),false);
 });
+
+test("getActiveJobForProject returns active job if present",()=>{
+ const registry=createVideoAnalysisJobRegistry();
+ const rendering={id:"rendering",projectId:"project-1",status:"RENDERING"};
+ registry.add(rendering);
+ assert.equal(registry.getActiveJobForProject("project-1"),rendering);
+ assert.equal(registry.getActiveJobForProject("project-2"),null);
+});

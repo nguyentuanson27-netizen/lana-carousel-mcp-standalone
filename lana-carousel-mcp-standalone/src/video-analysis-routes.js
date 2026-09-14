@@ -27,7 +27,7 @@ import {
  saveVideoAnalysisScript,
  videoAnalysisAssetDir
 } from "./video-analysis-service.js";
-import {buildVoiceTracks,getVideoAnalysisFile,getVideoAnalysisJob,startVideoAnalysisJob} from "./video-analysis-jobs.js";
+import {buildVoiceTracks,getLatestVideoAnalysisJobForProject,getVideoAnalysisFile,getVideoAnalysisJob,startVideoAnalysisJob} from "./video-analysis-jobs.js";
 import {getLucylabCredits} from "./lucylab-client.js";
 import {synthesizeCachedSpeech} from "./video-tts-cache.js";
 import {LUCYLAB_VOICE_IDS,allowedSampleVoices,sampledVoiceName,voiceSampleSettings} from "./video-tts.js";
@@ -59,7 +59,9 @@ const segmentSchema=z.object({
  // về trường này và studio gửi nguyên mảng đó lên lại. Schema `.strict()` không nhận thì mọi
  // lượt lưu, duyệt, render và nghe thử trên video đều chết. Giá trị gửi lên chỉ để round-trip
  // được: thứ tự vẫn luôn được tính lại từ vị trí trong mảng.
- order:z.number().int().min(0).optional()
+ order:z.number().int().min(0).optional(),
+ words:z.array(z.object({word:z.string(),start:z.number().min(0),end:z.number().min(0)})).optional(),
+ speechDuration:z.number().min(0).optional()
 }).strict();
 const preparedSegmentSchema=segmentSchema.extend({
  id:z.string().min(1).max(100),
@@ -83,6 +85,13 @@ const editableVideoSettingsSchema=z.object({
  subtitleX:z.number().min(6).max(94).optional(),
  subtitlePosition:z.number().min(6).max(94).optional(),
  subtitleStyle:z.enum(["karaoke","word","static"]).optional(),
+ subtitlePreset:z.enum(["tiktok-classic","capcut-stroke","bounce-pop","neon-glow","box-gradient"]).optional(),
+ ctaEnabled:z.boolean().optional(),
+ ctaType:z.enum(["cart","sale-badge","follow"]).optional(),
+ ctaText:z.string().max(200).optional(),
+ ctaPosition:z.enum(["bottom-left","bottom-center","top-right"]).optional(),
+ sfxEnabled:z.boolean().optional(),
+ sfxVolume:z.number().min(0).max(1).optional(),
  geminiSpeaker1Voice:z.string().min(1).max(100).optional(),
  geminiSpeaker2Voice:z.string().min(1).max(100).optional(),
  geminiSpeaker1Name:z.string().min(1).max(100).optional(),
@@ -279,6 +288,7 @@ videoAnalysisRouter.post("/projects/:id/voice-preview",safe(async(req,res)=>{
 
 videoAnalysisRouter.get("/projects/:id/versions",safe((req,res)=>res.json({versions:getVideoAnalysisVersions(req.params.id)})));
 videoAnalysisRouter.post("/projects/:id/versions/:versionId/restore",safe((req,res)=>res.json(restoreVideoAnalysisVersion(req.params.id,req.params.versionId))));
+videoAnalysisRouter.get("/projects/:id/latest-job",safe((req,res)=>res.json({job:getLatestVideoAnalysisJobForProject(req.params.id)})));
 videoAnalysisRouter.post("/projects/:id/render-jobs",safe((req,res)=>res.status(202).json(startVideoAnalysisJob(req.params.id))));
 videoAnalysisRouter.get("/jobs/:id",safe((req,res)=>res.json(getVideoAnalysisJob(req.params.id))));
 videoAnalysisRouter.get("/jobs/:id/download",safe((req,res)=>res.download(getVideoAnalysisFile(req.params.id),`lana-analyzed-video-${req.params.id}.mp4`)));

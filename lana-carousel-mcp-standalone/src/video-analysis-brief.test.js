@@ -36,11 +36,11 @@ test("rejects unsupported TTS speed",()=>{
 test("requires non-empty aligned and distinct natural_full and punchy_short options",()=>{
   const result=evaluateVideoScriptOptions({brief,options:validOptions()});
   assert.equal(result.options.length,2);
-  assert.equal(result.options[0].segments[0].maxWords,11);
+  assert.equal(result.options[0].segments[0].maxWords,15);
   assert.deepEqual(result.budgetModel,{
-    baseWordsPerSecond:2.5,
-    reservedSeconds:0.2,
-    formula:"(enabled duration − 0.2s) × 2.5 words/s × ttsSpeed"
+    baseWordsPerSecond:3.3,
+    reservedSeconds:0,
+    formula:"segment duration × 3.3 words/s × ttsSpeed"
   });
   assert.equal(result.options[1].fitsTimeline,true);
 
@@ -102,7 +102,7 @@ test("rejects options that differ only in disabled segments",()=>{
   );
 });
 
-test("short segments can have zero word budget after reserving 0.2 seconds",()=>{
+test("short segments can have zero word budget when duration is under one word",()=>{
   const options=validOptions();
   for(const option of options){
     option.segments[0].end=0.3;

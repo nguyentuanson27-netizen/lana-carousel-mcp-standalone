@@ -57,6 +57,13 @@ const editableVideoSettingsSchema=z.object({
  subtitleX:z.number().min(6).max(94).optional(),
  subtitlePosition:z.number().min(6).max(94).optional(),
  subtitleStyle:z.enum(["karaoke","word","static"]).optional(),
+ subtitlePreset:z.enum(["tiktok-classic","capcut-stroke","bounce-pop","neon-glow","box-gradient"]).optional(),
+ ctaEnabled:z.boolean().optional(),
+ ctaType:z.enum(["cart","sale-badge","follow"]).optional(),
+ ctaText:z.string().max(200).optional(),
+ ctaPosition:z.enum(["bottom-left","bottom-center","top-right"]).optional(),
+ sfxEnabled:z.boolean().optional(),
+ sfxVolume:z.number().min(0).max(1).optional(),
  geminiSpeaker1Voice:z.string().min(1).max(100).optional(),
  geminiSpeaker2Voice:z.string().min(1).max(100).optional(),
  geminiSpeaker1Name:z.string().min(1).max(100).optional(),
@@ -317,7 +324,7 @@ function registerVideoAnalysisTools(server){
 }
 
 export function createMcpServer({quotaClientId=currentQuotaClientId()}={}){
- const server=installToolQuota(new McpServer({name:"lana-carousel-standalone",version:"1.8.0"}),quotaClientId);
+ const server=installToolQuota(new McpServer({name:"lana-carousel-standalone",version:"1.9.0"}),quotaClientId);
  registerCarouselTools(server);
  registerVideoAnalysisTools(server);
  return server;

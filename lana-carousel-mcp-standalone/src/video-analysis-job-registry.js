@@ -9,6 +9,9 @@ export function createVideoAnalysisJobRegistry(){
   add(job){jobs.set(job.id,job);return job;},
   enqueue(job){queue.push(job);return job;},
   shift(){return queue.shift();},
+  getActiveJobForProject(projectId){
+   return [...jobs.values()].find(job=>job.projectId===projectId&&ACTIVE_STATUSES.has(job.status))||null;
+  },
   hasActiveProject(projectId){
    return [...jobs.values()].some(job=>job.projectId===projectId&&ACTIVE_STATUSES.has(job.status));
   },

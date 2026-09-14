@@ -763,71 +763,245 @@
     <section id="sec-1" class="section">
       <div class="section-header">
         <span class="section-badge">1</span>
-        <h2 class="section-title">Tổng quan</h2>
+        <h2 class="section-title">Tổng quan &amp; Hướng dẫn cho người mới bắt đầu</h2>
       </div>
       
+      <!-- Giới thiệu hệ thống -->
       <div class="card">
         <div class="card-body">
-          <p><strong>Lana Carousel MCP Standalone</strong> là một MCP server giúp ChatGPT làm việc với hệ thống La.na Design để:</p>
+          <p><strong>Lana Carousel MCP Standalone</strong> là một nền tảng MCP Server độc lập, đóng vai trò cầu nối thông minh giữa các trợ lý AI (ChatGPT, Claude, Antigravity, Cursor...) và hệ thống xử lý nội dung đồ họa / video tự động của <strong>La.na Design</strong>.</p>
+          
+          <p>Hệ thống cung cấp hai trung tâm sáng tạo chính:</p>
           <ul>
-            <li>tạo và quản lý carousel;</li>
-            <li>tạo slide nội dung;</li>
-            <li>thu thập nhiều ảnh ứng viên cho mỗi slide;</li>
-            <li>duyệt nội dung và ảnh;</li>
-            <li>chỉnh thiết kế;</li>
-            <li>render carousel;</li>
-            <li>quản lý version;</li>
-            <li>phân tích video;</li>
-            <li>tạo voice-over và subtitle;</li>
-            <li>render video với TTS;</li>
-            <li>quản lý project qua Web Studio.</li>
+            <li><strong>🖼️ Carousel Studio (Ảnh &amp; Slide đa kênh):</strong> Tự động lên ý tưởng, viết tiêu đề, thu thập ảnh ứng viên, dàn bố cục lưới (grid), tạo typography bắt mắt và xuất bộ ảnh chuẩn tỉ lệ cho Facebook, Instagram, TikTok Shop.</li>
+            <li><strong>🎬 Video Analysis Studio (Video ngắn Short-form):</strong> Phân tích từng cảnh quay của video gốc, tự động tạo kịch bản lồng tiếng chuẩn thời lượng (word budget), chạy phụ đề sinh động (karaoke / highlight) và thuyết minh bằng giọng đọc AI tự nhiên (Lucylab AI, Google Cloud TTS, Vertex AI).</li>
           </ul>
 
-          <p><strong>Luồng chính của Carousel:</strong></p>
+          <p><strong>Tóm tắt luồng làm việc cốt lõi:</strong></p>
           <div class="callout info">
             <span class="callout-icon">🗺️</span>
             <div class="callout-content">
-              <strong>ChatGPT tạo nội dung → tạo slide → thêm ảnh candidate → người dùng duyệt → chỉnh thiết kế → render → tải kết quả.</strong>
+              <strong>Luồng Carousel:</strong> AI tạo nội dung → Tạo slide chủ đề → Thêm nhiều ảnh ứng viên (candidates) → Người dùng chọn ảnh &amp; bố cục → Duyệt (Approve) → Chỉnh sửa trong Web Studio → Render xuất ảnh (ZIP/JPG).
             </div>
           </div>
 
-          <p><strong>Luồng Video Analysis:</strong></p>
           <div class="callout info">
             <span class="callout-icon">🎬</span>
             <div class="callout-content">
-              <strong>Video nguồn → phân tích scene → viết 2 phương án script → người dùng chọn → lưu version → chỉnh trong Studio → render subtitle/TTS.</strong>
+              <strong>Luồng Video:</strong> Tải lên video nguồn → AI phân tích timeline cảnh quay → Đề xuất 2 phương án kịch bản (Tự nhiên vs Bắt nhịp) → Người dùng chọn phương án → Mở Video Studio nghe thử giọng &amp; căn chỉnh phụ đề → Render MP4 hoàn chỉnh.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hướng dẫn 4 bước cho người mới -->
+      <div class="card">
+        <div class="card-body">
+          <h3 style="margin-top:0; font-size:1.15rem; color:var(--text-primary); display:flex; align-items:center; gap:8px;">
+            <span>🚀</span> 4 Bước bắt đầu nhanh cho người mới (Quick Start)
+          </h3>
+          <p>Nếu bạn là người mới sử dụng lần đầu, hãy thực hiện theo quy trình 4 bước đơn giản dưới đây:</p>
+
+          <div style="display:flex; flex-direction:column; gap:14px; margin:1rem 0;">
+            <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:8px; padding:12px 16px;">
+              <strong style="color:var(--accent); display:block; margin-bottom:4px;">Bước 1: Kết nối MCP Server vào trợ lý AI của bạn</strong>
+              <span>Sao chép đường dẫn MCP Endpoint: <code>https://content.lanadesign.tech/mcp</code> và thêm vào phần cấu hình MCP của ChatGPT Developer Mode, Claude Desktop, Antigravity hoặc Cursor. Sau khi kết nối, AI sẽ tự động sở hữu toàn bộ các công cụ (tools) của Lana.</span>
+            </div>
+
+            <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:8px; padding:12px 16px;">
+              <strong style="color:var(--accent); display:block; margin-bottom:4px;">Bước 2: Giao tiếp với AI bằng ngôn ngữ tự nhiên</strong>
+              <span>Bạn không cần nhớ tên lệnh hay cú pháp phức tạp. Chỉ cần mô tả yêu cầu hoặc sao chép các prompt mẫu có sẵn trong tài liệu này (xem Mục 15–18 cho Carousel hoặc Mục 23–26 cho Video):
+                <ul>
+                  <li><em>Làm Carousel:</em> "Hãy tạo bộ carousel 5 slide giới thiệu bộ sưu tập Áo dài La Sen từ các ảnh sản phẩm này..."</li>
+                  <li><em>Làm Video:</em> "Hãy phân tích video này theo phong cách review thời trang, giọng tự nhiên, tốc độ x1.2..."</li>
+                </ul>
+              </span>
+            </div>
+
+            <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:8px; padding:12px 16px;">
+              <strong style="color:var(--accent); display:block; margin-bottom:4px;">Bước 3: Mở Web Studio để xem trước &amp; tinh chỉnh</strong>
+              <span>Sau khi hoàn thành tạo bản nháp, AI sẽ trả về đường link Web Studio trực tiếp (có gắn token truy cập an toàn). Bạn chỉ cần nhấp vào link để:
+                <ul>
+                  <li>Xem trước thiết kế slide ảnh, kéo chỉnh trọng tâm crop, thay đổi màu sắc, font chữ.</li>
+                  <li>Hoặc nghe thử các giọng đọc (Voice Preview), kiểm tra phụ đề khớp từng giây của video.</li>
+                </ul>
+              </span>
+            </div>
+
+            <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:8px; padding:12px 16px;">
+              <strong style="color:var(--accent); display:block; margin-bottom:4px;">Bước 4: Duyệt (Approve) và Render kết quả</strong>
+              <span>Khi đã hài lòng với nội dung, bấm nút <strong>Duyệt</strong> (Approve) và bấm <strong>Render</strong> ngay trên giao diện Web Studio. Máy chủ sẽ tự động kết xuất tệp thành phẩm chất lượng cao (ảnh nét hoặc video MP4 1080p) để bạn tải về sử dụng ngay.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bảng tra cứu chức năng & công cụ thường dùng -->
+      <div class="card">
+        <div class="card-body">
+          <h3 style="margin-top:0; font-size:1.15rem; color:var(--text-primary); display:flex; align-items:center; gap:8px;">
+            <span>🗺️</span> Bảng tra cứu tính năng &amp; Công cụ tương ứng
+          </h3>
+          <p>Bảng tổng kết nhanh giúp bạn hình dung toàn bộ tính năng và công cụ mà AI sẽ sử dụng:</p>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nhu cầu của bạn</th>
+                  <th>Phân hệ</th>
+                  <th>Công cụ MCP AI sử dụng</th>
+                  <th>Giao diện Web hỗ trợ</th>
+                  <th>Kết quả nhận được</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Tạo bộ ảnh quảng cáo nhiều slide</td>
+                  <td><strong>Carousel</strong></td>
+                  <td><code>create_project</code>, <code>add_slide</code>, <code>add_image_candidates</code></td>
+                  <td><a href="https://content.lanadesign.tech/projects" target="_blank">Carousel Studio</a></td>
+                  <td>Bộ ảnh JPG/WebP tỉ lệ 1:1, 4:5 hoặc 9:16</td>
+                </tr>
+                <tr>
+                  <td>Phân tích video &amp; viết kịch bản</td>
+                  <td><strong>Video Analysis</strong></td>
+                  <td><code>create_video_analysis_project</code>, <code>prepare_video_script_options</code></td>
+                  <td><a href="https://content.lanadesign.tech/video-studio" target="_blank">Video Studio</a></td>
+                  <td>2 phương án kịch bản khớp từng giây (timeline)</td>
+                </tr>
+                <tr>
+                  <td>Lồng tiếng AI &amp; phụ đề video</td>
+                  <td><strong>Video Analysis</strong></td>
+                  <td><code>save_approved_video_script</code>, <code>start_video_analysis_render</code></td>
+                  <td><a href="https://content.lanadesign.tech/video-studio" target="_blank">Video Studio</a></td>
+                  <td>Video MP4 hoàn chỉnh có giọng đọc + phụ đề</td>
+                </tr>
+                <tr>
+                  <td>Nghe thử các giọng đọc tiếng Việt</td>
+                  <td><strong>Video Analysis</strong></td>
+                  <td>API <code>/voice-preview</code>, <code>/voice-sample</code></td>
+                  <td>Trình nghe thử trên Video Studio</td>
+                  <td>Mẫu thu âm giọng Lucylab / Google / Vertex</td>
+                </tr>
+                <tr>
+                  <td>Đăng bài lên mạng xã hội</td>
+                  <td><strong>Social Publisher</strong></td>
+                  <td>Không có MCP tool công khai — thao tác trong Social Publisher</td>
+                  <td>Social Publisher trong Content Studio</td>
+                  <td>Facebook Page / Instagram Professional / TikTok draft theo cấu hình</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4 Quy tắc vàng -->
+      <div class="card">
+        <div class="card-body">
+          <h3 style="margin-top:0; font-size:1.15rem; color:var(--text-primary); display:flex; align-items:center; gap:8px;">
+            <span>⭐</span> 4 Quy tắc vàng người mới BẮT BUỘC phải nhớ
+          </h3>
+
+          <div class="callout rule">
+            <span class="callout-icon">1️⃣</span>
+            <div class="callout-content">
+              <strong>Quy tắc 1 — Một slide là một chủ đề nội dung, KHÔNG PHẢI một bức ảnh:</strong><br/>
+              Mỗi slide đại diện cho một thông điệp hoặc một mẫu sản phẩm. Nếu bạn có nhiều ảnh chụp ở các góc độ khác nhau cho cùng một sản phẩm, hãy gom tất cả ảnh đó vào <strong>cùng một slide</strong> dưới dạng ứng viên (candidates) để ghép lưới hoặc chọn góc đẹp nhất, tuyệt đối không tạo mỗi ảnh một slide riêng rẽ.
+            </div>
+          </div>
+
+          <p><strong>Minh họa cách tạo Slide đúng chuẩn:</strong></p>
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:12px; margin-bottom:1.2rem;">
+            <div class="code-box" style="margin:0;">
+              <div class="code-box-head" style="background:#7f1d1d; color:#fecaca;"><span class="code-box-lang">❌ SAI — Tạo mỗi ảnh một slide riêng</span></div>
+              <pre style="margin:0; padding:12px;">Slide 1 - Mở đầu
+Slide 2 - Áo dài Sen (Ảnh toàn thân)
+Slide 3 - Áo dài Sen (Ảnh cận cảnh cổ)
+Slide 4 - Áo dài Sen (Ảnh tay áo)
+Slide 5 - Kêu gọi mua hàng</pre>
+            </div>
+
+            <div class="code-box" style="margin:0;">
+              <div class="code-box-head" style="background:#14532d; color:#bbf7d0;"><span class="code-box-lang">✅ ĐÚNG — 1 Chủ đề với nhiều Candidates</span></div>
+              <pre style="margin:0; padding:12px;">Slide 1 - Mở đầu
+Slide 2 - Áo dài Sen
+  ├─ Candidate 1: Ảnh toàn thân
+  ├─ Candidate 2: Ảnh cận cảnh cổ
+  └─ Candidate 3: Ảnh tay áo (ghép lưới)
+Slide 3 - Kêu gọi mua hàng</pre>
             </div>
           </div>
 
           <div class="callout rule">
-            <span class="callout-icon">⭐</span>
+            <span class="callout-icon">2️⃣</span>
             <div class="callout-content">
-              <strong>Một nguyên tắc đặc biệt quan trọng:</strong><br/>
-              <em>Một slide tương ứng với một chủ đề nội dung, không tương ứng với một ảnh.</em>
+              <strong>Quy tắc 2 — Word Budget quyết định độ mượt mà của Video:</strong><br/>
+              Mỗi phân đoạn video có một thời lượng nhất định. Giọng đọc AI cần có thời gian đọc tự nhiên, do đó số từ voice-over bắt buộc phải tuân theo công thức ngân sách từ:
+              <div style="margin:6px 0; font-family:'JetBrains Mono', monospace; font-size:.85rem; color:#4c1d95; background:rgba(255,255,255,.6); padding:4px 8px; border-radius:4px;">
+                Số từ tối đa = Thời lượng phân đoạn (giây) × 3.3 từ/giây × Tốc độ đọc
+              </div>
+              Nếu viết câu quá dài vượt quá ngân sách từ, giọng đọc sẽ bị ép nhanh bất thường hoặc bị tràn sang cảnh tiếp theo.
             </div>
           </div>
 
-          <p>Ví dụ slide “Áo dài La Sen” có 5 ảnh khác nhau thì vẫn chỉ có <strong>1 slide</strong>, sau đó thêm 5 ảnh bằng <code>add_image_candidates</code>.</p>
-
-          <p><strong>Không được tạo:</strong></p>
-          <div class="code-box">
-            <div class="code-box-head"><span class="code-box-lang">Sai — Trùng lặp slide cho từng ảnh</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
-            <pre>Slide 2 - Ảnh 1
-Slide 3 - Ảnh 2
-Slide 4 - Ảnh 3</pre>
+          <div class="callout rule">
+            <span class="callout-icon">3️⃣</span>
+            <div class="callout-content">
+              <strong>Quy tắc 3 — Luôn "Duyệt" (Approve) trước khi bấm Render:</strong><br/>
+              Để tránh tốn chi phí API và lãng phí thời gian render những bản thảo chưa hoàn tất, hệ thống bắt buộc nội dung phải chuyển sang trạng thái <code>APPROVED</code> mới cho phép render. Trên Studio, bạn chỉ cần bấm nút <em>"Duyệt"</em> là nút <em>"Render MP4"</em> hoặc <em>"Render Carousel"</em> sẽ sẵn sàng hoạt động.
+            </div>
           </div>
 
-          <p><strong>Mà phải là:</strong></p>
-          <div class="code-box">
-            <div class="code-box-head"><span class="code-box-lang">Đúng — 1 chủ đề với nhiều Candidates</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
-            <pre>Slide 2 - Áo dài La Sen
-  ├─ Candidate 1
-  ├─ Candidate 2
-  ├─ Candidate 3
-  └─ Candidate 4</pre>
+          <div class="callout rule">
+            <span class="callout-icon">4️⃣</span>
+            <div class="callout-content">
+              <strong>Quy tắc 4 — Mọi thay đổi đều có lịch sử phiên bản (Version Control an toàn):</strong><br/>
+              Bạn có thể tự do thử nghiệm các font chữ, màu sắc, giọng đọc hoặc hoán đổi vị trí slide. Mỗi lần lưu, hệ thống tự động ghi nhận một phiên bản (version). Bạn có thể quay lại bất kỳ phiên bản nào trong quá khứ chỉ bằng một cú nhấp chuột trong tab <em>"Lịch sử phiên bản"</em>.
+            </div>
           </div>
+        </div>
+      </div>
 
-          <p>Quy tắc này được enforce trực tiếp trong mô tả các MCP tools.</p>
+      <!-- Lộ trình đọc tiếp -->
+      <div class="card">
+        <div class="card-body">
+          <h3 style="margin-top:0; font-size:1.15rem; color:var(--text-primary); display:flex; align-items:center; gap:8px;">
+            <span>🧭</span> Lộ trình đọc tài liệu — Bạn nên xem mục nào tiếp theo?
+          </h3>
+          <p>Tài liệu này được biên soạn rất đầy đủ và chi tiết gồm 35 mục. Tùy theo nhu cầu công việc của bạn, hãy chuyển nhanh đến các mục tương ứng:</p>
+          
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:12px; margin-top:10px;">
+            <div style="border:1px solid var(--border-color); border-radius:8px; padding:12px 14px; background:var(--bg-card);">
+              <strong style="color:#2563eb; display:block; margin-bottom:6px;">📸 Nếu bạn muốn làm Carousel ảnh</strong>
+              <ul style="margin:0; padding-left:18px; font-size:.88rem;">
+                <li><a href="#sec-7">Mục 7: Quy trình Carousel chuẩn</a></li>
+                <li><a href="#sec-8">Mục 8–14: Chi tiết các MCP Tools</a></li>
+                <li><a href="#sec-15">Mục 15–18: Bộ Prompt Carousel thực chiến</a></li>
+              </ul>
+            </div>
+
+            <div style="border:1px solid var(--border-color); border-radius:8px; padding:12px 14px; background:var(--bg-card);">
+              <strong style="color:#7c3aed; display:block; margin-bottom:6px;">🎥 Nếu bạn muốn dựng Video ngắn</strong>
+              <ul style="margin:0; padding-left:18px; font-size:.88rem;">
+                <li><a href="#sec-19">Mục 19: Các trường bắt buộc &amp; Enums</a></li>
+                <li><a href="#sec-20">Mục 20–21: Workflow &amp; 2 phương án script</a></li>
+                <li><a href="#sec-22">Mục 22: Word Budget Video Analysis</a></li>
+                <li><a href="#sec-23">Mục 23–26: Bộ Prompt Video mẫu</a></li>
+                <li><a href="#sec-35">Mục 35: Prompt Master Video Analysis</a></li>
+              </ul>
+            </div>
+
+            <div style="border:1px solid var(--border-color); border-radius:8px; padding:12px 14px; background:var(--bg-card);">
+              <strong style="color:#059669; display:block; margin-bottom:6px;">⚙️ Nếu bạn là Kỹ thuật viên / Quản trị</strong>
+              <ul style="margin:0; padding-left:18px; font-size:.88rem;">
+                <li><a href="#sec-2">Mục 2–6: Môi trường, Docker &amp; PM2</a></li>
+                <li><a href="#sec-28">Mục 28: Quản lý Version dự án</a></li>
+                <li><a href="#sec-31">Mục 31–33: Lucylab AI TTS &amp; Quản lý Credits</a></li>
+                <li><a href="#sec-34">Mục 34: Social Publisher (FB / Insta)</a></li>
+              </ul>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -1627,6 +1801,83 @@ Không:
 
 Cuối cùng gọi get_project_link và gửi link cho tôi.</pre>
       </div>
+
+      <div class="card" style="margin-top: 20px;">
+        <div class="card-body">
+          <h3 class="sub-heading">Tra cứu nhanh các phương án lựa chọn trong Brief</h3>
+          <p>Khi dùng prompt master, bạn hãy chọn một trong các phương án hợp lệ sau:</p>
+          
+          <div class="table-container" style="margin-top:12px;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Trường Brief</th>
+                  <th>Danh sách các phương án lựa chọn (Enum)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Lĩnh vực</strong><br><code>contentDomain</code></td>
+                  <td>
+                    <code>fashion</code> (Thời trang) · 
+                    <code>beauty</code> (Làm đẹp) · 
+                    <code>entertainment</code> (Giải trí) · 
+                    <code>food</code> (Ẩm thực) · 
+                    <code>travel</code> (Du lịch) · 
+                    <code>technology</code> (Công nghệ) · 
+                    <code>education</code> (Giáo dục) · 
+                    <code>business</code> (Kinh doanh) · 
+                    <code>lifestyle</code> (Đời sống) · 
+                    <code>other</code> (Khác)
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Mục tiêu</strong><br><code>contentGoal</code></td>
+                  <td>
+                    <code>product_showcase</code> (Trưng bày sản phẩm) · 
+                    <code>sales</code> (Bán hàng) · 
+                    <code>review</code> (Đánh giá) · 
+                    <code>tutorial</code> (Hướng dẫn) · 
+                    <code>storytelling</code> (Kể chuyện) · 
+                    <code>entertainment</code> (Giải trí) · 
+                    <code>brand_awareness</code> (Nhận diện) · 
+                    <code>engagement</code> (Tương tác) · 
+                    <code>other</code> (Khác)
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Tone</strong><br><code>toneStyle</code></td>
+                  <td>
+                    <code>humorous</code> (Hài hước) · 
+                    <code>witty</code> (Sắc sảo) · 
+                    <code>friendly</code> (Thân thiện) · 
+                    <code>energetic</code> (Năng động) · 
+                    <code>trendy</code> (Bắt trend) · 
+                    <code>luxurious</code> (Sang trọng) · 
+                    <code>serious</code> (Nghiêm túc) · 
+                    <code>expert</code> (Chuyên gia) · 
+                    <code>emotional</code> (Cảm xúc) · 
+                    <code>storytelling</code> (Tự sự) · 
+                    <code>persuasive_sales</code> (Thuyết phục bán hàng) · 
+                    <code>minimal</code> (Tối giản)
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>TTS speed</strong><br><code>ttsSpeed</code></td>
+                  <td>
+                    <code>0.8</code> (Chậm) · 
+                    <code>1</code> (Chuẩn) · 
+                    <code>1.2</code> (Khuyên dùng) · 
+                    <code>1.5</code> (Nhanh) · 
+                    <code>1.8</code> (Rất nhanh) · 
+                    <code>2</code> (Tối đa)
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- ═══ MỤC 16 ═══ -->
@@ -1738,9 +1989,73 @@ Hãy:
         <div class="card-body">
           <p>Trước khi tạo Video Analysis project, cần có 3 giá trị:</p>
 
-          <h3 class="sub-heading">Content domain</h3>
+          <h3 class="sub-heading">1. Content domain (Lĩnh vực nội dung)</h3>
+          <p>Giá trị enum đại diện cho ngành hàng hoặc chủ đề chính của video:</p>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Enum</th>
+                  <th>Ý nghĩa tiếng Việt</th>
+                  <th>Ví dụ áp dụng</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>fashion</code></td>
+                  <td>Thời trang</td>
+                  <td>Quần áo, váy đầm, phụ kiện, outfit, lookbook, phối đồ</td>
+                </tr>
+                <tr>
+                  <td><code>beauty</code></td>
+                  <td>Làm đẹp</td>
+                  <td>Mỹ phẩm, skincare, makeup, dưỡng tóc, chăm sóc da</td>
+                </tr>
+                <tr>
+                  <td><code>entertainment</code></td>
+                  <td>Giải trí</td>
+                  <td>Hài hước, parody, điện ảnh, âm nhạc, tiểu phẩm ngắn</td>
+                </tr>
+                <tr>
+                  <td><code>food</code></td>
+                  <td>Ẩm thực</td>
+                  <td>Món ăn, đồ uống, review quán ăn, công thức nấu nướng</td>
+                </tr>
+                <tr>
+                  <td><code>travel</code></td>
+                  <td>Du lịch</td>
+                  <td>Khám phá địa điểm, khách sạn, resort, trải nghiệm tour</td>
+                </tr>
+                <tr>
+                  <td><code>technology</code></td>
+                  <td>Công nghệ</td>
+                  <td>Smartphone, laptop, đồ điện tử, thiết bị gia dụng thông minh, app/phần mềm</td>
+                </tr>
+                <tr>
+                  <td><code>education</code></td>
+                  <td>Giáo dục</td>
+                  <td>Kiến thức, mẹo vặt, kỹ năng mềm, bài học, hướng dẫn học tập</td>
+                </tr>
+                <tr>
+                  <td><code>business</code></td>
+                  <td>Kinh doanh</td>
+                  <td>Bán lẻ, tài chính, đầu tư, khởi nghiệp, dịch vụ doanh nghiệp</td>
+                </tr>
+                <tr>
+                  <td><code>lifestyle</code></td>
+                  <td>Phong cách sống</td>
+                  <td>Nhà cửa, đời sống hằng ngày, gia đình, thú cưng, sức khỏe &amp; thể thao</td>
+                </tr>
+                <tr>
+                  <td><code>other</code></td>
+                  <td>Khác</td>
+                  <td>Lĩnh vực tùy chỉnh khác (kèm <code>customContentDomain</code> để chỉ rõ)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
           <div class="code-box">
-            <div class="code-box-head"><span class="code-box-lang">Domain Enums</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <div class="code-box-head"><span class="code-box-lang">Domain Enums (danh sách sao chép)</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
             <pre>fashion
 beauty
 entertainment
@@ -1753,9 +2068,156 @@ lifestyle
 other</pre>
           </div>
 
-          <h3 class="sub-heading">Tone style</h3>
+          <h3 class="sub-heading">2. Content goal (Mục tiêu nội dung)</h3>
+          <p>Mục đích truyền thông hoặc mục tiêu chuyển đổi của video (<code>content_goal</code> - tùy chọn):</p>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Enum</th>
+                  <th>Mục tiêu</th>
+                  <th>Mô tả chi tiết</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>product_showcase</code></td>
+                  <td>Trưng bày sản phẩm</td>
+                  <td>Làm nổi bật kiểu dáng, chất liệu, tính năng, chi tiết cận cảnh sản phẩm</td>
+                </tr>
+                <tr>
+                  <td><code>sales</code></td>
+                  <td>Thúc đẩy bán hàng</td>
+                  <td>Kêu gọi chốt đơn, kích thích mua sắm, giới thiệu ưu đãi/khuyến mãi</td>
+                </tr>
+                <tr>
+                  <td><code>review</code></td>
+                  <td>Đánh giá / Trải nghiệm</td>
+                  <td>Nhận xét trải nghiệm thực tế, phân tích ưu điểm và nhược điểm khách quan</td>
+                </tr>
+                <tr>
+                  <td><code>tutorial</code></td>
+                  <td>Hướng dẫn sử dụng</td>
+                  <td>Chỉ dẫn từng bước thao tác (how-to), cách phối đồ, mẹo ứng dụng</td>
+                </tr>
+                <tr>
+                  <td><code>storytelling</code></td>
+                  <td>Kể chuyện</td>
+                  <td>Chia sẻ câu chuyện thương hiệu, hậu trường sản xuất, kỷ niệm đáng nhớ</td>
+                </tr>
+                <tr>
+                  <td><code>entertainment</code></td>
+                  <td>Tạo sự giải trí</td>
+                  <td>Đem lại tiếng cười, thư giãn, giải trí nhẹ nhàng bắt trend</td>
+                </tr>
+                <tr>
+                  <td><code>brand_awareness</code></td>
+                  <td>Nhận diện thương hiệu</td>
+                  <td>Định vị phong cách, lan tỏa thông điệp và giá trị cốt lõi của thương hiệu</td>
+                </tr>
+                <tr>
+                  <td><code>engagement</code></td>
+                  <td>Tăng tương tác</td>
+                  <td>Kích thích người xem để lại bình luận, thả tim, chia sẻ và thảo luận</td>
+                </tr>
+                <tr>
+                  <td><code>other</code></td>
+                  <td>Mục tiêu khác</td>
+                  <td>Mục tiêu riêng biệt khác (kèm <code>customContentGoal</code> để chỉ rõ)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
           <div class="code-box">
-            <div class="code-box-head"><span class="code-box-lang">Tone Enums</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <div class="code-box-head"><span class="code-box-lang">Goal Enums (danh sách sao chép)</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
+            <pre>product_showcase
+sales
+review
+tutorial
+storytelling
+entertainment
+brand_awareness
+engagement
+other</pre>
+          </div>
+
+          <h3 class="sub-heading">3. Tone style (Phong cách thể hiện)</h3>
+          <p>Tông giọng kịch bản và cảm xúc lời thoại được AI áp dụng khi viết voice-over:</p>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Enum</th>
+                  <th>Phong cách</th>
+                  <th>Đặc trưng tông giọng</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>humorous</code></td>
+                  <td>Hài hước</td>
+                  <td>Vui vẻ, hóm hỉnh, dí dỏm, tạo tiếng cười sảng khoái</td>
+                </tr>
+                <tr>
+                  <td><code>witty</code></td>
+                  <td>Sắc sảo</td>
+                  <td>Thông minh, dí dỏm, châm biếm nhẹ nhàng, chơi chữ khéo léo</td>
+                </tr>
+                <tr>
+                  <td><code>friendly</code></td>
+                  <td>Thân thiện</td>
+                  <td>Gần gũi, ấm áp, tự nhiên như hai người bạn trò chuyện</td>
+                </tr>
+                <tr>
+                  <td><code>energetic</code></td>
+                  <td>Năng động</td>
+                  <td>Sôi nổi, tiết tấu nhanh, nhiệt huyết, truyền cảm hứng mạnh mẽ</td>
+                </tr>
+                <tr>
+                  <td><code>trendy</code></td>
+                  <td>Bắt trend</td>
+                  <td>Thời thượng, cập nhật ngôn ngữ mạng xã hội và giới trẻ (Gen Z)</td>
+                </tr>
+                <tr>
+                  <td><code>luxurious</code></td>
+                  <td>Sang trọng</td>
+                  <td>Cao cấp, tinh tế, đẳng cấp, câu từ trau chuốt và thanh lịch</td>
+                </tr>
+                <tr>
+                  <td><code>serious</code></td>
+                  <td>Nghiêm túc</td>
+                  <td>Trang trọng, chuẩn mực, mang tính chính luận hoặc tin tức</td>
+                </tr>
+                <tr>
+                  <td><code>expert</code></td>
+                  <td>Chuyên gia</td>
+                  <td>Phân tích sâu sắc, kiến thức chuyên môn, khoa học, đáng tin cậy</td>
+                </tr>
+                <tr>
+                  <td><code>emotional</code></td>
+                  <td>Cảm xúc</td>
+                  <td>Lắng đọng, sâu sắc, chạm tới trái tim và sự đồng cảm của người xem</td>
+                </tr>
+                <tr>
+                  <td><code>storytelling</code></td>
+                  <td>Tự sự</td>
+                  <td>Lối dẫn chuyện mạch lạc có mở đầu, diễn biến, cao trào và kết thúc</td>
+                </tr>
+                <tr>
+                  <td><code>persuasive_sales</code></td>
+                  <td>Thuyết phục bán hàng</td>
+                  <td>Lý lẽ sắc bén, làm nổi bật giá trị, lời kêu gọi hành động (CTA) dứt khoát</td>
+                </tr>
+                <tr>
+                  <td><code>minimal</code></td>
+                  <td>Tối giản</td>
+                  <td>Ngắn gọn, súc tích, đi thẳng vào trọng tâm, không rườm rà</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="code-box">
+            <div class="code-box-head"><span class="code-box-lang">Tone Enums (danh sách sao chép)</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
             <pre>humorous
 witty
 friendly
@@ -1770,7 +2232,7 @@ persuasive_sales
 minimal</pre>
           </div>
 
-          <h3 class="sub-heading">TTS speed</h3>
+          <h3 class="sub-heading">4. TTS speed (Tốc độ đọc giọng AI)</h3>
           <div class="code-box">
             <div class="code-box-head"><span class="code-box-lang">Speed Multipliers</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
             <pre>0.8
@@ -1779,20 +2241,6 @@ minimal</pre>
 1.5
 1.8
 2</pre>
-          </div>
-
-          <p>Ngoài ra có <code>content_goal</code> tùy chọn:</p>
-          <div class="code-box">
-            <div class="code-box-head"><span class="code-box-lang">Goal Enums (Optional)</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
-            <pre>product_showcase
-sales
-review
-tutorial
-storytelling
-entertainment
-brand_awareness
-engagement
-other</pre>
           </div>
 
           <p>Ví dụ brief:</p>
@@ -1915,12 +2363,7 @@ cùng trạng thái enabled</pre>
           <p>Server sử dụng công thức:</p>
           <div class="code-box">
             <div class="code-box-head"><span class="code-box-lang">Công thức tính Word Budget</span><button class="btn-copy" onclick="copyCode(this)">Sao chép</button></div>
-            <pre>maximum words
-=
-segment duration
-× 2.5 words/second
-× TTS speed
-(segment duration - 0.2s) × 2.5 words/second × TTS speed</pre>
+            <pre>maximum words = segment duration × 3.3 words/second × TTS speed</pre>
           </div>
 
           <p>Ví dụ:</p>
@@ -1930,8 +2373,7 @@ segment duration
 TTS speed: x1.2
 
 Budget:
-4 × 2.5 × 1.2 (segment duration - 0.2s) × 2.5 words/second × TTS speed
-≈ 10 từ</pre>
+4 × 3.3 × 1.2 ≈ 15 từ</pre>
           </div>
 
           <p>Nếu voice-over dài hơn budget, server có thể trả cảnh báo <code>too_long</code>.</p>
@@ -2395,6 +2837,40 @@ static</pre>
           </div>
 
           <p>Video có thể cấu hình speaker 1/speaker 2 khi dùng Gemini multi-speaker.</p>
+
+          <h3 style="margin-top:1.5rem; font-size:1.1rem; color:var(--text-primary);">Điều phối &amp; Thời gian chờ khi gọi Lucylab AI</h3>
+          <p>Để tránh lỗi giới hạn tốc độ (rate limit) và lỗi <em>"You already have an export in progress"</em> từ nhà cung cấp Lucylab AI, hệ thống áp dụng cơ chế điều phối thời gian chờ tự động:</p>
+          <ul>
+            <li><strong>Khoảng cách kiểm tra tiến độ (Poll Interval):</strong> Mặc định <strong>4.000 ms</strong> (4 giây, tăng từ 2 giây ban đầu) giữa các lệnh <code>getExportStatus</code> gửi sang Lucylab. Có thể tùy chỉnh qua <code>LUCYLAB_POLL_INTERVAL_MS</code>.</li>
+            <li><strong>Thời gian chờ giữa các phân đoạn video:</strong> Khi dựng video gồm nhiều câu/phân đoạn, hệ thống tuần tự hóa các yêu cầu và chờ <strong>3.000 ms</strong> (3 giây) giữa các câu để Lucylab hoàn tất phiên cũ. Có thể tùy chỉnh qua <code>LUCYLAB_SEGMENT_DELAY_MS</code>.</li>
+            <li><strong>Thời gian hạ nhiệt giữa các lệnh export:</strong> Hàng đợi export áp dụng thời gian chờ <strong>2.000 ms</strong> (2 giây) sau mỗi lượt hoàn thành trước khi nhận lượt mới. Có thể tùy chỉnh qua <code>LUCYLAB_COOLDOWN_MS</code>.</li>
+            <li><strong>Thời hạn chờ export tối đa:</strong> Nâng lên <strong>120.000 ms</strong> (120 giây / 2 phút) để các video dài không bị ngắt quãng giữa chừng. Có thể tùy chỉnh qua <code>LUCYLAB_EXPORT_TIMEOUT_MS</code>.</li>
+            <li><strong>Tự động thử lại:</strong> Nếu Lucylab trả về thông báo đang có export dở dang, hệ thống sẽ tự động tạm dừng một nhịp và thử lại tối đa 3 lần thay vì báo lỗi ngay lập tức.</li>
+          </ul>
+
+          <h3 style="margin-top:1.5rem; font-size:1.1rem; color:var(--text-primary);">Bộ Preset Phụ đề CapCut / TikTok &amp; Bắt nhịp từ chính xác</h3>
+          <p>Hệ thống tự động đồng bộ nhịp nhảy chữ (Word-level Alignment) khớp 100% với thời lượng phát âm thực của file giọng đọc, đồng thời hỗ trợ 5 Preset phong cách thời thượng:</p>
+          <ul>
+            <li><code>tiktok-classic</code>: Chữ trắng, highlight vàng chanh (<code>#FFE600</code>), nền hộp đen mờ bo tròn chuẩn TikTok.</li>
+            <li><code>capcut-stroke</code>: Viền đen đậm nét (stroke 3.5px), chữ trắng, highlight Cyan neon (<code>#00F2FE</code>), không cần hộp nền — phong cách CapCut trending hiện đại.</li>
+            <li><code>bounce-pop</code>: Từng từ khi được đọc sẽ nảy nhẹ (hiệu ứng lò xo <code>spring()</code> của Remotion) và phóng to 1.18x tạo nhịp điệu sinh động.</li>
+            <li><code>neon-glow</code>: Hiệu ứng viền phát sáng neon rực rỡ, thích hợp video thời trang, năng động.</li>
+            <li><code>box-gradient</code>: Hộp nền gradient bo góc sang trọng viền mờ tinh tế.</li>
+            <li><strong>Keyword Auto-highlight:</strong> Tự động nhận diện và tô màu nổi bật cho các từ khóa "đắt giá" (freeship, cao cấp, thêu tay, giảm giá, sale, giá tiền...).</li>
+          </ul>
+
+          <h3 style="margin-top:1.5rem; font-size:1.1rem; color:var(--text-primary);">Sticker Call-to-Action (CTA) &amp; Âm thanh SFX nhấn nhá</h3>
+          <p>Để tối ưu chuyển đổi cho video bán hàng và short-form review:</p>
+          <ul>
+            <li><strong>Sticker CTA động (<code>ctaEnabled</code>):</strong>
+              <ul>
+                <li><code>cart</code>: Huy hiệu Giỏ hàng TikTok Shop góc dưới trái kèm mũi tên động nhấp nháy chỉ xuống (<code>👇</code>).</li>
+                <li><code>sale-badge</code>: Huy hiệu "HOT SALE • FREESHIP" góc trên nhấp nháy thu hút sự chú ý.</li>
+                <li><code>follow</code>: Kêu gọi Follow/Like ở những giây cuối cùng của video.</li>
+              </ul>
+            </li>
+            <li><strong>Âm thanh SFX (<code>sfxEnabled</code>, <code>sfxVolume</code>):</strong> Tự động hòa âm tiếng <em>whoosh</em> khi chuyển cảnh giữa các phân đoạn và tiếng <em>ding</em> chuông nhẹ khi CTA xuất hiện, giúp video chuyên nghiệp và giữ chân người xem lâu hơn.</li>
+          </ul>
         </div>
       </div>
     </section>
@@ -2585,9 +3061,9 @@ KIỂM SOÁT
 Hãy sử dụng Video Analysis của Lana MCP.
 
 BRIEF
-- Lĩnh vực: &lt;fashion|beauty|food|...&gt;
-- Mục tiêu: &lt;product_showcase|sales|review|...&gt;
-- Tone: &lt;humorous|friendly|luxurious|...&gt;
+- Lĩnh vực: &lt;fashion|beauty|entertainment|food|travel|technology|education|business|lifestyle|other&gt;
+- Mục tiêu: &lt;product_showcase|sales|review|tutorial|storytelling|entertainment|brand_awareness|engagement|other&gt;
+- Tone: &lt;humorous|witty|friendly|energetic|trendy|luxurious|serious|expert|emotional|storytelling|persuasive_sales|minimal&gt;
 - TTS speed: &lt;0.8|1|1.2|1.5|1.8|2&gt;
 - Ngôn ngữ: Tiếng Việt
 

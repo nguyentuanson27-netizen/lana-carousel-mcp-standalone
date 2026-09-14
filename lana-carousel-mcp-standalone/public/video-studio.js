@@ -1,6 +1,6 @@
 const $=selector=>document.querySelector(selector);
 const params=new URLSearchParams(location.search);
-let projectId=params.get("projectId"),project,jobTimer,dragging=false;
+let projectId=params.get("projectId"),project,jobTimer,jobPollGeneration=0,dragging=false;
 
 const FONT_STACKS={
   "TikTok Sans":"'TikTok Sans', Arial, Helvetica, sans-serif",
@@ -16,7 +16,8 @@ const RANGE_OUTPUTS={
   subtitleSize:value=>`${Math.round(Number(value))} px`,
   subtitleOpacity:value=>`${Math.round(Number(value)*100)}%`,
   subtitleX:value=>`${Math.round(Number(value))}%`,
-  subtitlePosition:value=>`${Math.round(Number(value))}%`
+  subtitlePosition:value=>`${Math.round(Number(value))}%`,
+  sfxVolume:value=>`${Math.round(Number(value)*100)}%`
 };
 const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
 const api=async(url,opt={})=>{const response=await fetch(url,opt),json=await response.json().catch(()=>({}));if(!response.ok)throw new Error(json.message||json.error||"Yêu cầu thất bại");return json};
@@ -42,13 +43,20 @@ const settings=()=>({
   ttsVolume:+$("#ttsVolume").value,
   subtitleEnabled:$("#subtitleEnabled").checked,
   subtitleStyle:$("#subtitleStyle").value,
+  subtitlePreset:$("#subtitlePreset")?.value||"tiktok-classic",
   subtitleFont:$("#subtitleFont").value,
   subtitleSize:+$("#subtitleSize").value,
   subtitleColor:$("#subtitleColor").value,
   subtitleBackgroundColor:$("#subtitleBg").value,
   subtitleBackgroundOpacity:+$("#subtitleOpacity").value,
   subtitleX:+$("#subtitleX").value,
-  subtitlePosition:+$("#subtitlePosition").value
+  subtitlePosition:+$("#subtitlePosition").value,
+  ctaEnabled:Boolean($("#ctaEnabled")?.checked),
+  ctaType:$("#ctaType")?.value||"cart",
+  ctaText:$("#ctaText")?.value||"",
+  ctaPosition:$("#ctaPosition")?.value||"bottom-left",
+  sfxEnabled:$("#sfxEnabled")?.checked!==false,
+  sfxVolume:+$("#sfxVolume")?.value||0.25
 });
 
 const segments=()=>[...document.querySelectorAll(".segment")].map((element,index)=>({
@@ -218,6 +226,7 @@ function fill(){
   setControl("originalVolume",saved.originalAudioVolume,.25);
   setControl("ttsVolume",saved.ttsVolume,1);
   setControl("subtitleStyle",saved.subtitleStyle,"karaoke");
+  setControl("subtitlePreset",saved.subtitlePreset,"tiktok-classic");
   setControl("subtitleFont",saved.subtitleFont,"TikTok Sans");
   setControl("subtitleSize",saved.subtitleSize,52);
   setControl("subtitleColor",saved.subtitleColor,"#FFFFFF");
@@ -225,6 +234,12 @@ function fill(){
   setControl("subtitleOpacity",saved.subtitleBackgroundOpacity,.72);
   setControl("subtitleX",saved.subtitleX,50);
   setControl("subtitlePosition",saved.subtitlePosition,86);
+  if ($("#ctaEnabled")) $("#ctaEnabled").checked = Boolean(saved.ctaEnabled);
+  setControl("ctaType",saved.ctaType,"cart");
+  if ($("#ctaText")) $("#ctaText").value = saved.ctaText || "";
+  setControl("ctaPosition",saved.ctaPosition,"bottom-left");
+  if ($("#sfxEnabled")) $("#sfxEnabled").checked = saved.sfxEnabled !== false;
+  setControl("sfxVolume",saved.sfxVolume,0.25);
   $("#segments").innerHTML="";
   (project.script.segments||[]).forEach(addSegment);
   syncRangeOutputs();
@@ -242,6 +257,15 @@ function versionButton(version){
   return button;
 }
 
+function invalidateRenderUi(){
+  jobPollGeneration+=1;
+  clearInterval(jobTimer);
+  jobTimer=null;
+  $("#download").hidden=true;
+  $("#download").removeAttribute("href");
+  $("#job").textContent="";
+}
+
 async function loadVersions(){
   const response=await api(`/api/video-analysis/projects/${projectId}/versions`);
   if(response.versions.length)$("#versions").replaceChildren(...response.versions.map(versionButton));
@@ -256,6 +280,19 @@ async function load(){
   project=await api(`/api/video-analysis/projects/${projectId}`);
   fill();
   await loadVersions();
+  invalidateRenderUi();
+  try{
+    const data=await api(`/api/video-analysis/projects/${projectId}/latest-job`);
+    if(data.job){
+      if(data.job.status==="READY"){
+        $("#job").textContent="READY · 100%";
+        $("#download").hidden=false;
+        $("#download").href=data.job.downloadUrl;
+      }else if(data.job.status==="QUEUED"||data.job.status==="RENDERING"){
+        await poll(data.job.id);
+      }
+    }
+  }catch{}
 }
 
 async function save(approved,{refresh=true}={}){
@@ -264,6 +301,7 @@ async function save(approved,{refresh=true}={}){
     headers:{"content-type":"application/json"},
     body:JSON.stringify({approved,script:{summary:$("#summary").value,language:"vi-VN",segments:segments()},settings:settings()})
   });
+  invalidateRenderUi();
   if(refresh){fill();await loadVersions()}
   return project;
 }
@@ -361,6 +399,23 @@ const onStudioEdit=event=>{if(!event.target.closest("details"))return;syncRangeO
 document.addEventListener("input",onStudioEdit);
 document.addEventListener("change",onStudioEdit);
 document.fonts?.ready.then(renderPreview).catch(()=>{});
+$("#subtitlePreset")?.addEventListener("change", (e) => {
+  const p = e.target.value;
+  if (p === "capcut-stroke") {
+    $("#subtitleOpacity").value = 0;
+    $("#subtitleColor").value = "#FFFFFF";
+  } else if (p === "neon-glow") {
+    $("#subtitleBg").value = "#111111";
+    $("#subtitleOpacity").value = 0.65;
+    $("#subtitleColor").value = "#FFFFFF";
+  } else if (p === "tiktok-classic") {
+    $("#subtitleBg").value = "#000000";
+    $("#subtitleOpacity").value = 0.72;
+    $("#subtitleColor").value = "#FFFFFF";
+  }
+  syncRangeOutputs();
+  renderPreview();
+});
 
 $("#addSegment").onclick=()=>addSegment({start:$("#video").currentTime,end:$("#video").currentTime+3});
 $("#save").onclick=()=>save(false).catch(error=>alert(error.message));
@@ -398,36 +453,56 @@ $("#render").onclick=async()=>{
     if(project.status!=="APPROVED")throw new Error("Hãy duyệt script trước khi render.");
     $("#render").disabled=true;
     $("#download").removeAttribute("href");
+    $("#download").hidden=true;
     $("#job").textContent="Đang lưu thiết lập mới nhất…";
     await save(true,{refresh:false});
     const job=await api(`/api/video-analysis/projects/${projectId}/render-jobs`,{method:"POST"});
     await poll(job.id);
-  }catch(error){alert(error.message);$("#job").textContent=error.message}
-  finally{$("#render").disabled=false}
+  }catch(error){
+    alert(error.message);
+    $("#job").textContent=error.message;
+    $("#render").disabled=false;
+  }
 };
 
 async function poll(id){
   clearInterval(jobTimer);
+  jobTimer=null;
+  const generation=++jobPollGeneration;
+  $("#render").disabled=true;
   const run=async()=>{
-    // Hàm này chạy trong setInterval nên không có ai bắt lỗi giùm: một lượt hỏi hỏng mà không
-    // xử lý sẽ thành unhandled rejection lặp lại mỗi 2 giây, vòng lặp không bao giờ dừng và
-    // dòng trạng thái đứng im ở con số cuối cùng.
     try{
       const job=await api(`/api/video-analysis/jobs/${id}`);
+      if(generation!==jobPollGeneration)return false;
       $("#job").textContent=`${job.status} · ${job.progress}%${job.error?" · "+job.error:""}`;
       if(job.status==="READY"){
-        clearInterval(jobTimer);
         $("#download").hidden=false;
         $("#download").href=job.downloadUrl;
+        $("#render").disabled=false;
         if(isLucylab())fetchLucylabCredits();
-      }else if(job.status==="FAILED")clearInterval(jobTimer);
+        return false;
+      }
+      if(job.status==="FAILED"){
+        $("#render").disabled=false;
+        return false;
+      }
+      return true;
     }catch(error){
-      clearInterval(jobTimer);
+      if(generation!==jobPollGeneration)return false;
+      $("#render").disabled=false;
       $("#job").textContent=`Mất liên lạc với job: ${error.message}`;
+      return false;
     }
   };
-  await run();
-  jobTimer=setInterval(run,2000);
+  if(await run()){
+    const timer=setInterval(async()=>{
+      if(!await run()){
+        clearInterval(timer);
+        if(jobTimer===timer)jobTimer=null;
+      }
+    },2000);
+    jobTimer=timer;
+  }
 }
 
 // Lưu trước khi tải để tệp khớp đúng thứ đang thấy trên màn hình. Phải giữ nguyên trạng thái

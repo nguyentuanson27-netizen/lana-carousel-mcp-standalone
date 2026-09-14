@@ -42,10 +42,10 @@ A prepared set becomes invalid if the project version, content brief or source v
 ## Word budget
 
 ```text
-maximum words = (segment duration - 0.2 seconds) × 2.5 words/second × TTS speed
+maximum words = segment duration × 3.3 words/second × TTS speed
 ```
 
-The first 0.2 seconds of each segment are reserved before assigning whole-word capacity. The result is floored to a whole number of words; if the remaining duration cannot fit one whole word, the budget is 0.
+The result is floored to a whole number of words; if the duration cannot fit one whole word, the budget is 0.
 
 ## TTS speed ownership
 

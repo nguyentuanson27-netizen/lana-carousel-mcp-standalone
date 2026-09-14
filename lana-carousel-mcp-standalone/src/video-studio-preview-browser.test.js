@@ -21,9 +21,9 @@ const project = {
   script: {
     summary: "",
     segments: [
-      // 4s ở tốc độ đọc 1 còn 3.8s hữu dụng: ngân sách 9 từ, nên đoạn sau 10 từ vượt.
+      // 4s ở tốc độ đọc 1: ngân sách 13 từ. Đoạn s2 14 từ nên vượt budget.
       { id: "s1", start: 0, end: 4, subtitleText: "xin chao", voiceOverText: "một hai ba bốn" },
-      { id: "s2", start: 4, end: 8, subtitleText: "tam biet", voiceOverText: "một hai ba bốn năm sáu bảy tám chín mười" }
+      { id: "s2", start: 4, end: 8, subtitleText: "tam biet", voiceOverText: "một hai ba bốn năm sáu bảy tám chín mười mười_một mười_hai mười_ba mười_bốn" }
     ]
   },
   settings: {
@@ -300,8 +300,8 @@ const budgets = page => page.locator(".segment .budget").evaluateAll(nodes => no
 test("shows how much of each segment's reading time the voice-over uses", async () => {
   await withPage(async page => {
     assert.deepEqual(await budgets(page), [
-      { text: "4/9 từ · vừa", status: "good" },
-      { text: "10/9 từ · quá dài, sẽ bị đọc ép nhanh", status: "over" }
+      { text: "4/13 từ · vừa", status: "good" },
+      { text: "14/13 từ · quá dài, sẽ bị đọc ép nhanh", status: "over" }
     ]);
   });
 });
@@ -319,12 +319,12 @@ test("marks a valid segment with zero whole-word capacity as over budget", async
 
 test("recalculates the budget as the segment or the reading speed changes", async () => {
   await withPage(async page => {
-    // Rút ngắn đoạn đầu còn 2s: sau khi trừ 0.2s, ngân sách là 4 từ nên câu 4 từ sát giới hạn.
-    await page.locator(".segment .end").first().fill("2");
+    // Đổi đoạn đầu thành 1.4s: 1.4 * 3.3 = 4.62 -> ngân sách 4 từ, câu 4 từ sát giới hạn (tight).
+    await page.locator(".segment .end").first().fill("1.4");
     await page.locator(".segment .end").first().dispatchEvent("input");
     assert.deepEqual((await budgets(page))[0], { text: "4/4 từ · sát giới hạn", status: "tight" });
 
-    // Đọc nhanh x2 thì cùng 1.8s hữu dụng chứa được 9 từ.
+    // Đọc nhanh x2 thì 1.4s chứa được 1.4 * 3.3 * 2 = 9.24 -> 9 từ.
     await page.locator("#ttsSpeed").selectOption("2");
     assert.deepEqual((await budgets(page))[0], { text: "4/9 từ · vừa", status: "good" });
   });

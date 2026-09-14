@@ -24,18 +24,18 @@ test("the studio counts words exactly like the server does", () => {
  }
 });
 
-test("the budget matches the reserved-time server formula for the same segment", () => {
+test("the budget matches the server formula for the same segment", () => {
  for (const [duration, speed] of [[4, 1], [4, 1.5], [2.5, 0.8], [10, 2]]) {
   const usableDuration = Math.max(0, duration - WORD_BUDGET_RESERVED_SECONDS);
-  const expected = Math.max(0, Math.floor(usableDuration * BASE_WORDS_PER_SECOND * speed));
+  const expected = Math.max(0, Math.floor(usableDuration * BASE_WORDS_PER_SECOND * speed + 1e-9));
   assert.equal(budget.segmentWordBudget({ start: 0, end: duration, text: "x", ttsSpeed: speed }).maxWords, expected);
  }
 });
 
-test("reserves the first 0.2 seconds before assigning any words", () => {
- assert.equal(budget.segmentWordBudget({ start: 0, end: 0.2, text: "x", ttsSpeed: 2 }).maxWords, 0);
+test("short segments under one word capacity have zero word budget", () => {
+ assert.equal(budget.segmentWordBudget({ start: 0, end: 0.2, text: "x", ttsSpeed: 1 }).maxWords, 0);
  assert.equal(budget.segmentWordBudget({ start: 0, end: 0.3, text: "x", ttsSpeed: 1 }).maxWords, 0);
- assert.equal(budget.segmentWordBudget({ start: 0, end: 0.6, text: "x", ttsSpeed: 1 }).maxWords, 1);
+ assert.equal(budget.segmentWordBudget({ start: 0, end: 0.4, text: "x", ttsSpeed: 1 }).maxWords, 1);
 });
 
 test("treats valid zero-capacity segments as over budget instead of invalid duration", () => {
@@ -52,17 +52,17 @@ test("treats valid zero-capacity segments as over budget instead of invalid dura
 });
 
 test("flags a line that cannot be read inside its segment", () => {
- // 4s ở tốc độ 1 còn 3.8s hữu dụng, cho ngân sách 9 từ.
+ // 4s ở tốc độ 1 cho ngân sách 13 từ. 13 * 0.9 = 11.7 -> 11 là good, 12-13 là tight, 14+ là over.
  const of = text => budget.segmentWordBudget({ start: 0, end: 4, text, ttsSpeed: 1 });
- assert.equal(of("một hai ba bốn").status, "good");
- assert.equal(of("một hai ba bốn năm sáu bảy tám chín").status, "tight");
- assert.equal(of("một hai ba bốn năm sáu bảy tám chín mười").status, "over");
+ assert.equal(of("một hai ba bốn năm sáu bảy tám chín mười mười_một").status, "good");
+ assert.equal(of("một hai ba bốn năm sáu bảy tám chín mười mười_một mười_hai").status, "tight");
+ assert.equal(of("một hai ba bốn năm sáu bảy tám chín mười mười_một mười_hai mười_ba mười_bốn").status, "over");
  assert.equal(of("").status, "empty");
  assert.equal(budget.segmentWordBudget({ start: 5, end: 5, text: "x", ttsSpeed: 1 }).status, "unknown");
 });
 
 test("reads the budget back as text the studio can show", () => {
- assert.equal(budget.describeBudget(budget.segmentWordBudget({ start: 0, end: 4, text: "một hai", ttsSpeed: 1 })), "2/9 từ · vừa");
+ assert.equal(budget.describeBudget(budget.segmentWordBudget({ start: 0, end: 4, text: "một hai", ttsSpeed: 1 })), "2/13 từ · vừa");
  assert.equal(
   budget.describeBudget(budget.segmentWordBudget({ start: 0, end: 0, text: "một", ttsSpeed: 1 })),
   "cần thời lượng hợp lệ"

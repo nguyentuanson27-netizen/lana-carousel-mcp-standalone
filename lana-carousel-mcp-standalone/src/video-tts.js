@@ -237,37 +237,58 @@ export function lucylabSynthesisInput(text, settings = {}) {
  return { text: String(text || ""), userVoiceId: resolveLucylabVoice(settings), speed: 1 };
 }
 
+let lucylabQueue = Promise.resolve();
+const LUCYLAB_COOLDOWN_MS = Math.max(0, Number.parseInt(process.env.LUCYLAB_COOLDOWN_MS || "", 10) || 2_000);
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+async function withLucylabExport(fn) {
+ const previous = lucylabQueue;
+ let release;
+ lucylabQueue = new Promise(resolve => { release = resolve; });
+ try {
+  await previous;
+  return await fn();
+ } finally {
+  if (LUCYLAB_COOLDOWN_MS > 0) {
+   await sleep(LUCYLAB_COOLDOWN_MS);
+  }
+  release();
+ }
+}
+
 async function generateLucylab(project, settings = {}) {
- const text = enabledSlides(project).map(slideText).filter(Boolean).join(". ");
- if (!text) return emptyTrack();
- const apiKey = String(process.env.LUCYLAB_API_KEY || config.lucylabApiKey || "").trim();
- if (!apiKey) throw new AppError("TTS_NOT_CONFIGURED", "Máy chủ chưa cấu hình Lucylab API Key (thiếu LUCYLAB_API_KEY).", 503);
+ return await withLucylabExport(async () => {
+  const text = enabledSlides(project).map(slideText).filter(Boolean).join(". ");
+  if (!text) return emptyTrack();
+  const apiKey = String(process.env.LUCYLAB_API_KEY || config.lucylabApiKey || "").trim();
+  if (!apiKey) throw new AppError("TTS_NOT_CONFIGURED", "Máy chủ chưa cấu hình Lucylab API Key (thiếu LUCYLAB_API_KEY).", 503);
 
- const started = await lucylabJsonRpc({ apiKey, method: "ttsLongText", input: lucylabSynthesisInput(text, settings) });
- const exportId = started?.projectExportId;
- if (!exportId) throw new AppError("TTS_PROVIDER_FAILED", "Lucylab AI tạm thời không đọc được. Vui lòng thử lại.", 502);
- const audioUrl = await waitForLucylabExport({apiKey,projectExportId:exportId});
+  const started = await lucylabJsonRpc({ apiKey, method: "ttsLongText", input: lucylabSynthesisInput(text, settings) });
+  const exportId = started?.projectExportId;
+  if (!exportId) throw new AppError("TTS_PROVIDER_FAILED", "Lucylab AI tạm thời không đọc được. Vui lòng thử lại.", 502);
+  const audioUrl = await waitForLucylabExport({apiKey,projectExportId:exportId});
 
- let downloaded;
- try { downloaded = await downloadRemoteAudioBuffer(audioUrl); }
- catch (error) {
-  console.error("Lucylab export download failed:", safeCause(error));
-  throw new AppError("TTS_PROVIDER_FAILED", "Lucylab AI tạm thời không đọc được. Vui lòng thử lại.", 502);
- }
- const buffer = downloaded.buffer;
- const isWav = buffer.length > 44
-  && buffer.toString("ascii", 0, 4) === "RIFF"
-  && buffer.toString("ascii", 8, 12) === "WAVE";
- if (!isWav) throw new AppError("TTS_PROVIDER_FAILED", "Lucylab AI trả về tệp âm thanh không hợp lệ.", 502);
+  let downloaded;
+  try { downloaded = await downloadRemoteAudioBuffer(audioUrl); }
+  catch (error) {
+   console.error("Lucylab export download failed:", safeCause(error));
+   throw new AppError("TTS_PROVIDER_FAILED", "Lucylab AI tạm thời không đọc được. Vui lòng thử lại.", 502);
+  }
+  const buffer = downloaded.buffer;
+  const isWav = buffer.length > 44
+   && buffer.toString("ascii", 0, 4) === "RIFF"
+   && buffer.toString("ascii", 8, 12) === "WAVE";
+  if (!isWav) throw new AppError("TTS_PROVIDER_FAILED", "Lucylab AI trả về tệp âm thanh không hợp lệ.", 502);
 
- let durationSeconds = 0;
- const byteRate = buffer.readUInt32LE(28);
- if (byteRate > 0) durationSeconds = (buffer.length - 44) / byteRate;
- if (!durationSeconds || !Number.isFinite(durationSeconds)) {
-  const words = text.trim().split(/\s+/u).length;
-  durationSeconds = Math.max(1, words / 2.5);
- }
- return { dataUrl: `data:audio/wav;base64,${buffer.toString("base64")}`, durationSeconds: Number(durationSeconds.toFixed(2)) };
+  let durationSeconds = 0;
+  const byteRate = buffer.readUInt32LE(28);
+  if (byteRate > 0) durationSeconds = (buffer.length - 44) / byteRate;
+  if (!durationSeconds || !Number.isFinite(durationSeconds)) {
+   const words = text.trim().split(/\s+/u).length;
+   durationSeconds = Math.max(1, words / 2.5);
+  }
+  return { dataUrl: `data:audio/wav;base64,${buffer.toString("base64")}`, durationSeconds: Number(durationSeconds.toFixed(2)) };
+ });
 }
 
 export const GOOGLE_DEFAULT_VOICE="vi-VN-Neural2-D";
