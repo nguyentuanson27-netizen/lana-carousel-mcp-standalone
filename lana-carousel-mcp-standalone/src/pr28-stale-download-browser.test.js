@@ -73,6 +73,16 @@ async function routeLatestJob(page,projectId){
  });
 }
 
+const queuedJob=(id,projectId)=>({
+ id,
+ projectId,
+ status:"QUEUED",
+ progress:0,
+ error:null,
+ downloadUrl:null,
+ createdAt:new Date().toISOString()
+});
+
 describe("Video Studio invalidates stale READY downloads",{skip:skipReason},()=>{
  let server;
  before(async()=>{
@@ -125,6 +135,45 @@ describe("Video Studio invalidates stale READY downloads",{skip:skipReason},()=>
 
   assert.equal(await page.locator("#download").isVisible(),false,"restore version phải bỏ download không còn khớp revision");
   assert.equal(await page.locator("#download").getAttribute("href"),null,"restore version không được giữ href render cũ");
+  await page.close();
+ });
+
+ test("a stale in-flight poll cannot cancel the replacement job poll timer",async()=>{
+  const projectId=await createProjectWithVersion();
+  const page=await browser.newPage({viewport:{width:1500,height:1000}});
+  const oldId="11111111-1111-4111-8111-111111111111";
+  const newId="22222222-2222-4222-8222-222222222222";
+  let latestCalls=0,oldCalls=0,newCalls=0,releaseOldSecond;
+  let markOldSecondStarted;
+  const oldSecondStarted=new Promise(resolve=>{markOldSecondStarted=resolve});
+  const oldSecondRelease=new Promise(resolve=>{releaseOldSecond=resolve});
+
+  await page.route(`**/api/video-analysis/projects/${projectId}/latest-job`,async route=>{
+    latestCalls+=1;
+    const job=latestCalls===1?queuedJob(oldId,projectId):queuedJob(newId,projectId);
+    await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({job})});
+  });
+  await page.route(`**/api/video-analysis/jobs/${oldId}`,async route=>{
+    oldCalls+=1;
+    if(oldCalls>1){
+      markOldSecondStarted();
+      await oldSecondRelease;
+    }
+    await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(queuedJob(oldId,projectId))});
+  });
+  await page.route(`**/api/video-analysis/jobs/${newId}`,async route=>{
+    newCalls+=1;
+    await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(queuedJob(newId,projectId))});
+  });
+
+  await page.goto(`${origin}/video-studio?projectId=${projectId}`,{waitUntil:"networkidle"});
+  await oldSecondStarted;
+  await page.evaluate(()=>load());
+  assert.equal(newCalls,1,"replacement poll phải chạy ngay một lần");
+  releaseOldSecond();
+  await page.waitForTimeout(2300);
+
+  assert.ok(newCalls>=2,"callback poll cũ không được hủy interval của replacement poll");
   await page.close();
  });
 });
