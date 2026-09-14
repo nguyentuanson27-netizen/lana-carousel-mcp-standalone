@@ -32,7 +32,7 @@ test("legacy video-analysis projects keep SFX opt-in instead of enabling it impl
   }
 });
 
-test("latest render job ignores a READY artifact from an older project version", () => {
+test("latest render job is restored only while its project version is current", () => {
   const project = createVideoAnalysisProject({title: `render-version-${randomUUID()}`});
   try {
     const versionOne = saveVideoAnalysisScript({
@@ -44,9 +44,11 @@ test("latest render job ignores a READY artifact from an older project version",
     const jobId = randomUUID();
     db.prepare(`
       INSERT INTO video_analysis_jobs(
-        id,project_id,status,progress,error,output_path,created_at,updated_at,expires_at
-      ) VALUES(?,?,?,?,?,?,?,?,?)
-    `).run(jobId, project.id, "READY", 100, null, null, now, now, new Date(Date.now() + 864e5).toISOString());
+        id,project_id,project_version,status,progress,error,output_path,created_at,updated_at,expires_at
+      ) VALUES(?,?,?,?,?,?,?,?,?,?)
+    `).run(jobId, project.id, versionOne.currentVersion, "READY", 100, null, null, now, now, new Date(Date.now() + 864e5).toISOString());
+
+    assert.equal(getLatestVideoAnalysisJobForProject(project.id)?.id, jobId);
 
     const versionTwo = saveVideoAnalysisScript({
       projectId: project.id,
@@ -73,7 +75,8 @@ test("guide names only MCP tools that are actually registered", () => {
   const guide = fs.readFileSync(new URL("../public/guide.html", import.meta.url), "utf8");
   assert.match(guide, /<code>add_slide<\/code>/u);
   assert.match(guide, /<code>start_video_analysis_render<\/code>/u);
-  for (const nonexistentTool of ["create_slide", "render_video_analysis", "publish_to_facebook", "publish_to_instagram"]) {
-    assert.doesNotMatch(guide, new RegExp(`<code>${nonexistentTool}<\\/code>`, "u"));
-  }
+  assert.match(guide, /Không có MCP tool công khai/u);
+  assert.doesNotMatch(guide, /<code>create_slide<\/code>/u);
+  assert.doesNotMatch(guide, /<code>render_video_analysis<\/code>/u);
+  assert.doesNotMatch(guide, /<code>publish_to_facebook<\/code>,\s*<code>publish_to_instagram<\/code>/u);
 });
