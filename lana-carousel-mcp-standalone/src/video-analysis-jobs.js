@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import {randomUUID} from "node:crypto";
+import {createHash,randomUUID} from "node:crypto";
 import {bundle} from "@remotion/bundler";
 import {renderMedia,selectComposition} from "@remotion/renderer";
 import {db} from "./db.js";
@@ -22,12 +22,21 @@ const MAX_TTS_FIT_RATE=1.25;
 const UNMEASURED_DURATION_HEADROOM=2;
 const jobColumns=new Set(db.prepare(`PRAGMA table_info(video_analysis_jobs)`).all().map(column=>column.name));
 if(!jobColumns.has("project_version"))db.exec(`ALTER TABLE video_analysis_jobs ADD COLUMN project_version INTEGER`);
-const insert=db.prepare(`INSERT INTO video_analysis_jobs(id,project_id,project_version,status,progress,created_at,updated_at,expires_at) VALUES(?,?,?,?,?,?,?,?)`);
+if(!jobColumns.has("render_revision"))db.exec(`ALTER TABLE video_analysis_jobs ADD COLUMN render_revision TEXT`);
+const insert=db.prepare(`INSERT INTO video_analysis_jobs(id,project_id,project_version,render_revision,status,progress,created_at,updated_at,expires_at) VALUES(?,?,?,?,?,?,?,?,?)`);
 const update=db.prepare(`UPDATE video_analysis_jobs SET status=?,progress=?,error=?,output_path=?,updated_at=? WHERE id=?`);
 const get=db.prepare(`SELECT * FROM video_analysis_jobs WHERE id=?`);
 const interruptedRows=db.prepare(`SELECT id,project_id,status,output_path FROM video_analysis_jobs WHERE status IN ('QUEUED','RENDERING')`);
 const failInterrupted=db.prepare(`UPDATE video_analysis_jobs SET status='FAILED',error=?,output_path=NULL,updated_at=? WHERE id=? AND status IN ('QUEUED','RENDERING')`);
-const latestForVersion=db.prepare(`SELECT id FROM video_analysis_jobs WHERE project_id=? AND project_version=? ORDER BY rowid DESC LIMIT 1`);
+const latestForRevision=db.prepare(`SELECT id FROM video_analysis_jobs WHERE project_id=? AND project_version=? AND render_revision=? ORDER BY rowid DESC LIMIT 1`);
+
+function projectRenderRevision(project){
+ return createHash("sha256").update(JSON.stringify({
+  projectVersion:Number(project.currentVersion||0),
+  sourceUrl:String(project.source?.url||""),
+  sourceDuration:Number(project.source?.duration||0)
+ })).digest("hex");
+}
 
 const publish=job=>({
  id:job.id,
@@ -221,7 +230,10 @@ export async function buildVoiceTracks({settings,segments,mediaScope}){
 async function work(job){
  try{
   const project=getVideoAnalysisProject(job.projectId);
-  if(Number(project.currentVersion)!==Number(job.projectVersion)){
+  if(
+   Number(project.currentVersion)!==Number(job.projectVersion)
+   ||projectRenderRevision(project)!==job.renderRevision
+  ){
    throw new AppError(
     "VIDEO_ANALYSIS_JOB_STALE",
     "Project đã thay đổi sau khi render job được tạo. Hãy tạo render job mới.",
@@ -326,13 +338,18 @@ export function startVideoAnalysisJob(projectId){
  }
  const project=getVideoAnalysisProject(projectId);
  const projectVersion=Number(project.currentVersion||0);
+ const renderRevision=projectRenderRevision(project);
  const existing=videoAnalysisJobRegistry.getActiveJobForProject(projectId);
- if(existing&&Number(existing.projectVersion)===projectVersion){
+ if(
+  existing
+  &&Number(existing.projectVersion)===projectVersion
+  &&existing.renderRevision===renderRevision
+ ){
   return publish(existing);
  }
- const job={id:randomUUID(),projectId,projectVersion,status:"QUEUED",progress:0,createdAt:new Date().toISOString()};
+ const job={id:randomUUID(),projectId,projectVersion,renderRevision,status:"QUEUED",progress:0,createdAt:new Date().toISOString()};
  videoAnalysisJobRegistry.add(job);
- insert.run(job.id,projectId,projectVersion,job.status,0,job.createdAt,job.createdAt,new Date(Date.now()+7*864e5).toISOString());
+ insert.run(job.id,projectId,projectVersion,renderRevision,job.status,0,job.createdAt,job.createdAt,new Date(Date.now()+7*864e5).toISOString());
  videoAnalysisJobRegistry.enqueue(job);
  queueMicrotask(drain);
  return publish(job);
@@ -356,10 +373,16 @@ export function getVideoAnalysisJob(id){
 }
 
 export function getLatestVideoAnalysisJobForProject(projectId){
- const projectVersion=Number(getVideoAnalysisProject(projectId).currentVersion||0);
+ const project=getVideoAnalysisProject(projectId);
+ const projectVersion=Number(project.currentVersion||0);
+ const renderRevision=projectRenderRevision(project);
  const live=videoAnalysisJobRegistry.getActiveJobForProject(projectId);
- if(live&&Number(live.projectVersion)===projectVersion)return publish(live);
- const row=latestForVersion.get(projectId,projectVersion);
+ if(
+  live
+  &&Number(live.projectVersion)===projectVersion
+  &&live.renderRevision===renderRevision
+ )return publish(live);
+ const row=latestForRevision.get(projectId,projectVersion,renderRevision);
  if(!row)return null;
  return getVideoAnalysisJob(row.id);
 }
