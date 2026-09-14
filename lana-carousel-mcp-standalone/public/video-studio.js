@@ -1,6 +1,6 @@
 const $=selector=>document.querySelector(selector);
 const params=new URLSearchParams(location.search);
-let projectId=params.get("projectId"),project,jobTimer,dragging=false;
+let projectId=params.get("projectId"),project,jobTimer,jobPollGeneration=0,dragging=false;
 
 const FONT_STACKS={
   "TikTok Sans":"'TikTok Sans', Arial, Helvetica, sans-serif",
@@ -257,6 +257,15 @@ function versionButton(version){
   return button;
 }
 
+function invalidateRenderUi(){
+  jobPollGeneration+=1;
+  clearInterval(jobTimer);
+  jobTimer=null;
+  $("#download").hidden=true;
+  $("#download").removeAttribute("href");
+  $("#job").textContent="";
+}
+
 async function loadVersions(){
   const response=await api(`/api/video-analysis/projects/${projectId}/versions`);
   if(response.versions.length)$("#versions").replaceChildren(...response.versions.map(versionButton));
@@ -271,6 +280,7 @@ async function load(){
   project=await api(`/api/video-analysis/projects/${projectId}`);
   fill();
   await loadVersions();
+  invalidateRenderUi();
   try{
     const data=await api(`/api/video-analysis/projects/${projectId}/latest-job`);
     if(data.job){
@@ -291,6 +301,7 @@ async function save(approved,{refresh=true}={}){
     headers:{"content-type":"application/json"},
     body:JSON.stringify({approved,script:{summary:$("#summary").value,language:"vi-VN",segments:segments()},settings:settings()})
   });
+  invalidateRenderUi();
   if(refresh){fill();await loadVersions()}
   return project;
 }
@@ -456,29 +467,41 @@ $("#render").onclick=async()=>{
 
 async function poll(id){
   clearInterval(jobTimer);
+  jobTimer=null;
+  const generation=++jobPollGeneration;
   $("#render").disabled=true;
   const run=async()=>{
     try{
       const job=await api(`/api/video-analysis/jobs/${id}`);
+      if(generation!==jobPollGeneration)return false;
       $("#job").textContent=`${job.status} · ${job.progress}%${job.error?" · "+job.error:""}`;
       if(job.status==="READY"){
-        clearInterval(jobTimer);
         $("#download").hidden=false;
         $("#download").href=job.downloadUrl;
         $("#render").disabled=false;
         if(isLucylab())fetchLucylabCredits();
-      }else if(job.status==="FAILED"){
-        clearInterval(jobTimer);
-        $("#render").disabled=false;
+        return false;
       }
+      if(job.status==="FAILED"){
+        $("#render").disabled=false;
+        return false;
+      }
+      return true;
     }catch(error){
-      clearInterval(jobTimer);
+      if(generation!==jobPollGeneration)return false;
       $("#render").disabled=false;
       $("#job").textContent=`Mất liên lạc với job: ${error.message}`;
+      return false;
     }
   };
-  await run();
-  jobTimer=setInterval(run,2000);
+  if(await run()){
+    jobTimer=setInterval(async()=>{
+      if(!await run()){
+        clearInterval(jobTimer);
+        jobTimer=null;
+      }
+    },2000);
+  }
 }
 
 // Lưu trước khi tải để tệp khớp đúng thứ đang thấy trên màn hình. Phải giữ nguyên trạng thái
