@@ -20,15 +20,19 @@ let bundlePromise;
 const TTS_CONCURRENCY=3;
 const MAX_TTS_FIT_RATE=1.25;
 const UNMEASURED_DURATION_HEADROOM=2;
-const insert=db.prepare(`INSERT INTO video_analysis_jobs(id,project_id,status,progress,created_at,updated_at,expires_at) VALUES(?,?,?,?,?,?,?)`);
+const jobColumns=new Set(db.prepare(`PRAGMA table_info(video_analysis_jobs)`).all().map(column=>column.name));
+if(!jobColumns.has("project_version"))db.exec(`ALTER TABLE video_analysis_jobs ADD COLUMN project_version INTEGER`);
+const insert=db.prepare(`INSERT INTO video_analysis_jobs(id,project_id,project_version,status,progress,created_at,updated_at,expires_at) VALUES(?,?,?,?,?,?,?,?)`);
 const update=db.prepare(`UPDATE video_analysis_jobs SET status=?,progress=?,error=?,output_path=?,updated_at=? WHERE id=?`);
 const get=db.prepare(`SELECT * FROM video_analysis_jobs WHERE id=?`);
 const interruptedRows=db.prepare(`SELECT id,project_id,status,output_path FROM video_analysis_jobs WHERE status IN ('QUEUED','RENDERING')`);
 const failInterrupted=db.prepare(`UPDATE video_analysis_jobs SET status='FAILED',error=?,output_path=NULL,updated_at=? WHERE id=? AND status IN ('QUEUED','RENDERING')`);
+const latestForVersion=db.prepare(`SELECT id FROM video_analysis_jobs WHERE project_id=? AND project_version=? ORDER BY rowid DESC LIMIT 1`);
 
 const publish=job=>({
  id:job.id,
  projectId:job.projectId,
+ projectVersion:job.projectVersion,
  status:job.status,
  progress:job.progress,
  error:job.error||null,
@@ -216,10 +220,17 @@ export async function buildVoiceTracks({settings,segments,mediaScope}){
 
 async function work(job){
  try{
+  const project=getVideoAnalysisProject(job.projectId);
+  if(Number(project.currentVersion)!==Number(job.projectVersion)){
+   throw new AppError(
+    "VIDEO_ANALYSIS_JOB_STALE",
+    "Project đã thay đổi sau khi render job được tạo. Hãy tạo render job mới.",
+    409
+   );
+  }
   job.status="RENDERING";
   job.progress=5;
   persist(job);
-  const project=getVideoAnalysisProject(job.projectId);
   if(project.status!=="APPROVED")throw new Error("Script cần được duyệt trước khi render.");
   if(!project.source.url)throw new Error("Chưa có video nguồn.");
   const mediaScope={resourceType:"video-analysis",resourceId:project.id};
@@ -313,14 +324,15 @@ export function startVideoAnalysisJob(projectId){
    409
   );
  }
- getVideoAnalysisProject(projectId);
+ const project=getVideoAnalysisProject(projectId);
+ const projectVersion=Number(project.currentVersion||0);
  const existing=videoAnalysisJobRegistry.getActiveJobForProject(projectId);
- if(existing){
+ if(existing&&Number(existing.projectVersion)===projectVersion){
   return publish(existing);
  }
- const job={id:randomUUID(),projectId,status:"QUEUED",progress:0,createdAt:new Date().toISOString()};
+ const job={id:randomUUID(),projectId,projectVersion,status:"QUEUED",progress:0,createdAt:new Date().toISOString()};
  videoAnalysisJobRegistry.add(job);
- insert.run(job.id,projectId,job.status,0,job.createdAt,job.createdAt,new Date(Date.now()+7*864e5).toISOString());
+ insert.run(job.id,projectId,projectVersion,job.status,0,job.createdAt,job.createdAt,new Date(Date.now()+7*864e5).toISOString());
  videoAnalysisJobRegistry.enqueue(job);
  queueMicrotask(drain);
  return publish(job);
@@ -334,6 +346,7 @@ export function getVideoAnalysisJob(id){
  return{
   id:row.id,
   projectId:row.project_id,
+  projectVersion:row.project_version==null?null:Number(row.project_version),
   status:row.status,
   progress:row.progress,
   error:row.error,
@@ -342,11 +355,11 @@ export function getVideoAnalysisJob(id){
  };
 }
 
-
 export function getLatestVideoAnalysisJobForProject(projectId){
+ const projectVersion=Number(getVideoAnalysisProject(projectId).currentVersion||0);
  const live=videoAnalysisJobRegistry.getActiveJobForProject(projectId);
- if(live)return publish(live);
- const row=db.prepare("SELECT id FROM video_analysis_jobs WHERE project_id=? ORDER BY rowid DESC LIMIT 1").get(projectId);
+ if(live&&Number(live.projectVersion)===projectVersion)return publish(live);
+ const row=latestForVersion.get(projectId,projectVersion);
  if(!row)return null;
  return getVideoAnalysisJob(row.id);
 }
