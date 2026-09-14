@@ -23,7 +23,7 @@ export const VIDEO_EDITABLE_SETTING_KEYS = [
   "subtitleColor", "subtitleBackgroundColor", "subtitleBackgroundOpacity",
   "subtitleX", "subtitlePosition", "subtitleStyle", "subtitlePreset",
   "ctaEnabled", "ctaType", "ctaText", "ctaPosition",
-  "sfxEnabled", "sfxVolume", "sfxPreset",
+  "sfxEnabled", "sfxVolume",
   "geminiSpeaker1Voice", "geminiSpeaker2Voice", "geminiSpeaker1Name",
   "geminiSpeaker2Name", "geminiMultiSpeaker", "geminiModel"
 ];
