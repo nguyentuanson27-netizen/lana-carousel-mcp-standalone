@@ -324,7 +324,7 @@ function registerVideoAnalysisTools(server){
 }
 
 export function createMcpServer({quotaClientId=currentQuotaClientId()}={}){
- const server=installToolQuota(new McpServer({name:"lana-carousel-standalone",version:"1.8.0"}),quotaClientId);
+ const server=installToolQuota(new McpServer({name:"lana-carousel-standalone",version:"1.9.0"}),quotaClientId);
  registerCarouselTools(server);
  registerVideoAnalysisTools(server);
  return server;
