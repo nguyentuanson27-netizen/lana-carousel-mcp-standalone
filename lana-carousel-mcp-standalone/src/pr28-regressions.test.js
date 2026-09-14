@@ -61,10 +61,12 @@ test("latest render job ignores a READY artifact from an older project version",
 });
 
 test("SFX preset is not advertised until it has defined render semantics", () => {
-  const briefSource = fs.readFileSync(new URL("./video-analysis-brief.js", import.meta.url), "utf8");
-  const mcpSource = fs.readFileSync(new URL("./mcp-tools.js", import.meta.url), "utf8");
-  assert.doesNotMatch(briefSource, /["']sfxPreset["']/u);
-  assert.doesNotMatch(mcpSource, /\bsfxPreset\b/u);
+  const sources = [
+    "./video-analysis-brief.js",
+    "./mcp-tools.js",
+    "./video-analysis-routes.js"
+  ].map(relativePath => fs.readFileSync(new URL(relativePath, import.meta.url), "utf8"));
+  for (const source of sources) assert.doesNotMatch(source, /\bsfxPreset\b/u);
 });
 
 test("guide names only MCP tools that are actually registered", () => {
