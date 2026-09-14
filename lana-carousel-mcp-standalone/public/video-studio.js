@@ -16,7 +16,8 @@ const RANGE_OUTPUTS={
   subtitleSize:value=>`${Math.round(Number(value))} px`,
   subtitleOpacity:value=>`${Math.round(Number(value)*100)}%`,
   subtitleX:value=>`${Math.round(Number(value))}%`,
-  subtitlePosition:value=>`${Math.round(Number(value))}%`
+  subtitlePosition:value=>`${Math.round(Number(value))}%`,
+  sfxVolume:value=>`${Math.round(Number(value)*100)}%`
 };
 const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
 const api=async(url,opt={})=>{const response=await fetch(url,opt),json=await response.json().catch(()=>({}));if(!response.ok)throw new Error(json.message||json.error||"Yêu cầu thất bại");return json};
@@ -42,13 +43,20 @@ const settings=()=>({
   ttsVolume:+$("#ttsVolume").value,
   subtitleEnabled:$("#subtitleEnabled").checked,
   subtitleStyle:$("#subtitleStyle").value,
+  subtitlePreset:$("#subtitlePreset")?.value||"tiktok-classic",
   subtitleFont:$("#subtitleFont").value,
   subtitleSize:+$("#subtitleSize").value,
   subtitleColor:$("#subtitleColor").value,
   subtitleBackgroundColor:$("#subtitleBg").value,
   subtitleBackgroundOpacity:+$("#subtitleOpacity").value,
   subtitleX:+$("#subtitleX").value,
-  subtitlePosition:+$("#subtitlePosition").value
+  subtitlePosition:+$("#subtitlePosition").value,
+  ctaEnabled:Boolean($("#ctaEnabled")?.checked),
+  ctaType:$("#ctaType")?.value||"cart",
+  ctaText:$("#ctaText")?.value||"",
+  ctaPosition:$("#ctaPosition")?.value||"bottom-left",
+  sfxEnabled:$("#sfxEnabled")?.checked!==false,
+  sfxVolume:+$("#sfxVolume")?.value||0.25
 });
 
 const segments=()=>[...document.querySelectorAll(".segment")].map((element,index)=>({
@@ -218,6 +226,7 @@ function fill(){
   setControl("originalVolume",saved.originalAudioVolume,.25);
   setControl("ttsVolume",saved.ttsVolume,1);
   setControl("subtitleStyle",saved.subtitleStyle,"karaoke");
+  setControl("subtitlePreset",saved.subtitlePreset,"tiktok-classic");
   setControl("subtitleFont",saved.subtitleFont,"TikTok Sans");
   setControl("subtitleSize",saved.subtitleSize,52);
   setControl("subtitleColor",saved.subtitleColor,"#FFFFFF");
@@ -225,6 +234,12 @@ function fill(){
   setControl("subtitleOpacity",saved.subtitleBackgroundOpacity,.72);
   setControl("subtitleX",saved.subtitleX,50);
   setControl("subtitlePosition",saved.subtitlePosition,86);
+  if ($("#ctaEnabled")) $("#ctaEnabled").checked = Boolean(saved.ctaEnabled);
+  setControl("ctaType",saved.ctaType,"cart");
+  if ($("#ctaText")) $("#ctaText").value = saved.ctaText || "";
+  setControl("ctaPosition",saved.ctaPosition,"bottom-left");
+  if ($("#sfxEnabled")) $("#sfxEnabled").checked = saved.sfxEnabled !== false;
+  setControl("sfxVolume",saved.sfxVolume,0.25);
   $("#segments").innerHTML="";
   (project.script.segments||[]).forEach(addSegment);
   syncRangeOutputs();
@@ -373,6 +388,23 @@ const onStudioEdit=event=>{if(!event.target.closest("details"))return;syncRangeO
 document.addEventListener("input",onStudioEdit);
 document.addEventListener("change",onStudioEdit);
 document.fonts?.ready.then(renderPreview).catch(()=>{});
+$("#subtitlePreset")?.addEventListener("change", (e) => {
+  const p = e.target.value;
+  if (p === "capcut-stroke") {
+    $("#subtitleOpacity").value = 0;
+    $("#subtitleColor").value = "#FFFFFF";
+  } else if (p === "neon-glow") {
+    $("#subtitleBg").value = "#111111";
+    $("#subtitleOpacity").value = 0.65;
+    $("#subtitleColor").value = "#FFFFFF";
+  } else if (p === "tiktok-classic") {
+    $("#subtitleBg").value = "#000000";
+    $("#subtitleOpacity").value = 0.72;
+    $("#subtitleColor").value = "#FFFFFF";
+  }
+  syncRangeOutputs();
+  renderPreview();
+});
 
 $("#addSegment").onclick=()=>addSegment({start:$("#video").currentTime,end:$("#video").currentTime+3});
 $("#save").onclick=()=>save(false).catch(error=>alert(error.message));

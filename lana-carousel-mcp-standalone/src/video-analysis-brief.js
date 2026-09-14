@@ -21,9 +21,11 @@ export const VIDEO_EDITABLE_SETTING_KEYS = [
   "ttsEnabled", "ttsProvider", "ttsSpeed", "ttsVolume", "ttsVoice", "lucylabVoice",
   "originalAudioVolume", "subtitleEnabled", "subtitleFont", "subtitleSize",
   "subtitleColor", "subtitleBackgroundColor", "subtitleBackgroundOpacity",
-  "subtitleX", "subtitlePosition", "subtitleStyle", "geminiSpeaker1Voice",
-  "geminiSpeaker2Voice", "geminiSpeaker1Name", "geminiSpeaker2Name",
-  "geminiMultiSpeaker", "geminiModel"
+  "subtitleX", "subtitlePosition", "subtitleStyle", "subtitlePreset",
+  "ctaEnabled", "ctaType", "ctaText", "ctaPosition",
+  "sfxEnabled", "sfxVolume", "sfxPreset",
+  "geminiSpeaker1Voice", "geminiSpeaker2Voice", "geminiSpeaker1Name",
+  "geminiSpeaker2Name", "geminiMultiSpeaker", "geminiModel"
 ];
 export const BASE_WORDS_PER_SECOND = 3.3;
 export const WORD_BUDGET_RESERVED_SECONDS = 0;

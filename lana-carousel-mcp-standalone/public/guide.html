@@ -2847,6 +2847,30 @@ static</pre>
             <li><strong>Thời hạn chờ export tối đa:</strong> Nâng lên <strong>120.000 ms</strong> (120 giây / 2 phút) để các video dài không bị ngắt quãng giữa chừng. Có thể tùy chỉnh qua <code>LUCYLAB_EXPORT_TIMEOUT_MS</code>.</li>
             <li><strong>Tự động thử lại:</strong> Nếu Lucylab trả về thông báo đang có export dở dang, hệ thống sẽ tự động tạm dừng một nhịp và thử lại tối đa 3 lần thay vì báo lỗi ngay lập tức.</li>
           </ul>
+
+          <h3 style="margin-top:1.5rem; font-size:1.1rem; color:var(--text-primary);">Bộ Preset Phụ đề CapCut / TikTok &amp; Bắt nhịp từ chính xác</h3>
+          <p>Hệ thống tự động đồng bộ nhịp nhảy chữ (Word-level Alignment) khớp 100% với thời lượng phát âm thực của file giọng đọc, đồng thời hỗ trợ 5 Preset phong cách thời thượng:</p>
+          <ul>
+            <li><code>tiktok-classic</code>: Chữ trắng, highlight vàng chanh (<code>#FFE600</code>), nền hộp đen mờ bo tròn chuẩn TikTok.</li>
+            <li><code>capcut-stroke</code>: Viền đen đậm nét (stroke 3.5px), chữ trắng, highlight Cyan neon (<code>#00F2FE</code>), không cần hộp nền — phong cách CapCut trending hiện đại.</li>
+            <li><code>bounce-pop</code>: Từng từ khi được đọc sẽ nảy nhẹ (hiệu ứng lò xo <code>spring()</code> của Remotion) và phóng to 1.18x tạo nhịp điệu sinh động.</li>
+            <li><code>neon-glow</code>: Hiệu ứng viền phát sáng neon rực rỡ, thích hợp video thời trang, năng động.</li>
+            <li><code>box-gradient</code>: Hộp nền gradient bo góc sang trọng viền mờ tinh tế.</li>
+            <li><strong>Keyword Auto-highlight:</strong> Tự động nhận diện và tô màu nổi bật cho các từ khóa "đắt giá" (freeship, cao cấp, thêu tay, giảm giá, sale, giá tiền...).</li>
+          </ul>
+
+          <h3 style="margin-top:1.5rem; font-size:1.1rem; color:var(--text-primary);">Sticker Call-to-Action (CTA) &amp; Âm thanh SFX nhấn nhá</h3>
+          <p>Để tối ưu chuyển đổi cho video bán hàng và short-form review:</p>
+          <ul>
+            <li><strong>Sticker CTA động (<code>ctaEnabled</code>):</strong>
+              <ul>
+                <li><code>cart</code>: Huy hiệu Giỏ hàng TikTok Shop góc dưới trái kèm mũi tên động nhấp nháy chỉ xuống (<code>👇</code>).</li>
+                <li><code>sale-badge</code>: Huy hiệu "HOT SALE • FREESHIP" góc trên nhấp nháy thu hút sự chú ý.</li>
+                <li><code>follow</code>: Kêu gọi Follow/Like ở những giây cuối cùng của video.</li>
+              </ul>
+            </li>
+            <li><strong>Âm thanh SFX (<code>sfxEnabled</code>, <code>sfxVolume</code>):</strong> Tự động hòa âm tiếng <em>whoosh</em> khi chuyển cảnh giữa các phân đoạn và tiếng <em>ding</em> chuông nhẹ khi CTA xuất hiện, giúp video chuyên nghiệp và giữ chân người xem lâu hơn.</li>
+          </ul>
         </div>
       </div>
     </section>

@@ -156,6 +156,43 @@ export function planVoiceTracks({segments,clips,ttsSpeed}){
 // clip nào kết thúc sau mốc đó vẫn mất phần cuối câu dù <Sequence> không còn cắt nữa.
 // Định dạng nào đo được thì mốc là chính xác; định dạng lạ chỉ có độ dài ước lượng nên
 // phải chừa biên an toàn thay vì tin vào con số đoán.
+export function calculateSegmentWordTimings(text, speechDurationSeconds) {
+ const clean = String(text || "").trim();
+ const dur = Number(speechDurationSeconds || 0);
+ if (!clean || dur <= 0) return [];
+ const words = clean.split(/\s+/u).filter(Boolean);
+ if (words.length === 0) return [];
+ const weights = words.map(w => Math.max(1, w.replace(/[.,!?;:()""'']/gu, "").length));
+ const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+ let cur = 0;
+ return words.map((word, i) => {
+  const wDur = (weights[i] / totalWeight) * dur;
+  const start = Number(cur.toFixed(3));
+  cur += wDur;
+  const end = Number(cur.toFixed(3));
+  return { word, start, end };
+ });
+}
+
+let cachedSfxUrls = null;
+export async function loadSfxDataUrls() {
+ if (cachedSfxUrls) return cachedSfxUrls;
+ const dir = path.resolve("public/sfx");
+ const files = ["whoosh.wav", "pop.wav", "ding.wav", "camera.wav"];
+ const res = {};
+ for (const file of files) {
+  const p = path.join(dir, file);
+  try {
+   const buf = await fs.readFile(p);
+   res[file.replace(/\.wav$/u, "")] = `data:audio/wav;base64,${buf.toString("base64")}`;
+  } catch {
+   res[file.replace(/\.wav$/u, "")] = null;
+  }
+ }
+ cachedSfxUrls = res;
+ return res;
+}
+
 export function voiceTracksDuration(tracks){
  return tracks.reduce((longest,track)=>Math.max(
   longest,
@@ -200,13 +237,26 @@ async function work(job){
    voiceDuration=voiceTracksDuration(voiceTracks);
   }
 
+  const enrichedSegments = project.script.segments.map((segment, index) => {
+   const track = voiceTracks.find(t => t.id === segment.id || t.id === `voice-${index}`);
+   const speechDuration = track && Number(track.duration) > 0 ? Number(track.duration) : 0;
+   const words = calculateSegmentWordTimings(segment.subtitleText || segment.voiceOverText, speechDuration);
+   return {
+    ...segment,
+    words,
+    speechDuration
+   };
+  });
+  const sfxUrls = await loadSfxDataUrls();
+
   const props={
    sourceVideoUrl,
    sourceDuration:Number(project.source.duration||0),
-   segments:project.script.segments,
+   segments:enrichedSegments,
    settings:project.settings,
    voiceTracks,
-   voiceDuration
+   voiceDuration,
+   sfxUrls
   };
   const serveUrl=await(bundlePromise??=bundle({entryPoint:path.resolve("video/index.jsx")}));
   job.progress=20;
