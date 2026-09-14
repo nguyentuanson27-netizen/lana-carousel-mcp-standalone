@@ -117,9 +117,10 @@ describe("Video Studio invalidates stale READY downloads",{skip:skipReason},()=>
 
   await page.waitForSelector("#versions button",{state:"attached"});
   const restored=page.waitForResponse(response=>response.url().includes(`/projects/${projectId}/versions/`)&&response.url().endsWith("/restore")&&response.request().method()==="POST");
-  await page.locator("#versions button").first().click({force:true});
+  const latest=page.waitForResponse(response=>response.url().endsWith(`/projects/${projectId}/latest-job`)&&response.request().method()==="GET");
+  await page.locator("#versions button").first().evaluate(button=>button.click());
   assert.equal((await restored).status(),200);
-  await page.waitForResponse(response=>response.url().endsWith(`/projects/${projectId}/latest-job`)&&response.request().method()==="GET");
+  assert.equal((await latest).status(),200);
   await page.waitForTimeout(100);
 
   assert.equal(await page.locator("#download").isVisible(),false,"restore version phải bỏ download không còn khớp revision");
