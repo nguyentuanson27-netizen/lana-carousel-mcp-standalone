@@ -38,12 +38,13 @@ test("loadSfxDataUrls returns base64 WAV data URLs for all sound effects", async
   }
 });
 
-test("VIDEO_EDITABLE_SETTING_KEYS includes all new video enhancement keys", () => {
+test("VIDEO_EDITABLE_SETTING_KEYS includes only implemented video enhancement keys", () => {
   const expectedKeys = [
     "subtitlePreset", "ctaEnabled", "ctaType", "ctaText", "ctaPosition",
-    "sfxEnabled", "sfxVolume", "sfxPreset"
+    "sfxEnabled", "sfxVolume"
   ];
   for (const key of expectedKeys) {
     assert.ok(VIDEO_EDITABLE_SETTING_KEYS.includes(key), `Expected ${key} in VIDEO_EDITABLE_SETTING_KEYS`);
   }
+  assert.equal(VIDEO_EDITABLE_SETTING_KEYS.includes("sfxPreset"), false);
 });
