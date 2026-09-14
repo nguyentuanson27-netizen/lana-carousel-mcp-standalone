@@ -64,7 +64,6 @@ const editableVideoSettingsSchema=z.object({
  ctaPosition:z.enum(["bottom-left","bottom-center","top-right"]).optional(),
  sfxEnabled:z.boolean().optional(),
  sfxVolume:z.number().min(0).max(1).optional(),
- sfxPreset:z.enum(["minimal","dynamic","subtle"]).optional(),
  geminiSpeaker1Voice:z.string().min(1).max(100).optional(),
  geminiSpeaker2Voice:z.string().min(1).max(100).optional(),
  geminiSpeaker1Name:z.string().min(1).max(100).optional(),
