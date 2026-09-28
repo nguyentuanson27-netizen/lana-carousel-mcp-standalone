@@ -95,6 +95,19 @@ pm2 save
 | `PROJECT_AUDIO_MAX_FILES` | `20` | Tổng số file audio tối đa cho một project |
 | `PROJECT_AUDIO_MAX_BYTES` | `262144000` | Tổng dung lượng audio tối đa cho một project |
 | `MAX_REMOTE_VIDEO_BYTES` | `524288000` | Dung lượng video tối đa |
+| `OPENAI_ADS_PIXEL_ID` | trống | Pixel ID dùng cho browser Pixel và CAPI |
+| `OPENAI_CONVERSIONS_API_KEY` | trống | CAPI key, chỉ lưu server-side |
+| `OPENAI_ADS_REQUEST_TIMEOUT_MS` | `10000` | Timeout khi gửi event tới OpenAI Ads |
+
+## OpenAI Ads Pixel + CAPI
+
+Repo có sẵn helper browser và endpoint server-side để tích hợp conversion tracking cho storefront Lana Design:
+
+- Browser helper: `/openai-ads-pixel.js`
+- Server CAPI endpoint: `POST /api/openai-ads/events`
+- Hướng dẫn đầy đủ: [docs/openai-ads-conversions.md](docs/openai-ads-conversions.md)
+
+CAPI key không được đưa vào frontend. Nếu cùng một conversion được gửi từ Pixel và CAPI, dùng cùng event ID để deduplicate.
 
 ## Xác thực production
 
