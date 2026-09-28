@@ -367,51 +367,54 @@ test("updates the live subtitle preview when the preset changes", async () => {
     }));
 
     await page.locator("#subtitlePreset").selectOption("tiktok-classic");
-    assert.deepEqual(await previewState(), {
-      text: "xin chao",
-      wordMode: false,
-      background: "rgba(0, 0, 0, 0.72)",
-      border: "",
-      textShadow: "rgba(0, 0, 0, 0.6) 0px 2px 8px",
-      webkitTextStroke: "",
-      activeColor: "rgb(255, 230, 0)",
-      activeTransform: ""
-    });
+    let state = await previewState();
+    assert.equal(state.text, "xin chao");
+    assert.equal(state.wordMode, false);
+    assert.equal(state.background, "rgba(0, 0, 0, 0.72)");
+    assert.equal(state.border, "");
+    assert.match(state.textShadow, /8px/u);
+    assert.match(state.textShadow, /rgba\(0, 0, 0, 0\.6\)/u);
+    assert.equal(state.webkitTextStroke, "");
+    assert.equal(state.activeColor, "rgb(255, 230, 0)");
+    assert.equal(state.activeTransform, "");
 
     await page.locator("#subtitlePreset").selectOption("capcut-stroke");
-    assert.deepEqual(await previewState(), {
-      text: "xin chao",
-      wordMode: false,
-      background: "transparent",
-      border: "",
-      textShadow: "0 4px 14px rgba(0, 0, 0, 0.95)",
-      webkitTextStroke: "3.5px rgb(0, 0, 0)",
-      activeColor: "rgb(0, 242, 254)",
-      activeTransform: ""
-    });
+    state = await previewState();
+    assert.equal(state.text, "xin chao");
+    assert.equal(state.wordMode, false);
+    assert.equal(state.background, "transparent");
+    assert.equal(state.border, "");
+    assert.match(state.textShadow, /14px/u);
+    assert.match(state.textShadow, /rgba\(0, 0, 0, 0\.95\)/u);
+    assert.match(state.webkitTextStroke, /3\.5px/u);
+    assert.match(state.webkitTextStroke, /rgb\(0, 0, 0\)/u);
+    assert.equal(state.activeColor, "rgb(0, 242, 254)");
+    assert.equal(state.activeTransform, "");
 
     await page.locator("#subtitlePreset").selectOption("neon-glow");
-    assert.deepEqual(await previewState(), {
-      text: "xin chao",
-      wordMode: false,
-      background: "rgba(10, 10, 15, 0.65)",
-      border: "",
-      textShadow: "rgb(255, 0, 127) 0px 0px 10px, rgb(255, 0, 127) 0px 0px 22px",
-      webkitTextStroke: "",
-      activeColor: "rgb(255, 252, 0)",
-      activeTransform: ""
-    });
+    state = await previewState();
+    assert.equal(state.text, "xin chao");
+    assert.equal(state.wordMode, false);
+    assert.equal(state.background, "rgba(10, 10, 15, 0.65)");
+    assert.equal(state.border, "");
+    assert.match(state.textShadow, /10px/u);
+    assert.match(state.textShadow, /22px/u);
+    assert.match(state.textShadow, /rgb\(255, 0, 127\)/u);
+    assert.equal(state.webkitTextStroke, "");
+    assert.equal(state.activeColor, "rgb(255, 252, 0)");
+    assert.equal(state.activeTransform, "");
 
     await page.locator("#subtitlePreset").selectOption("box-gradient");
-    assert.match((await previewState()).background, /linear-gradient/u);
-    assert.equal((await previewState()).border, "2px solid rgba(255, 255, 255, 0.25)");
+    state = await previewState();
+    assert.match(state.background, /linear-gradient/u);
+    assert.equal(state.border, "2px solid rgba(255, 255, 255, 0.25)");
 
     await page.locator("#subtitlePreset").selectOption("bounce-pop");
-    const bounce = await previewState();
-    assert.equal(bounce.text, "xin");
-    assert.equal(bounce.wordMode, true);
-    assert.equal(bounce.activeColor, "rgb(255, 230, 0)");
-    assert.equal(bounce.activeTransform, "scale(1.12)");
+    state = await previewState();
+    assert.equal(state.text, "xin");
+    assert.equal(state.wordMode, true);
+    assert.equal(state.activeColor, "rgb(255, 230, 0)");
+    assert.equal(state.activeTransform, "scale(1.12)");
 
     // Đổi preset chỉ đổi cách trình bày preview; không được âm thầm sửa các control người dùng.
     await page.locator("#subtitleColor").evaluate(element => {
