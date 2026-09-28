@@ -414,10 +414,27 @@ test("updates the live subtitle preview when the preset changes", async () => {
     assert.equal(bounce.activeTransform, "scale(1.12)");
 
     // Đổi preset chỉ đổi cách trình bày preview; không được âm thầm sửa các control người dùng.
-    await page.locator("#subtitleColor").fill("#123456");
+    await page.locator("#subtitleColor").evaluate(element => {
+      element.value = "#123456";
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+    });
     await page.locator("#subtitleOpacity").fill("0.35");
     await page.locator("#subtitlePreset").selectOption("capcut-stroke");
     assert.equal(await page.locator("#subtitleColor").inputValue(), "#123456");
     assert.equal(await page.locator("#subtitleOpacity").inputValue(), "0.35");
+
+    // Keyword colors trong preview phải theo đúng renderer.
+    await page.locator("#subtitlePreset").selectOption("tiktok-classic");
+    await page.locator(".segment .sub").first().fill("sale xin");
+    await page.locator(".segment .sub").first().dispatchEvent("input");
+    assert.equal(
+      await page.locator("#caption .active-word").evaluate(element => element.style.color),
+      "rgb(255, 77, 79)"
+    );
+
+    await page.locator(".segment .sub").first().fill("xin sale");
+    await page.locator(".segment .sub").first().dispatchEvent("input");
+    const colors = await page.locator("#caption span").evaluateAll(nodes => nodes.map(node => node.style.color));
+    assert.equal(colors.at(-1), "rgb(255, 223, 112)");
   });
 });
