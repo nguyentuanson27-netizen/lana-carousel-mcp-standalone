@@ -439,5 +439,12 @@ test("updates the live subtitle preview when the preset changes", async () => {
     await page.locator(".segment .sub").first().dispatchEvent("input");
     const colors = await page.locator("#caption span").evaluateAll(nodes => nodes.map(node => node.style.color));
     assert.equal(colors.at(-1), "rgb(255, 223, 112)");
+
+    await page.locator("#subtitleStyle").selectOption("static");
+    await page.locator(".segment .sub").first().fill("xin sale");
+    await page.locator(".segment .sub").first().dispatchEvent("input");
+    const staticColors = await page.locator("#caption span").evaluateAll(nodes => nodes.map(node => node.style.color));
+    assert.equal(staticColors.at(-1), "rgb(255, 223, 112)");
+    assert.equal(await page.locator("#caption .active-word").count(), 0);
   });
 });
