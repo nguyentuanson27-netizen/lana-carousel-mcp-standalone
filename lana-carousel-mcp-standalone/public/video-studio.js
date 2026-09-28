@@ -406,7 +406,7 @@ function renderPreview(){
     background:appearance.background,
     border:appearance.border,
     textShadow:appearance.textShadow,
-    WebkitTextStroke:appearance.webkitTextStroke,
+    webkitTextStroke:appearance.webkitTextStroke,
     paintOrder:appearance.paintOrder,
     padding:`${Math.max(5,16*scale)}px ${Math.max(8,24*scale)}px`,
     borderRadius:`${Math.max(7,20*scale)}px`
