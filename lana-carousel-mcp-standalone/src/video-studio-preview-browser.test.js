@@ -366,6 +366,18 @@ test("updates the live subtitle preview when the preset changes", async () => {
       activeTransform: element.querySelector(".active-word")?.style.transform || ""
     }));
 
+    await page.locator("#subtitlePreset").selectOption("tiktok-classic");
+    assert.deepEqual(await previewState(), {
+      text: "xin chao",
+      wordMode: false,
+      background: "rgba(0, 0, 0, 0.72)",
+      border: "",
+      textShadow: "rgba(0, 0, 0, 0.6) 0px 2px 8px",
+      webkitTextStroke: "",
+      activeColor: "rgb(255, 230, 0)",
+      activeTransform: ""
+    });
+
     await page.locator("#subtitlePreset").selectOption("capcut-stroke");
     assert.deepEqual(await previewState(), {
       text: "xin chao",
@@ -400,5 +412,12 @@ test("updates the live subtitle preview when the preset changes", async () => {
     assert.equal(bounce.wordMode, true);
     assert.equal(bounce.activeColor, "rgb(255, 230, 0)");
     assert.equal(bounce.activeTransform, "scale(1.12)");
+
+    // Đổi preset chỉ đổi cách trình bày preview; không được âm thầm sửa các control người dùng.
+    await page.locator("#subtitleColor").fill("#123456");
+    await page.locator("#subtitleOpacity").fill("0.35");
+    await page.locator("#subtitlePreset").selectOption("capcut-stroke");
+    assert.equal(await page.locator("#subtitleColor").inputValue(), "#123456");
+    assert.equal(await page.locator("#subtitleOpacity").inputValue(), "0.35");
   });
 });
