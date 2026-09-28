@@ -316,8 +316,9 @@ const activeWordIndex=(segment,time,wordCount)=>{
 };
 const hexAlpha=(hex,alpha)=>`${hex}${Math.round(clamp(Number(alpha),0,1)*255).toString(16).padStart(2,"0")}`;
 
-const subtitlePresetAppearance=currentSettings=>{
+const subtitlePresetAppearance=(currentSettings,scale=1)=>{
   const preset=currentSettings.subtitlePreset||"tiktok-classic";
+  const px=value=>`${value*scale}px`;
   const isCapcutStroke=preset==="capcut-stroke";
   const isNeonGlow=preset==="neon-glow";
   const isBoxGradient=preset==="box-gradient";
@@ -331,23 +332,22 @@ const subtitlePresetAppearance=currentSettings=>{
       :isNeonGlow
       ?"rgba(10, 10, 15, 0.65)"
       :hexAlpha(currentSettings.subtitleBackgroundColor,currentSettings.subtitleBackgroundOpacity),
-    border:isBoxGradient?"2px solid rgba(255,255,255,0.25)":"",
+    border:isBoxGradient?`${px(2)} solid rgba(255,255,255,0.25)`:"",
     textShadow:isCapcutStroke
-      ?"0 4px 14px rgba(0,0,0,0.95)"
+      ?`0 ${px(4)} ${px(14)} rgba(0,0,0,0.95)`
       :isNeonGlow
-      ?"0 0 10px #FF007F, 0 0 22px #FF007F"
-      :"0 2px 8px rgba(0,0,0,0.6)",
-    webkitTextStroke:isCapcutStroke?"3.5px #000000":"",
+      ?`0 0 ${px(10)} #FF007F, 0 0 ${px(22)} #FF007F`
+      :`0 ${px(2)} ${px(8)} rgba(0,0,0,0.6)`,
+    webkitTextStroke:isCapcutStroke?`${px(3.5)} #000000`:"",
     paintOrder:isCapcutStroke?"stroke fill":"",
     activeColor:isCapcutStroke?"#00F2FE":isNeonGlow?"#FFFC00":"#FFE600"
   };
 };
 
-function renderCaptionText(caption,segment,currentSettings,time){
+function renderCaptionText(caption,segment,currentSettings,time,appearance=subtitlePresetAppearance(currentSettings)){
   caption.replaceChildren();
   const text=segment?.subtitleText||"";
   const words=wordsOf(text),active=activeWordIndex(segment,time,words.length);
-  const appearance=subtitlePresetAppearance(currentSettings);
   if(appearance.wordMode){
     const span=document.createElement("span");
     span.className="active-word";
@@ -392,9 +392,9 @@ function renderPreview(){
   const caption=$("#caption"),stage=$("#stage");
   caption.hidden=!currentSettings.subtitleEnabled||!segment;
   if(caption.hidden)return;
-  const appearance=subtitlePresetAppearance(currentSettings);
-  renderCaptionText(caption,segment,currentSettings,time);
   const scale=Math.max(.2,stage.clientWidth/1080);
+  const appearance=subtitlePresetAppearance(currentSettings,scale);
+  renderCaptionText(caption,segment,currentSettings,time,appearance);
   caption.classList.toggle("word-mode",appearance.wordMode);
   Object.assign(caption.style,{
     left:`${currentSettings.subtitleX}%`,
