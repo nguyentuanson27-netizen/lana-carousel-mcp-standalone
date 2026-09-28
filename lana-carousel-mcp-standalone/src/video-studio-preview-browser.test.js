@@ -355,6 +355,7 @@ test("swaps to Lucylab AI and keeps the Lucylab voice note in sync", async () =>
 
 test("updates the live subtitle preview when the preset changes", async () => {
   await withPage(async page => {
+    const pixelValues = value => [...String(value).matchAll(/([\\d.]+)px/gu)].map(match => Number(match[1]));
     const previewState = () => page.locator("#caption").evaluate(element => ({
       text: element.textContent,
       wordMode: element.classList.contains("word-mode"),
@@ -373,7 +374,7 @@ test("updates the live subtitle preview when the preset changes", async () => {
     assert.equal(state.background, "rgba(0, 0, 0, 0.72)");
     assert.equal(state.border, "");
     assert.match(state.textShadow, /rgba\(0, 0, 0, 0\.6\)/u);
-    assert.ok(parseFloat(state.textShadow.match(/[\d.]+px/iu)?.[0] || "0") > 0);
+    assert.ok(pixelValues(state.textShadow).some(value => value > 0));
     assert.equal(state.webkitTextStroke, "");
     assert.equal(state.activeColor, "rgb(255, 230, 0)");
     assert.equal(state.activeTransform, "");
@@ -385,7 +386,7 @@ test("updates the live subtitle preview when the preset changes", async () => {
     assert.equal(state.background, "transparent");
     assert.equal(state.border, "");
     assert.match(state.textShadow, /rgba\(0, 0, 0, 0\.95\)/u);
-    assert.ok(parseFloat(state.textShadow.match(/[\d.]+px/iu)?.[0] || "0") > 0);
+    assert.ok(pixelValues(state.textShadow).some(value => value > 0));
     assert.match(state.webkitTextStroke, /rgb\(0, 0, 0\)/u);
     assert.ok(parseFloat(state.webkitTextStroke) > 0);
     assert.equal(state.activeColor, "rgb(0, 242, 254)");
@@ -398,7 +399,7 @@ test("updates the live subtitle preview when the preset changes", async () => {
     assert.equal(state.background, "rgba(10, 10, 15, 0.65)");
     assert.equal(state.border, "");
     assert.match(state.textShadow, /rgb\(255, 0, 127\)/u);
-    assert.ok(state.textShadow.includes(","), "neon phải có hai lớp glow");
+    assert.equal((state.textShadow.match(/rgb\(255, 0, 127\)/gu) || []).length, 2);
     assert.equal(state.webkitTextStroke, "");
     assert.equal(state.activeColor, "rgb(255, 252, 0)");
     assert.equal(state.activeTransform, "");
