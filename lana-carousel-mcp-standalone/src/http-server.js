@@ -22,6 +22,7 @@ import { videoAnalysisRouter } from "./video-analysis-routes.js";
 import { purgeExpiredTtsCache } from "./video-tts-cache.js";
 import { LUCYLAB_VOICE_IDS } from "./video-tts.js";
 import { registerSocialRoutes } from "./social-routes.js";
+import { sendOpenAIAdsEvents } from "./openai-ads.js";
 import {
   addSlide, approveProjectContent, approveSlideAsset, approveSlideAssets, cloneProject,
   createProject, deleteProject, extendProject, getApprovedAssetFiles, getProject,
@@ -60,6 +61,57 @@ const handle = handler => async (req, res) => {
   try { await handler(req, res); }
   catch (error) { const safe = publicError(error); if (!res.headersSent) res.status(safe.status).json(safe); }
 };
+
+const openAIAdsContentSchema = z.object({
+  id: z.string().min(1).max(256),
+  name: z.string().max(500).optional(),
+  content_type: z.string().min(1).max(64).optional(),
+  quantity: z.number().int().positive().optional(),
+  amount: z.number().int().nonnegative().optional(),
+  currency: z.string().length(3).optional()
+});
+
+const openAIAdsEventSchema = z.object({
+  id: z.string().min(1).max(256),
+  type: z.enum([
+    "page_viewed", "contents_viewed", "items_added", "checkout_started", "order_created",
+    "lead_created", "registration_completed", "appointment_scheduled",
+    "subscription_created", "trial_started", "custom"
+  ]),
+  timestamp_ms: z.number().int().optional(),
+  custom_event_name: z.string().min(1).max(64).optional(),
+  oppref: z.string().min(1).max(4096).optional(),
+  source_url: z.string().url(),
+  opt_out: z.boolean().optional(),
+  user: z.object({
+    obref: z.string().min(1).max(4096).optional(),
+    email: z.string().email().optional(),
+    email_sha256: z.string().regex(/^[a-f0-9]{64}$/iu).optional(),
+    external_id_sha256: z.string().regex(/^[a-f0-9]{64}$/iu).optional(),
+    country: z.string().regex(/^[A-Za-z]{2}$/u).optional(),
+    city: z.string().max(128).optional(),
+    zip_code: z.string().max(32).optional(),
+    ip_address: z.string().max(64).optional(),
+    user_agent: z.string().max(1024).optional()
+  }).optional(),
+  data: z.object({
+    type: z.enum(["contents", "customer_action", "plan_enrollment", "custom"]),
+    amount: z.number().int().nonnegative().optional(),
+    currency: z.string().length(3).optional(),
+    plan_id: z.string().max(256).optional(),
+    contents: z.array(openAIAdsContentSchema).max(100).optional()
+  })
+});
+
+app.post("/api/openai-ads/events", handle(async (req, res) => {
+  const body = z.object({
+    validate_only: z.boolean().default(false),
+    events: z.array(openAIAdsEventSchema).min(1).max(100)
+  }).parse(req.body);
+
+  const result = await sendOpenAIAdsEvents(body.events, { validateOnly: body.validate_only });
+  res.status(body.validate_only ? 200 : 202).json(result);
+}));
 
 app.all("/mcp", handle(async (req, res) => {
   const sessionId = String(req.headers["mcp-session-id"] || "");
