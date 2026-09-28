@@ -307,6 +307,7 @@ async function save(approved,{refresh=true}={}){
 }
 
 const wordsOf=text=>String(text||"").trim().split(/\s+/u).filter(Boolean);
+const KEYWORD_REGEX=/(freeship|miễn\s*phí\s*ship|cao\s*cấp|thêu\s*tay|chính\s*hãng|siêu\s*phẩm|giảm\s*giá|ưu\s*đãi|sale|\d+k|\d+tr|\d+%\b)/iu;
 const activeWordIndex=(segment,time,wordCount)=>{
   if(!wordCount)return -1;
   const duration=Math.max(.001,Number(segment.end)-Number(segment.start));
@@ -315,26 +316,58 @@ const activeWordIndex=(segment,time,wordCount)=>{
 };
 const hexAlpha=(hex,alpha)=>`${hex}${Math.round(clamp(Number(alpha),0,1)*255).toString(16).padStart(2,"0")}`;
 
-function renderCaptionText(caption,segment,style,time){
+const subtitlePresetAppearance=(currentSettings,scale=1)=>{
+  const preset=currentSettings.subtitlePreset||"tiktok-classic";
+  const px=value=>`${value*scale}px`;
+  const isCapcutStroke=preset==="capcut-stroke";
+  const isNeonGlow=preset==="neon-glow";
+  const isBoxGradient=preset==="box-gradient";
+  return {
+    wordMode:currentSettings.subtitleStyle==="word"||preset==="bounce-pop",
+    background:isCapcutStroke
+      ?"transparent"
+      :isBoxGradient
+      ?"linear-gradient(135deg, rgba(20,20,35,0.88) 0%, rgba(45,30,50,0.88) 100%)"
+      :isNeonGlow
+      ?"rgba(10, 10, 15, 0.65)"
+      :hexAlpha(currentSettings.subtitleBackgroundColor,currentSettings.subtitleBackgroundOpacity),
+    border:isBoxGradient?`${px(2)} solid rgba(255,255,255,0.25)`:"",
+    textShadow:isCapcutStroke
+      ?`0 ${px(4)} ${px(14)} rgba(0,0,0,0.95)`
+      :isNeonGlow
+      ?`0 0 ${px(10)} #FF007F, 0 0 ${px(22)} #FF007F`
+      :`0 ${px(2)} ${px(8)} rgba(0,0,0,0.6)`,
+    webkitTextStroke:isCapcutStroke?`${px(3.5)} #000000`:"",
+    paintOrder:isCapcutStroke?"stroke fill":"",
+    activeColor:isCapcutStroke?"#00F2FE":isNeonGlow?"#FFFC00":"#FFE600"
+  };
+};
+
+function renderCaptionText(caption,segment,currentSettings,time,appearance=subtitlePresetAppearance(currentSettings)){
   caption.replaceChildren();
   const text=segment?.subtitleText||"";
   const words=wordsOf(text),active=activeWordIndex(segment,time,words.length);
-  if(style==="word"){
+  if(appearance.wordMode){
     const span=document.createElement("span");
     span.className="active-word";
     span.textContent=words[active]||"";
+    span.style.color=appearance.activeColor;
+    span.style.transform="scale(1.12)";
     caption.append(span);
-    return;
-  }
-  if(style!=="karaoke"){
-    caption.textContent=text;
     return;
   }
   let seen=-1;
   for(const token of String(text).split(/(\s+)/u)){
     if(token.trim())seen++;
     const span=document.createElement("span");
-    if(token.trim()&&seen===active)span.className="active-word";
+    const isKeyword=token.trim()&&KEYWORD_REGEX.test(token);
+    const isActive=currentSettings.subtitleStyle==="karaoke"&&token.trim()&&seen===active;
+    if(isActive){
+      span.className="active-word";
+      span.style.color=isKeyword?"#FF4D4F":appearance.activeColor;
+    }else if(isKeyword){
+      span.style.color="#FFDF70";
+    }
     span.textContent=token;
     caption.append(span);
   }
@@ -355,18 +388,28 @@ function renderPreview(){
   const caption=$("#caption"),stage=$("#stage");
   caption.hidden=!currentSettings.subtitleEnabled||!segment;
   if(caption.hidden)return;
-  renderCaptionText(caption,segment,currentSettings.subtitleStyle,time);
   const scale=Math.max(.2,stage.clientWidth/1080);
-  caption.classList.toggle("word-mode",currentSettings.subtitleStyle==="word");
+  const appearance=subtitlePresetAppearance(currentSettings,scale);
+  renderCaptionText(caption,segment,currentSettings,time,appearance);
+  caption.classList.toggle("word-mode",appearance.wordMode);
   Object.assign(caption.style,{
     left:`${currentSettings.subtitleX}%`,
     top:`${currentSettings.subtitlePosition}%`,
+    width:appearance.wordMode?"auto":"88%",
+    minWidth:appearance.wordMode?`${Math.max(36,180*scale)}px`:"",
+    maxWidth:"94%",
     fontFamily:FONT_STACKS[currentSettings.subtitleFont]||currentSettings.subtitleFont,
     fontSize:`${Math.max(12,currentSettings.subtitleSize*scale)}px`,
+    fontWeight:"800",
+    lineHeight:"1.22",
     color:currentSettings.subtitleColor,
-    background:hexAlpha(currentSettings.subtitleBackgroundColor,currentSettings.subtitleBackgroundOpacity),
-    padding:`${Math.max(5,14*scale)}px ${Math.max(8,20*scale)}px`,
-    borderRadius:`${Math.max(7,18*scale)}px`
+    background:appearance.background,
+    border:appearance.border,
+    textShadow:appearance.textShadow,
+    webkitTextStroke:appearance.webkitTextStroke,
+    paintOrder:appearance.paintOrder,
+    padding:`${Math.max(5,16*scale)}px ${Math.max(8,24*scale)}px`,
+    borderRadius:`${Math.max(7,20*scale)}px`
   });
 }
 
@@ -399,24 +442,6 @@ const onStudioEdit=event=>{if(!event.target.closest("details"))return;syncRangeO
 document.addEventListener("input",onStudioEdit);
 document.addEventListener("change",onStudioEdit);
 document.fonts?.ready.then(renderPreview).catch(()=>{});
-$("#subtitlePreset")?.addEventListener("change", (e) => {
-  const p = e.target.value;
-  if (p === "capcut-stroke") {
-    $("#subtitleOpacity").value = 0;
-    $("#subtitleColor").value = "#FFFFFF";
-  } else if (p === "neon-glow") {
-    $("#subtitleBg").value = "#111111";
-    $("#subtitleOpacity").value = 0.65;
-    $("#subtitleColor").value = "#FFFFFF";
-  } else if (p === "tiktok-classic") {
-    $("#subtitleBg").value = "#000000";
-    $("#subtitleOpacity").value = 0.72;
-    $("#subtitleColor").value = "#FFFFFF";
-  }
-  syncRangeOutputs();
-  renderPreview();
-});
-
 $("#addSegment").onclick=()=>addSegment({start:$("#video").currentTime,end:$("#video").currentTime+3});
 $("#save").onclick=()=>save(false).catch(error=>alert(error.message));
 $("#approve").onclick=()=>save(true).catch(error=>alert(error.message));

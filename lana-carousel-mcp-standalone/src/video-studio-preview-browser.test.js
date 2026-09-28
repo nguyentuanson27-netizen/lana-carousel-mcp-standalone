@@ -352,3 +352,100 @@ test("swaps to Lucylab AI and keeps the Lucylab voice note in sync", async () =>
     assert.match(await page.locator("#voiceNote").textContent(), /Thư Review/u);
   });
 });
+
+test("updates the live subtitle preview when the preset changes", async () => {
+  await withPage(async page => {
+    const pixelValues = value => [...String(value).matchAll(/([\d.]+)px/gu)].map(match => Number(match[1]));
+    const previewState = () => page.locator("#caption").evaluate(element => ({
+      text: element.textContent,
+      wordMode: element.classList.contains("word-mode"),
+      background: element.style.background,
+      border: element.style.border,
+      textShadow: element.style.textShadow,
+      webkitTextStroke: element.style.webkitTextStroke,
+      activeColor: element.querySelector(".active-word")?.style.color || "",
+      activeTransform: element.querySelector(".active-word")?.style.transform || ""
+    }));
+
+    await page.locator("#subtitlePreset").selectOption("tiktok-classic");
+    let state = await previewState();
+    assert.equal(state.text, "xin chao");
+    assert.equal(state.wordMode, false);
+    assert.equal(state.background, "rgba(0, 0, 0, 0.72)");
+    assert.equal(state.border, "");
+    assert.match(state.textShadow, /rgba\(0, 0, 0, 0\.6\)/u);
+    assert.ok(pixelValues(state.textShadow).some(value => value > 0));
+    assert.equal(state.webkitTextStroke, "");
+    assert.equal(state.activeColor, "rgb(255, 230, 0)");
+    assert.equal(state.activeTransform, "");
+
+    await page.locator("#subtitlePreset").selectOption("capcut-stroke");
+    state = await previewState();
+    assert.equal(state.text, "xin chao");
+    assert.equal(state.wordMode, false);
+    assert.equal(state.background, "transparent");
+    assert.equal(state.border, "");
+    assert.match(state.textShadow, /rgba\(0, 0, 0, 0\.95\)/u);
+    assert.ok(pixelValues(state.textShadow).some(value => value > 0));
+    assert.match(state.webkitTextStroke, /rgb\(0, 0, 0\)/u);
+    assert.ok(parseFloat(state.webkitTextStroke) > 0);
+    assert.equal(state.activeColor, "rgb(0, 242, 254)");
+    assert.equal(state.activeTransform, "");
+
+    await page.locator("#subtitlePreset").selectOption("neon-glow");
+    state = await previewState();
+    assert.equal(state.text, "xin chao");
+    assert.equal(state.wordMode, false);
+    assert.equal(state.background, "rgba(10, 10, 15, 0.65)");
+    assert.equal(state.border, "");
+    assert.match(state.textShadow, /rgb\(255, 0, 127\)/u);
+    assert.equal((state.textShadow.match(/rgb\(255, 0, 127\)/gu) || []).length, 2);
+    assert.equal(state.webkitTextStroke, "");
+    assert.equal(state.activeColor, "rgb(255, 252, 0)");
+    assert.equal(state.activeTransform, "");
+
+    await page.locator("#subtitlePreset").selectOption("box-gradient");
+    state = await previewState();
+    assert.match(state.background, /linear-gradient/u);
+    assert.match(state.border, /solid rgba\(255, 255, 255, 0\.25\)/u);
+    assert.ok(parseFloat(state.border) > 0);
+
+    await page.locator("#subtitlePreset").selectOption("bounce-pop");
+    state = await previewState();
+    assert.equal(state.text, "xin");
+    assert.equal(state.wordMode, true);
+    assert.equal(state.activeColor, "rgb(255, 230, 0)");
+    assert.equal(state.activeTransform, "scale(1.12)");
+
+    // Đổi preset chỉ đổi cách trình bày preview; không được âm thầm sửa các control người dùng.
+    await page.locator("#subtitleColor").evaluate(element => {
+      element.value = "#123456";
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await page.locator("#subtitleOpacity").fill("0.35");
+    await page.locator("#subtitlePreset").selectOption("capcut-stroke");
+    assert.equal(await page.locator("#subtitleColor").inputValue(), "#123456");
+    assert.equal(await page.locator("#subtitleOpacity").inputValue(), "0.35");
+
+    // Keyword colors trong preview phải theo đúng renderer.
+    await page.locator("#subtitlePreset").selectOption("tiktok-classic");
+    await page.locator(".segment .sub").first().fill("sale xin");
+    await page.locator(".segment .sub").first().dispatchEvent("input");
+    assert.equal(
+      await page.locator("#caption .active-word").evaluate(element => element.style.color),
+      "rgb(255, 77, 79)"
+    );
+
+    await page.locator(".segment .sub").first().fill("xin sale");
+    await page.locator(".segment .sub").first().dispatchEvent("input");
+    const colors = await page.locator("#caption span").evaluateAll(nodes => nodes.map(node => node.style.color));
+    assert.equal(colors.at(-1), "rgb(255, 223, 112)");
+
+    await page.locator("#subtitleStyle").selectOption("static");
+    await page.locator(".segment .sub").first().fill("xin sale");
+    await page.locator(".segment .sub").first().dispatchEvent("input");
+    const staticColors = await page.locator("#caption span").evaluateAll(nodes => nodes.map(node => node.style.color));
+    assert.equal(staticColors.at(-1), "rgb(255, 223, 112)");
+    assert.equal(await page.locator("#caption .active-word").count(), 0);
+  });
+});
