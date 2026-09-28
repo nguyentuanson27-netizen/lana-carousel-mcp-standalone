@@ -315,18 +315,48 @@ const activeWordIndex=(segment,time,wordCount)=>{
 };
 const hexAlpha=(hex,alpha)=>`${hex}${Math.round(clamp(Number(alpha),0,1)*255).toString(16).padStart(2,"0")}`;
 
-function renderCaptionText(caption,segment,style,time){
+const subtitlePresetAppearance=currentSettings=>{
+  const preset=currentSettings.subtitlePreset||"tiktok-classic";
+  const isCapcutStroke=preset==="capcut-stroke";
+  const isNeonGlow=preset==="neon-glow";
+  const isBoxGradient=preset==="box-gradient";
+  return {
+    preset,
+    wordMode:currentSettings.subtitleStyle==="word"||preset==="bounce-pop",
+    background:isCapcutStroke
+      ?"transparent"
+      :isBoxGradient
+      ?"linear-gradient(135deg, rgba(20,20,35,0.88) 0%, rgba(45,30,50,0.88) 100%)"
+      :isNeonGlow
+      ?"rgba(10, 10, 15, 0.65)"
+      :hexAlpha(currentSettings.subtitleBackgroundColor,currentSettings.subtitleBackgroundOpacity),
+    border:isBoxGradient?"2px solid rgba(255,255,255,0.25)":"",
+    textShadow:isCapcutStroke
+      ?"0 4px 14px rgba(0,0,0,0.95)"
+      :isNeonGlow
+      ?"0 0 10px #FF007F, 0 0 22px #FF007F"
+      :"0 2px 8px rgba(0,0,0,0.6)",
+    webkitTextStroke:isCapcutStroke?"3.5px #000000":"",
+    paintOrder:isCapcutStroke?"stroke fill":"",
+    activeColor:isCapcutStroke?"#00F2FE":isNeonGlow?"#FFFC00":"#FFE600"
+  };
+};
+
+function renderCaptionText(caption,segment,currentSettings,time){
   caption.replaceChildren();
   const text=segment?.subtitleText||"";
   const words=wordsOf(text),active=activeWordIndex(segment,time,words.length);
-  if(style==="word"){
+  const appearance=subtitlePresetAppearance(currentSettings);
+  if(appearance.wordMode){
     const span=document.createElement("span");
     span.className="active-word";
     span.textContent=words[active]||"";
+    span.style.color=appearance.activeColor;
+    span.style.transform="scale(1.12)";
     caption.append(span);
     return;
   }
-  if(style!=="karaoke"){
+  if(currentSettings.subtitleStyle!=="karaoke"){
     caption.textContent=text;
     return;
   }
@@ -334,7 +364,10 @@ function renderCaptionText(caption,segment,style,time){
   for(const token of String(text).split(/(\s+)/u)){
     if(token.trim())seen++;
     const span=document.createElement("span");
-    if(token.trim()&&seen===active)span.className="active-word";
+    if(token.trim()&&seen===active){
+      span.className="active-word";
+      span.style.color=appearance.activeColor;
+    }
     span.textContent=token;
     caption.append(span);
   }
@@ -355,18 +388,28 @@ function renderPreview(){
   const caption=$("#caption"),stage=$("#stage");
   caption.hidden=!currentSettings.subtitleEnabled||!segment;
   if(caption.hidden)return;
-  renderCaptionText(caption,segment,currentSettings.subtitleStyle,time);
+  const appearance=subtitlePresetAppearance(currentSettings);
+  renderCaptionText(caption,segment,currentSettings,time);
   const scale=Math.max(.2,stage.clientWidth/1080);
-  caption.classList.toggle("word-mode",currentSettings.subtitleStyle==="word");
+  caption.classList.toggle("word-mode",appearance.wordMode);
   Object.assign(caption.style,{
     left:`${currentSettings.subtitleX}%`,
     top:`${currentSettings.subtitlePosition}%`,
+    width:appearance.wordMode?"auto":"88%",
+    minWidth:appearance.wordMode?`${Math.max(36,180*scale)}px`:"",
+    maxWidth:"94%",
     fontFamily:FONT_STACKS[currentSettings.subtitleFont]||currentSettings.subtitleFont,
     fontSize:`${Math.max(12,currentSettings.subtitleSize*scale)}px`,
+    fontWeight:"800",
+    lineHeight:"1.22",
     color:currentSettings.subtitleColor,
-    background:hexAlpha(currentSettings.subtitleBackgroundColor,currentSettings.subtitleBackgroundOpacity),
-    padding:`${Math.max(5,14*scale)}px ${Math.max(8,20*scale)}px`,
-    borderRadius:`${Math.max(7,18*scale)}px`
+    background:appearance.background,
+    border:appearance.border,
+    textShadow:appearance.textShadow,
+    WebkitTextStroke:appearance.webkitTextStroke,
+    paintOrder:appearance.paintOrder,
+    padding:`${Math.max(5,16*scale)}px ${Math.max(8,24*scale)}px`,
+    borderRadius:`${Math.max(7,20*scale)}px`
   });
 }
 
@@ -399,24 +442,6 @@ const onStudioEdit=event=>{if(!event.target.closest("details"))return;syncRangeO
 document.addEventListener("input",onStudioEdit);
 document.addEventListener("change",onStudioEdit);
 document.fonts?.ready.then(renderPreview).catch(()=>{});
-$("#subtitlePreset")?.addEventListener("change", (e) => {
-  const p = e.target.value;
-  if (p === "capcut-stroke") {
-    $("#subtitleOpacity").value = 0;
-    $("#subtitleColor").value = "#FFFFFF";
-  } else if (p === "neon-glow") {
-    $("#subtitleBg").value = "#111111";
-    $("#subtitleOpacity").value = 0.65;
-    $("#subtitleColor").value = "#FFFFFF";
-  } else if (p === "tiktok-classic") {
-    $("#subtitleBg").value = "#000000";
-    $("#subtitleOpacity").value = 0.72;
-    $("#subtitleColor").value = "#FFFFFF";
-  }
-  syncRangeOutputs();
-  renderPreview();
-});
-
 $("#addSegment").onclick=()=>addSegment({start:$("#video").currentTime,end:$("#video").currentTime+3});
 $("#save").onclick=()=>save(false).catch(error=>alert(error.message));
 $("#approve").onclick=()=>save(true).catch(error=>alert(error.message));
