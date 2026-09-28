@@ -307,6 +307,7 @@ async function save(approved,{refresh=true}={}){
 }
 
 const wordsOf=text=>String(text||"").trim().split(/\s+/u).filter(Boolean);
+const KEYWORD_REGEX=/(freeship|miễn\s*phí\s*ship|cao\s*cấp|thêu\s*tay|chính\s*hãng|siêu\s*phẩm|giảm\s*giá|ưu\s*đãi|sale|\d+k|\d+tr|\d+%\b)/iu;
 const activeWordIndex=(segment,time,wordCount)=>{
   if(!wordCount)return -1;
   const duration=Math.max(.001,Number(segment.end)-Number(segment.start));
@@ -364,9 +365,12 @@ function renderCaptionText(caption,segment,currentSettings,time){
   for(const token of String(text).split(/(\s+)/u)){
     if(token.trim())seen++;
     const span=document.createElement("span");
+    const isKeyword=token.trim()&&KEYWORD_REGEX.test(token);
     if(token.trim()&&seen===active){
       span.className="active-word";
-      span.style.color=appearance.activeColor;
+      span.style.color=isKeyword?"#FF4D4F":appearance.activeColor;
+    }else if(isKeyword){
+      span.style.color="#FFDF70";
     }
     span.textContent=token;
     caption.append(span);
