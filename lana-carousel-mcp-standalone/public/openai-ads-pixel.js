@@ -42,9 +42,8 @@
     if (!pixelId) throw new Error("pixelId is required");
 
     var q = ensureQueue();
-    if (options.consent === false) q("consent", false);
+    if (typeof options.consent === "boolean") q("consent", Boolean(options.consent));
     q("init", { pixelId: pixelId, debug: Boolean(options.debug) });
-    if (options.consent === true) q("consent", true);
     initializedPixelId = pixelId;
     return pixelId;
   }
