@@ -352,3 +352,53 @@ test("swaps to Lucylab AI and keeps the Lucylab voice note in sync", async () =>
     assert.match(await page.locator("#voiceNote").textContent(), /Thư Review/u);
   });
 });
+
+test("updates the live subtitle preview when the preset changes", async () => {
+  await withPage(async page => {
+    const previewState = () => page.locator("#caption").evaluate(element => ({
+      text: element.textContent,
+      wordMode: element.classList.contains("word-mode"),
+      background: element.style.background,
+      border: element.style.border,
+      textShadow: element.style.textShadow,
+      webkitTextStroke: element.style.webkitTextStroke,
+      activeColor: element.querySelector(".active-word")?.style.color || "",
+      activeTransform: element.querySelector(".active-word")?.style.transform || ""
+    }));
+
+    await page.locator("#subtitlePreset").selectOption("capcut-stroke");
+    assert.deepEqual(await previewState(), {
+      text: "xin chao",
+      wordMode: false,
+      background: "transparent",
+      border: "",
+      textShadow: "0 4px 14px rgba(0, 0, 0, 0.95)",
+      webkitTextStroke: "3.5px rgb(0, 0, 0)",
+      activeColor: "rgb(0, 242, 254)",
+      activeTransform: ""
+    });
+
+    await page.locator("#subtitlePreset").selectOption("neon-glow");
+    assert.deepEqual(await previewState(), {
+      text: "xin chao",
+      wordMode: false,
+      background: "rgba(10, 10, 15, 0.65)",
+      border: "",
+      textShadow: "rgb(255, 0, 127) 0px 0px 10px, rgb(255, 0, 127) 0px 0px 22px",
+      webkitTextStroke: "",
+      activeColor: "rgb(255, 252, 0)",
+      activeTransform: ""
+    });
+
+    await page.locator("#subtitlePreset").selectOption("box-gradient");
+    assert.match((await previewState()).background, /linear-gradient/u);
+    assert.equal((await previewState()).border, "2px solid rgba(255, 255, 255, 0.25)");
+
+    await page.locator("#subtitlePreset").selectOption("bounce-pop");
+    const bounce = await previewState();
+    assert.equal(bounce.text, "xin");
+    assert.equal(bounce.wordMode, true);
+    assert.equal(bounce.activeColor, "rgb(255, 230, 0)");
+    assert.equal(bounce.activeTransform, "scale(1.12)");
+  });
+});
