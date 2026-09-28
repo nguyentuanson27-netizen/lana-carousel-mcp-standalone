@@ -355,7 +355,7 @@ test("swaps to Lucylab AI and keeps the Lucylab voice note in sync", async () =>
 
 test("updates the live subtitle preview when the preset changes", async () => {
   await withPage(async page => {
-    const pixelValues = value => [...String(value).matchAll(/([\\d.]+)px/gu)].map(match => Number(match[1]));
+    const pixelValues = value => [...String(value).matchAll(/([\d.]+)px/gu)].map(match => Number(match[1]));
     const previewState = () => page.locator("#caption").evaluate(element => ({
       text: element.textContent,
       wordMode: element.classList.contains("word-mode"),
