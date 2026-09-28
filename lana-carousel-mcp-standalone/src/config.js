@@ -43,6 +43,8 @@ const googleOAuthConfigured = Boolean(googleOAuthClientId && googleOAuthClientSe
 const oauthAllowedEmails = csvEnv("OAUTH_ALLOWED_EMAILS").map(value => value.toLowerCase());
 const oauthAllowedDomains = csvEnv("OAUTH_ALLOWED_DOMAINS").map(value => value.toLowerCase().replace(/^@/u, ""));
 const oauthTrustedProxyCidrs = [...new Set(csvEnv("OAUTH_TRUSTED_PROXY_CIDRS"))];
+const openAiAdsPixelId = String(process.env.OPENAI_ADS_PIXEL_ID || "").trim();
+const openAiConversionsApiKey = String(process.env.OPENAI_CONVERSIONS_API_KEY || "").trim();
 
 if (Boolean(googleOAuthClientId) !== Boolean(googleOAuthClientSecret)) {
   throw new Error("GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET must be configured together");
@@ -98,5 +100,8 @@ export const config = Object.freeze({
   projectAccessTokenTtlSeconds: integerEnv("PROJECT_ACCESS_TOKEN_TTL_SECONDS", 300),
   projectSessionTtlSeconds: integerEnv("PROJECT_SESSION_TTL_SECONDS", 3600),
   mcpMaxSessionsPerPrincipal: integerEnv("MCP_MAX_SESSIONS_PER_PRINCIPAL", 200),
-  mcpSessionTtlSeconds: integerEnv("MCP_SESSION_TTL_SECONDS", 1800)
+  mcpSessionTtlSeconds: integerEnv("MCP_SESSION_TTL_SECONDS", 1800),
+  openAiAdsPixelId,
+  openAiConversionsApiKey,
+  openAiAdsRequestTimeoutMs: integerEnv("OPENAI_ADS_REQUEST_TIMEOUT_MS", 10_000)
 });
