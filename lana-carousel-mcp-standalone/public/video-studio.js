@@ -323,7 +323,6 @@ const subtitlePresetAppearance=(currentSettings,scale=1)=>{
   const isNeonGlow=preset==="neon-glow";
   const isBoxGradient=preset==="box-gradient";
   return {
-    preset,
     wordMode:currentSettings.subtitleStyle==="word"||preset==="bounce-pop",
     background:isCapcutStroke
       ?"transparent"
@@ -357,16 +356,13 @@ function renderCaptionText(caption,segment,currentSettings,time,appearance=subti
     caption.append(span);
     return;
   }
-  if(currentSettings.subtitleStyle!=="karaoke"){
-    caption.textContent=text;
-    return;
-  }
   let seen=-1;
   for(const token of String(text).split(/(\s+)/u)){
     if(token.trim())seen++;
     const span=document.createElement("span");
     const isKeyword=token.trim()&&KEYWORD_REGEX.test(token);
-    if(token.trim()&&seen===active){
+    const isActive=currentSettings.subtitleStyle==="karaoke"&&token.trim()&&seen===active;
+    if(isActive){
       span.className="active-word";
       span.style.color=isKeyword?"#FF4D4F":appearance.activeColor;
     }else if(isKeyword){
